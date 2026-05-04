@@ -19,7 +19,7 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 - **Compact built-in tool rendering** for `read`, `grep`, `find`, `ls`, `bash`, `edit`, and `write`
 - **MCP-aware rendering** with hidden, summary, and preview modes
 - **Adaptive edit/write diffs** with split or unified layouts, syntax highlighting, inline emphasis, and narrow-pane width clamping
-- **Projected pending edit/write previews** that show `pending edit`, `pending overwrite`, and `pending create` diffs while partial tool calls are still streaming
+- **Workspace-scoped projected pending edit/write previews** that show `pending edit`, `pending overwrite`, and `pending create` diffs while partial tool calls are still streaming
 - **Progressive collapsed diff hints** that shorten automatically on small terminal widths instead of overflowing
 - **Three presets**: `opencode`, `balanced`, and `verbose`
 - **Thinking labels** during streaming and final message rendering, with context sanitization to avoid leaking presentation labels back into future model turns
@@ -121,6 +121,7 @@ A starter template is included at `config/config.example.json`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `debug` | boolean | `false` | Opt-in file logging for extension diagnostics; missing values are treated as `false` |
 | `registerToolOverrides` | object | all `true` | Per-tool ownership flags |
 | `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
@@ -164,6 +165,7 @@ Set any entry to `false` if another extension should handle that tool instead.
 
 ```json
 {
+  "debug": false,
   "registerToolOverrides": {
     "read": true,
     "grep": true,
@@ -191,13 +193,17 @@ Set any entry to `false` if another extension should handle that tool instead.
 }
 ```
 
+### Debug logging
+
+Debug logging is disabled by default. Set `debug` to `true` in the extension root `config.json` only when collecting diagnostics; missing or non-`true` values are treated as `false`. When enabled, diagnostics are appended to `debug/debug.log` under a runtime-created `debug/` directory, and no debug output is written to the terminal.
+
 ## Rendering notes
 
 ### Edit and write diffs
 
 `edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. On narrow panes it clamps rendered lines and shortens collapsed hint text so the diff stays readable instead of spilling past the terminal width.
 
-While tool arguments are still streaming, partial `edit` and `write` calls can show projected pending previews. Deterministic edits render as `pending edit` diffs against current file contents, writes render as `pending overwrite` or `pending create`, and unresolved projections show a clear preview notice instead of guessing.
+While tool arguments are still streaming, partial `edit` and `write` calls can show projected pending previews. Deterministic edits render as `pending edit` diffs against current file contents, writes render as `pending overwrite` or `pending create`, and unresolved projections show a clear preview notice instead of guessing. Preview file reads are scoped to the active workspace so pending previews avoid reading paths outside the current project.
 
 ### Write summaries
 
