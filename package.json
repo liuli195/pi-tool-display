@@ -1,14 +1,20 @@
 {
   "name": "pi-tool-display",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "description": "Compact tool call rendering, diff visualization, and output truncation extension for Pi coding agent. Hides, collapses, and truncates verbose tool output for cleaner TUI display.",
   "type": "module",
   "main": "./index.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./tool-display-api-consumer": {
+      "types": "./tool-display-api-consumer.d.ts",
+      "default": "./tool-display-api-consumer.js"
+    }
   },
   "files": [
     "index.ts",
+    "tool-display-api-consumer.js",
+    "tool-display-api-consumer.d.ts",
     "src",
     "config/config.example.json",
     "README.md",
@@ -63,14 +69,14 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.72.0",
-    "@mariozechner/pi-tui": "^0.72.0"
+    "@earendil-works/pi-coding-agent": "^0.75.4",
+    "@earendil-works/pi-tui": "^0.75.4"
   },
   "overrides": {
     "file-type": ">=21.3.1"
   },
   "devDependencies": {
-    "tsx": "4.20.6",
-    "typescript": "5.7.3"
+    "tsx": "4.22.3",
+    "typescript": "6.0.3"
   }
 }
