@@ -242,6 +242,10 @@ This keeps the UI aligned with what the current environment can actually support
 
 ## Troubleshooting
 
+### Reload safety
+
+`/reload` is fully supported. On reload, the extension cleans up all tool overrides, prototype patches, timers, and event handlers through its built-in disposal registry, then re-registers everything on the next session lifecycle event. No manual cleanup is needed.
+
 ### Tool ownership conflicts
 
 If another extension is already rendering one of the built-in tools:
@@ -250,6 +254,8 @@ If another extension is already rendering one of the built-in tools:
 2. Run `/reload`
 3. Use `/tool-display show` to confirm the effective ownership state
 
+Built-in tool overrides (including `bash`) are registered with deferred ownership discovery — the extension discovers which tools it owns via `pi.getAllTools()` during `before_agent_start` before overriding, preventing conflicts with other extensions that also register overrides.
+
 ### Config not loading
 
 If your settings are not being applied:
@@ -257,6 +263,10 @@ If your settings are not being applied:
 1. Check that the global Pi tool-display config exists (default: `~/.pi/agent/extensions/pi-tool-display/config.json`, respects `PI_CODING_AGENT_DIR`)
 2. Make sure the JSON is valid
 3. Run `/tool-display show` to inspect the effective config summary
+
+### MCP tool rendering not appearing
+
+MCP tools are decorated via `pi.registerTool` interception, so they are captured as soon as they register regardless of lifecycle event ordering. If MCP tools still appear unstyled, check that the tool's name or parameter schema matches one of the supported MCP detection heuristics (names containing `mcp`, `server:`, `ctx_`, or parameter schemas with `mcpServer`/`serverUrl`/`server_name`).
 
 ### MCP or RTK settings missing
 
@@ -272,6 +282,7 @@ pi-tool-display/
 │   ├── capabilities.ts              # MCP/RTK capability detection
 │   ├── config-modal.ts              # /tool-display settings UI and command handling
 │   ├── config-store.ts              # Config load/save and normalization
+│   ├── disposable.ts                # Reload-safe cleanup registry for tool overrides, patches, and timers
 │   ├── diff-renderer.ts             # Edit/write diff rendering engine
 │   ├── line-width-safety.ts         # Width clamping helpers for narrow panes
 │   ├── pending-diff-preview.ts      # Partial edit/write preview projection helpers
@@ -290,8 +301,18 @@ pi-tool-display/
 ├── config/
 │   └── config.example.json          # Starter config template
 └── tests/
+    ├── ansi-utils.test.ts           # ANSI utility tests including foreground RGB preservation
+    ├── bash-display.test.ts         # Bash display and spinner tests
+    ├── capabilities-edge.test.ts    # Capability detection edge cases
+    ├── config-modal.test.ts         # Config modal tests
+    ├── debug-logger-edge.test.ts    # Debug logger edge cases
     ├── diff-renderer-ansi.test.ts   # ANSI/background handling tests for diff rendering
+    ├── diff-renderer-edge.test.ts   # Diff renderer edge case tests
     ├── diff-renderer-width.test.ts  # Width and background coverage tests for diff rendering
+    ├── index-integration.test.ts    # Integration tests for extension lifecycle
+    ├── presets-edge.test.ts         # Preset edge case tests
+    ├── reload-behavior.test.ts      # Reload-safe cleanup and re-registration tests
+    ├── tool-overrides-config.test.ts    # Tool override config tests
     ├── tool-overrides-registration.test.ts # Tool override registration tests
     └── tool-ui-utils.test.ts        # Utility tests for user message and diff helpers
 ```
