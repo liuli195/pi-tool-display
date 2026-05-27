@@ -444,7 +444,7 @@ test("showRtkCompactionHints stays independent from showTruncationHints for prev
 	);
 });
 
-test("bash output modes stay distinct across opencode, summary, and preview", () => {
+test("bash output modes stay distinct across opencode, summary, and preview", async () => {
 	const output = "alpha\nbeta\ngamma\n";
 
 	const opencodeConfig = buildConfig({
@@ -453,6 +453,7 @@ test("bash output modes stay distinct across opencode, summary, and preview", ()
 	});
 	const opencodeStub = createExtensionApiStub();
 	registerToolDisplayOverrides(opencodeStub.api, () => opencodeConfig);
+	await opencodeStub.eventHandlers.before_agent_start?.();
 	assert.equal(
 		renderToolResult(opencodeStub.registeredTools.find((tool) => tool.name === "bash"), output),
 		"alpha\n... (2 more lines • Ctrl+O to expand)",
@@ -464,6 +465,7 @@ test("bash output modes stay distinct across opencode, summary, and preview", ()
 	});
 	const summaryStub = createExtensionApiStub();
 	registerToolDisplayOverrides(summaryStub.api, () => summaryConfig);
+	await summaryStub.eventHandlers.before_agent_start?.();
 	assert.equal(
 		renderToolResult(summaryStub.registeredTools.find((tool) => tool.name === "bash"), output),
 		"↳ 3 lines returned • Ctrl+O to expand",
@@ -483,6 +485,7 @@ test("bash output modes stay distinct across opencode, summary, and preview", ()
 	});
 	const previewStub = createExtensionApiStub();
 	registerToolDisplayOverrides(previewStub.api, () => previewConfig);
+	await previewStub.eventHandlers.before_agent_start?.();
 	assert.equal(
 		renderToolResult(previewStub.registeredTools.find((tool) => tool.name === "bash"), output),
 		"alpha\nbeta\n... (1 more line • Ctrl+O to expand)",
@@ -493,8 +496,9 @@ test("bash call spinner appears only while execution is active", async () => {
 	const config = buildConfig({
 		bashOutputMode: "summary",
 	});
-	const { api, registeredTools } = createExtensionApiStub();
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 	registerToolDisplayOverrides(api, () => config);
+	await eventHandlers.before_agent_start?.();
 
 	const bashTool = registeredTools.find((tool) => tool.name === "bash");
 	const idle = renderToolCall(bashTool, { command: "npm test" });
@@ -515,7 +519,7 @@ test("bash call spinner appears only while execution is active", async () => {
 	);
 	assert.match(running.output, /^⠋ \$ npm test · 0s$/);
 
-	await new Promise((resolve) => setTimeout(resolve, 95));
+	await new Promise((resolve) => setTimeout(resolve, 220));
 	const animatedFrame = normalizeRenderedText(running.component);
 	assert.notEqual(animatedFrame, running.output);
 	assert.match(animatedFrame, /^⠙ \$ npm test · 0s$/);
@@ -534,12 +538,13 @@ test("bash call spinner appears only while execution is active", async () => {
 	assert.equal(complete.output, "$ npm test");
 });
 
-test("bash render keeps the running result area empty until output exists", () => {
+test("bash render keeps the running result area empty until output exists", async () => {
 	const config = buildConfig({
 		bashOutputMode: "summary",
 	});
-	const { api, registeredTools } = createExtensionApiStub();
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 	registerToolDisplayOverrides(api, () => config);
+	await eventHandlers.before_agent_start?.();
 
 	const bashTool = registeredTools.find((tool) => tool.name === "bash");
 	assert.equal(
@@ -548,13 +553,14 @@ test("bash render keeps the running result area empty until output exists", () =
 	);
 });
 
-test("bash render shows live partial output once streaming begins", () => {
+test("bash render shows live partial output once streaming begins", async () => {
 	const config = buildConfig({
 		bashOutputMode: "summary",
 		previewLines: 2,
 	});
-	const { api, registeredTools } = createExtensionApiStub();
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 	registerToolDisplayOverrides(api, () => config);
+	await eventHandlers.before_agent_start?.();
 
 	const bashTool = registeredTools.find((tool) => tool.name === "bash");
 	assert.equal(
@@ -566,14 +572,15 @@ test("bash render shows live partial output once streaming begins", () => {
 	);
 });
 
-test("bash live partial output respects opencode collapse settings", () => {
+test("bash live partial output respects opencode collapse settings", async () => {
 	const config = buildConfig({
 		bashOutputMode: "opencode",
 		bashCollapsedLines: 1,
 		previewLines: 4,
 	});
-	const { api, registeredTools } = createExtensionApiStub();
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 	registerToolDisplayOverrides(api, () => config);
+	await eventHandlers.before_agent_start?.();
 
 	const bashTool = registeredTools.find((tool) => tool.name === "bash");
 	assert.equal(
@@ -585,13 +592,14 @@ test("bash live partial output respects opencode collapse settings", () => {
 	);
 });
 
-test("bash errors render with an explicit failure header and preview", () => {
+test("bash errors render with an explicit failure header and preview", async () => {
 	const config = buildConfig({
 		bashOutputMode: "summary",
 		previewLines: 2,
 	});
-	const { api, registeredTools } = createExtensionApiStub();
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 	registerToolDisplayOverrides(api, () => config);
+	await eventHandlers.before_agent_start?.();
 
 	const bashTool = registeredTools.find((tool) => tool.name === "bash");
 	assert.equal(

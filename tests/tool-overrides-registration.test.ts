@@ -71,7 +71,7 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
 	assert.deepEqual(
 		registeredTools.map((tool) => tool.name).sort(),
-		["bash", "find", "ls", "write"],
+		["find", "ls", "write"],
 	);
 	await eventHandlers.before_agent_start?.();
 
