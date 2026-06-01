@@ -263,18 +263,67 @@ function clearBuiltInToolCache(): void {
 function getBuiltInTools(cwd: string): BuiltInTools {
   let tools = builtInToolCache.get(cwd);
   if (!tools) {
-    tools = {
-      read: createReadTool(cwd),
-      grep: createGrepTool(cwd),
-      find: createFindTool(cwd),
-      ls: createLsTool(cwd),
-      bash: createBashTool(cwd),
-      edit: createEditTool(cwd),
-      write: createWriteTool(cwd),
-    };
+    tools = createLazyBuiltInTools(cwd);
     builtInToolCache.set(cwd, tools);
   }
   return tools;
+}
+
+function createLazyBuiltInTools(cwd: string): BuiltInTools {
+  const cache = new Map<string, unknown>();
+  const get = <K extends keyof BuiltInTools>(name: K, factory: () => BuiltInTools[K]): BuiltInTools[K] => {
+    if (!cache.has(name)) {
+      cache.set(name, factory());
+    }
+    return cache.get(name) as BuiltInTools[K];
+  };
+  return {
+    get read() { return get("read", () => createReadTool(cwd)); },
+    get grep() { return get("grep", () => createGrepTool(cwd)); },
+    get find() { return get("find", () => createFindTool(cwd)); },
+    get ls() { return get("ls", () => createLsTool(cwd)); },
+    get bash() { return get("bash", () => createBashTool(cwd)); },
+    get edit() { return get("edit", () => createEditTool(cwd)); },
+    get write() { return get("write", () => createWriteTool(cwd)); },
+  } as BuiltInTools;
+}
+
+function createLazyPromptMetadata(bootstrapTools: BuiltInTools): Record<keyof BuiltInTools, ReturnType<typeof extractPromptMetadata>> {
+  const cache = new Map<string, unknown>();
+  const get = (name: keyof BuiltInTools): ReturnType<typeof extractPromptMetadata> => {
+    if (!cache.has(name)) {
+      cache.set(name, extractPromptMetadata(bootstrapTools[name]));
+    }
+    return cache.get(name) as ReturnType<typeof extractPromptMetadata>;
+  };
+  return {
+    get read() { return get("read"); },
+    get grep() { return get("grep"); },
+    get find() { return get("find"); },
+    get ls() { return get("ls"); },
+    get bash() { return get("bash"); },
+    get edit() { return get("edit"); },
+    get write() { return get("write"); },
+  } as Record<keyof BuiltInTools, ReturnType<typeof extractPromptMetadata>>;
+}
+
+function createLazyClonedParameters(bootstrapTools: BuiltInTools): Record<keyof BuiltInTools, unknown> {
+  const cache = new Map<string, unknown>();
+  const get = (name: keyof BuiltInTools): unknown => {
+    if (!cache.has(name)) {
+      cache.set(name, cloneToolParameters(bootstrapTools[name].parameters));
+    }
+    return cache.get(name);
+  };
+  return {
+    get read() { return get("read"); },
+    get grep() { return get("grep"); },
+    get find() { return get("find"); },
+    get ls() { return get("ls"); },
+    get bash() { return get("bash"); },
+    get edit() { return get("edit"); },
+    get write() { return get("write"); },
+  } as Record<keyof BuiltInTools, unknown>;
 }
 
 function captureExistingWriteContent(
@@ -1377,24 +1426,8 @@ export function registerToolDisplayOverrides(
     }
   });
   const bootstrapTools = getBuiltInTools(process.cwd());
-  const builtInPromptMetadata = {
-    read: extractPromptMetadata(bootstrapTools.read),
-    grep: extractPromptMetadata(bootstrapTools.grep),
-    find: extractPromptMetadata(bootstrapTools.find),
-    ls: extractPromptMetadata(bootstrapTools.ls),
-    bash: extractPromptMetadata(bootstrapTools.bash),
-    edit: extractPromptMetadata(bootstrapTools.edit),
-    write: extractPromptMetadata(bootstrapTools.write),
-  };
-  const clonedParameters = {
-    read: cloneToolParameters(bootstrapTools.read.parameters),
-    grep: cloneToolParameters(bootstrapTools.grep.parameters),
-    find: cloneToolParameters(bootstrapTools.find.parameters),
-    ls: cloneToolParameters(bootstrapTools.ls.parameters),
-    bash: cloneToolParameters(bootstrapTools.bash.parameters),
-    edit: cloneToolParameters(bootstrapTools.edit.parameters),
-    write: cloneToolParameters(bootstrapTools.write.parameters),
-  };
+  const builtInPromptMetadata = createLazyPromptMetadata(bootstrapTools);
+  const clonedParameters = createLazyClonedParameters(bootstrapTools);
   const writeExecutionMetaByToolCallId = new Map<string, WriteExecutionMeta>();
   const registeredBuiltInToolOverrides = new Set<BuiltInToolOverrideName>();
   const deferredBuiltInToolOverrides = new Map<DeferredBuiltInToolOverrideName, () => void>();
