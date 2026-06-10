@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
 	createBashTool,
@@ -29,6 +32,10 @@ interface RegisteredToolLike {
 interface ToolEventHandlers {
 	session_start?: () => Promise<void> | void;
 	before_agent_start?: () => Promise<void> | void;
+}
+
+interface ExecutableToolLike extends RegisteredToolLike {
+	execute: (...args: unknown[]) => Promise<{ content?: Array<{ type: string; text?: string }> }>;
 }
 
 function withDefaultReadEditOwners(tools: unknown[] = []): unknown[] {
@@ -63,6 +70,22 @@ function createExtensionApiStub(allTools: unknown[] = []): {
 	} as unknown as ExtensionAPI;
 
 	return { api, registeredTools, eventHandlers };
+}
+
+async function withTempDir(name: string, run: (dir: string) => Promise<void> | void): Promise<void> {
+	const dir = mkdtempSync(join(tmpdir(), name));
+	try {
+		await run(dir);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+function getTextOutput(result: { content?: Array<{ type: string; text?: string }> }): string {
+	return (result.content ?? [])
+		.filter((entry) => entry.type === "text")
+		.map((entry) => entry.text ?? "")
+		.join("");
 }
 
 test("registerToolDisplayOverrides copies built-in prompt metadata onto overridden tools", async () => {
@@ -163,6 +186,73 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 	assert.equal(registeredNames.has("ls"), true);
 	assert.equal(registeredNames.has("bash"), true);
 	assert.equal(registeredNames.has("write"), true);
+});
+
+test("bash override uses shellPath from Pi settings", async () => {
+	await withTempDir("pi-tool-display-shellpath-", async (dir) => {
+		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_CODING_AGENT_DIR = dir;
+		writeFileSync(
+			join(dir, "settings.json"),
+			JSON.stringify({ shellPath: "/definitely/missing/bash" }),
+			"utf8",
+		);
+
+		try {
+			const { api, registeredTools, eventHandlers } = createExtensionApiStub();
+			registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+			await eventHandlers.before_agent_start?.();
+
+			const bashTool = registeredTools.find((tool) => tool.name === "bash") as ExecutableToolLike | undefined;
+			assert.ok(bashTool, "expected bash override to be registered");
+			await assert.rejects(
+				bashTool.execute("tool-call-1", { command: "printf test" }, undefined, undefined, { cwd: process.cwd() }),
+				/custom shell path not found/i,
+			);
+			assert.equal(bashTool.description.length > 0, true);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+		}
+	});
+});
+
+test("bash override uses shellCommandPrefix from Pi settings", async () => {
+	await withTempDir("pi-tool-display-shellprefix-", async (dir) => {
+		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_CODING_AGENT_DIR = dir;
+		writeFileSync(
+			join(dir, "settings.json"),
+			JSON.stringify({ shellCommandPrefix: "printf 'prefix-output\\n'" }),
+			"utf8",
+		);
+
+		try {
+			const { api, registeredTools, eventHandlers } = createExtensionApiStub();
+			registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+			await eventHandlers.before_agent_start?.();
+
+			const bashTool = registeredTools.find((tool) => tool.name === "bash") as ExecutableToolLike | undefined;
+			assert.ok(bashTool, "expected bash override to be registered");
+			const result = await bashTool.execute(
+				"tool-call-2",
+				{ command: "printf 'command-output\\n'" },
+				undefined,
+				undefined,
+				{ cwd: process.cwd() },
+			);
+			assert.equal(getTextOutput(result).trim(), "prefix-output\ncommand-output");
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+		}
+	});
 });
 
 test("registerToolDisplayOverrides drains pending display decorations from early-loading extensions", () => {

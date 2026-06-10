@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   BashToolDetails,
   EditToolDetails,
@@ -20,6 +22,7 @@ import {
   formatSize,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { resolvePiAgentDir } from "./agent-dir.js";
 import { renderBashCall } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
@@ -109,6 +112,16 @@ export interface WriteExecutionMeta {
 interface PendingDiffPreviewState {
   key?: string;
   data?: PendingDiffPreviewData;
+}
+
+interface PiSettingsShellConfig {
+  shellPath?: unknown;
+  shellCommandPrefix?: unknown;
+}
+
+interface BashToolOverrideOptions {
+  shellPath?: string;
+  commandPrefix?: string;
 }
 
 const builtInToolCache = new Map<string, BuiltInTools>();
@@ -260,6 +273,28 @@ function clearBuiltInToolCache(): void {
   builtInToolCache.clear();
 }
 
+function getStringSetting(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function loadBashToolOverrideOptions(): BashToolOverrideOptions {
+  const settingsPath = join(resolvePiAgentDir(), "settings.json");
+  if (!existsSync(settingsPath)) {
+    return {};
+  }
+
+  try {
+    const rawSettings = JSON.parse(readFileSync(settingsPath, "utf-8")) as PiSettingsShellConfig;
+    return {
+      shellPath: getStringSetting(rawSettings.shellPath),
+      commandPrefix: getStringSetting(rawSettings.shellCommandPrefix),
+    };
+  } catch (error) {
+    logToolDisplayDebug("Failed to read Pi settings for bash tool overrides.", error);
+    return {};
+  }
+}
+
 function getBuiltInTools(cwd: string): BuiltInTools {
   let tools = builtInToolCache.get(cwd);
   if (!tools) {
@@ -282,7 +317,7 @@ function createLazyBuiltInTools(cwd: string): BuiltInTools {
     get grep() { return get("grep", () => createGrepTool(cwd)); },
     get find() { return get("find", () => createFindTool(cwd)); },
     get ls() { return get("ls", () => createLsTool(cwd)); },
-    get bash() { return get("bash", () => createBashTool(cwd)); },
+    get bash() { return get("bash", () => createBashTool(cwd, loadBashToolOverrideOptions())); },
     get edit() { return get("edit", () => createEditTool(cwd)); },
     get write() { return get("write", () => createWriteTool(cwd)); },
   } as BuiltInTools;

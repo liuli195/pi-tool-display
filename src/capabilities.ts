@@ -24,7 +24,10 @@ function hasMcpTooling(pi: ExtensionAPI): boolean {
 function hasRtkCommand(pi: ExtensionAPI): boolean {
 	try {
 		const commands = pi.getCommands();
-		return commands.some((command) => command.name === "rtk" || command.name.startsWith("rtk-"));
+		return commands.some((command) => {
+			const name = typeof command.name === "string" ? command.name : undefined;
+			return name === "rtk" || name?.startsWith("rtk-") === true;
+		});
 	} catch (error) {
 		logToolDisplayDebug("RTK command capability detection failed.", error);
 		return false;
