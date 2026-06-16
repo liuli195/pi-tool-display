@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-06-16
+
+### Added
+- Added `customToolOverrides` for explicit opt-in rendering of non-built-in extension tools, with `generic` as the default kind and optional `mcp` rendering for MCP proxy-style arguments.
+- Added custom tool override coverage for malformed config, output modes, late tool registration, argument shapes, and runtime contract preservation.
+
+### Changed
+- Preserved configured MCP output mode even when MCP tools are not detected at startup, so dynamically registered MCP tools can still be decorated later.
+
+### Fixed
+- Bash tool display overrides now preserve Pi `settings.json` shell settings (`shellPath` and `shellCommandPrefix`) when rebuilding the bash tool.
+
 ## [0.4.2] - 2026-06-01
 
 ### Changed

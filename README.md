@@ -18,6 +18,7 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 
 - **Compact built-in tool rendering** for `read`, `grep`, `find`, `ls`, `bash`, `edit`, and `write`
 - **MCP-aware rendering** with hidden, summary, and preview modes
+- **Opt-in custom tool overrides** for noisy extension tools, defaulting to generic rendering unless `kind: "mcp"` is selected
 - **Adaptive edit/write diffs** with split or unified layouts, syntax highlighting, inline emphasis, and narrow-pane width clamping
 - **Workspace-scoped projected pending edit/write previews** that show `pending edit`, `pending overwrite`, and `pending create` diffs while partial tool calls are still streaming
 - **Progressive collapsed diff hints** that shorten automatically on small terminal widths instead of overflowing
@@ -26,7 +27,7 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 - **Thinking labels** during streaming and final message rendering, with context sanitization to avoid leaking presentation labels back into future model turns
 - **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
 - **Per-tool ownership toggles** so this extension can coexist with other renderer extensions
-- **Capability-aware settings** that automatically hide MCP and RTK-specific controls when those features are unavailable
+- **Capability-aware settings** that keep MCP and RTK-specific controls aligned with the current environment
 - **Adapter API for renderer consumers** through the `pi-tool-display/tool-display-api-consumer` subpath export
 
 ## Installation
@@ -134,7 +135,8 @@ A starter template is included at `config/config.example.json`.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `debug` | boolean | `false` | Opt-in file logging for extension diagnostics; missing values are treated as `false` |
-| `registerToolOverrides` | object | all `true` | Per-tool ownership flags |
+| `registerToolOverrides` | object | all `true` | Built-in tool ownership flags |
+| `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
 | `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
@@ -173,6 +175,53 @@ Set any entry to `false` if another extension should handle that tool instead.
 
 > Changes to tool ownership take effect after `/reload`.
 
+### Custom tool overrides
+
+Use `customToolOverrides` when another extension registers a noisy top-level tool and you want `pi-tool-display` to render that tool's call/result output. Custom overrides are explicit opt-in only: unlisted or disabled tools keep their original renderers.
+
+```json
+{
+  "customToolOverrides": {
+    "ide_find_symbol": {
+      "enabled": true,
+      "kind": "generic",
+      "outputMode": "summary"
+    },
+    "custom_mcp_gateway": {
+      "enabled": true,
+      "kind": "mcp",
+      "outputMode": "preview"
+    }
+  }
+}
+```
+
+Each entry supports:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Whether `pi-tool-display` should decorate this custom tool |
+| `kind` | string | `"generic"` | `generic` for plain compact output, or `mcp` for MCP-style call labels and result handling |
+| `outputMode` | string | `"summary"` | `hidden`, `summary`, or `preview` for this custom tool's result output |
+
+Boolean shorthand is also accepted:
+
+```json
+{
+  "customToolOverrides": {
+    "ide_find_symbol": true,
+    "noisy_tool_to_leave_alone": false
+  }
+}
+```
+
+Notes:
+
+- Built-in tool names (`read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`) are ignored here; use `registerToolOverrides` for those.
+- `generic` call rendering shows the tool name and argument count, then compacts the result according to `outputMode`.
+- `mcp` call rendering understands MCP proxy-style arguments such as `tool`, `server`, `search`, `describe`, and `connect`.
+- Changes for already-registered tools take effect after `/reload`; tools registered later can be decorated as they register.
+
 ### Example config
 
 ```json
@@ -186,6 +235,18 @@ Set any entry to `false` if another extension should handle that tool instead.
     "bash": true,
     "edit": true,
     "write": true
+  },
+  "customToolOverrides": {
+    "ide_find_symbol": {
+      "enabled": true,
+      "kind": "generic",
+      "outputMode": "summary"
+    },
+    "custom_mcp_gateway": {
+      "enabled": true,
+      "kind": "mcp",
+      "outputMode": "preview"
+    }
   },
   "enableNativeUserMessageBox": true,
   "readOutputMode": "summary",
@@ -235,10 +296,10 @@ When enabled, user prompts render inside a bordered box using Pi's native user m
 
 The extension checks the current Pi environment and adjusts behavior automatically:
 
-- **MCP tooling unavailable**: MCP settings are hidden and MCP output is forced off
+- **MCP tooling unavailable at startup**: MCP settings can be hidden from the modal, but the configured MCP output mode is preserved because MCP tools may register later
 - **RTK optimizer unavailable**: RTK hint settings are hidden and RTK compaction hints are disabled
 
-This keeps the UI aligned with what the current environment can actually support.
+This keeps the UI aligned with the current environment while still allowing dynamically registered MCP tools to be styled when they appear.
 
 ## Troubleshooting
 
@@ -264,9 +325,11 @@ If your settings are not being applied:
 2. Make sure the JSON is valid
 3. Run `/tool-display show` to inspect the effective config summary
 
-### MCP tool rendering not appearing
+### MCP or custom tool rendering not appearing
 
 MCP tools are decorated via `pi.registerTool` interception, so they are captured as soon as they register regardless of lifecycle event ordering. If MCP tools still appear unstyled, check that the tool's name or parameter schema matches one of the supported MCP detection heuristics (names containing `mcp`, `server:`, `ctx_`, or parameter schemas with `mcpServer`/`serverUrl`/`server_name`).
+
+For non-MCP extension tools, or MCP-like tools that do not match the heuristics, add the exact tool name under `customToolOverrides` and run `/reload`. Use `kind: "generic"` for ordinary tools and `kind: "mcp"` for MCP proxy-style arguments.
 
 ### MCP or RTK settings missing
 
@@ -289,7 +352,7 @@ pi-tool-display/
 │   ├── presets.ts                   # Preset definitions and matching
 │   ├── render-utils.ts              # Shared rendering helpers
 │   ├── thinking-label.ts            # Thinking label formatting and context sanitization
-│   ├── tool-overrides.ts            # Built-in and MCP renderer overrides
+│   ├── tool-overrides.ts            # Built-in, MCP, and opt-in custom renderer overrides
 │   ├── types.ts                     # Shared config and type definitions
 │   ├── user-message-box-markdown.ts # Markdown extraction for user message rendering
 │   ├── user-message-box-native.ts   # Native user message box registration
@@ -305,6 +368,7 @@ pi-tool-display/
     ├── bash-display.test.ts         # Bash display and spinner tests
     ├── capabilities-edge.test.ts    # Capability detection edge cases
     ├── config-modal.test.ts         # Config modal tests
+    ├── custom-tool-overrides.test.ts # Opt-in custom tool override tests
     ├── debug-logger-edge.test.ts    # Debug logger edge cases
     ├── diff-renderer-ansi.test.ts   # ANSI/background handling tests for diff rendering
     ├── diff-renderer-edge.test.ts   # Diff renderer edge case tests
