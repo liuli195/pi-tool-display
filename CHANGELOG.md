@@ -10,17 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-07-03
 
 ### Added
-- Added an `enabled` config toggle that gates tool override registration, with reload cleanup that disposes overrides and patches on `session_shutdown`.
-- Added regression coverage for the active backlog: expanded large-diff rendering in constrained tmux-style panes (#23) and the esbuild lockfile bump from PR #24.
+- Added an `enabled` config toggle that gates tool override registration, with reload cleanup that disposes overrides and patches on `session_shutdown`. ([c78163d](https://github.com/MasuRii/pi-tool-display/commit/c78163dddc0f94b7a542d2d1e01109c903bc70cc))
+- Added regression coverage for the active backlog: expanded large-diff rendering in constrained tmux-style panes (#23) and the esbuild lockfile bump from PR #24. ([7e46231](https://github.com/MasuRii/pi-tool-display/commit/7e4623191583f31a056602d8a08f1a4a7accd8b6))
 
 ### Changed
-- Widened Pi coding-agent and Pi TUI peer dependency ranges through `^0.80.0` and added a `postinstall` patch with npm `overrides` to resolve known vulnerabilities in transitive dependencies.
-- Extracted render helpers and consolidated tool override logic to reduce inline duplication.
-- Updated the lockfile-resolved `esbuild` dependency from `0.28.0` to `0.28.1` via Dependabot PR #24.
-- Updated README badge styling and added a ko-fi support button.
+- Widened Pi coding-agent and Pi TUI peer dependency ranges through `^0.80.0` and added a `postinstall` patch with npm `overrides` to resolve known vulnerabilities in transitive dependencies. ([5f753a9](https://github.com/MasuRii/pi-tool-display/commit/5f753a9407fca6c2a7463d90eede01ce056c7bbc))
+- Extracted render helpers and consolidated tool override logic to reduce inline duplication. ([3239d7a](https://github.com/MasuRii/pi-tool-display/commit/3239d7a825fe14e5cdcac86c75dd4b21aec0018c))
+- Updated the lockfile-resolved `esbuild` dependency from `0.28.0` to `0.28.1` via Dependabot PR #24. ([caf65f2](https://github.com/MasuRii/pi-tool-display/commit/caf65f209c49ddcfc8362ff95c58a6a91cd1ba03))
+- Updated README badge styling and added a ko-fi support button. ([2094fb6](https://github.com/MasuRii/pi-tool-display/commit/2094fb64ca4e79ff7d947d0f8be2f2d9ea967fe2))
 
 ### Fixed
-- Capped expanded edit/write diff bodies with the existing `expandedPreviewMaxLines` setting and a visible omission hint so large diffs stay bounded in small tmux panes (#23). Thanks to @jmikedupont2 for reporting.
+- Capped expanded edit/write diff bodies with the existing `expandedPreviewMaxLines` setting and a visible omission hint so large diffs stay bounded in small tmux panes (#23). Thanks to @jmikedupont2 for reporting. ([7e46231](https://github.com/MasuRii/pi-tool-display/commit/7e4623191583f31a056602d8a08f1a4a7accd8b6))
 
 ## [0.4.3] - 2026-06-16
 
