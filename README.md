@@ -24,7 +24,7 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 ## Features
 
 - **Compact built-in tool rendering** for `read`, `grep`, `find`, `ls`, `bash`, `edit`, and `write`
-- **MCP-aware rendering** with hidden, summary, and preview modes
+- **Opt-in MCP-style rendering** with hidden, summary, and preview modes through custom tool overrides
 - **Opt-in custom tool overrides** for noisy extension tools, defaulting to generic rendering unless `kind: "mcp"` is selected
 - **Adaptive edit/write diffs** with split or unified layouts, syntax highlighting, inline emphasis, and narrow-pane width clamping
 - **Workspace-scoped projected pending edit/write previews** that show `pending edit`, `pending overwrite`, and `pending create` diffs while partial tool calls are still streaming
@@ -227,7 +227,7 @@ Notes:
 - Built-in tool names (`read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`) are ignored here; use `registerToolOverrides` for those.
 - `generic` call rendering shows the tool name and argument count, then compacts the result according to `outputMode`.
 - `mcp` call rendering understands MCP proxy-style arguments such as `tool`, `server`, `search`, `describe`, and `connect`.
-- Changes for already-registered tools take effect after `/reload`; tools registered later can be decorated as they register.
+- Overrides are selected at render time, so they work regardless of tool registration or extension load order.
 
 ### Example config
 
@@ -334,9 +334,7 @@ If your settings are not being applied:
 
 ### MCP or custom tool rendering not appearing
 
-MCP tools are decorated via `pi.registerTool` interception, so they are captured as soon as they register regardless of lifecycle event ordering. If MCP tools still appear unstyled, check that the tool's name or parameter schema matches one of the supported MCP detection heuristics (names containing `mcp`, `server:`, `ctx_`, or parameter schemas with `mcpServer`/`serverUrl`/`server_name`).
-
-For non-MCP extension tools, or MCP-like tools that do not match the heuristics, add the exact tool name under `customToolOverrides` and run `/reload`. Use `kind: "generic"` for ordinary tools and `kind: "mcp"` for MCP proxy-style arguments.
+Add the exact third-party tool name under `customToolOverrides`. Use `kind: "generic"` for ordinary tools and `kind: "mcp"` for MCP proxy or direct tools. MCP tools are not detected or intercepted separately.
 
 ### MCP or RTK settings missing
 

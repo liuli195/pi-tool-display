@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import {
   UserMessageComponent,
@@ -12,7 +11,6 @@ import { renderBashCall } from "../src/bash-display.ts";
 import { registerThinkingLabeling } from "../src/thinking-label.ts";
 import registerNativeUserMessageBox from "../src/user-message-box-native.ts";
 import { createToolDisplayDebugLogger } from "../src/debug-logger.ts";
-import { loadToolDisplayConfig, saveToolDisplayConfig } from "../src/config-store.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 import type { PatchableUserMessagePrototype } from "../src/user-message-box-patch.ts";
 
@@ -367,82 +365,6 @@ test("3: multiple consecutive bash render calls do not create duplicate timers",
 // ---------------------------------------------------------------------------
 // 4. MCP override cleanup
 // ---------------------------------------------------------------------------
-
-test("4: MCP tools are decorated on first registration (via session_start event)", () => {
-  // isMcpToolCandidate checks for name==="mcp" or description matching \bmcp\b
-  const mcpTool: Record<string, unknown> = {
-    name: "weather",
-    description: "MCP weather tool for forecasts",
-    parameters: { type: "object", properties: {} },
-    execute: () => "sunny",
-  };
-
-  const { api, eventHandlers } = createExtensionApiStub([mcpTool]);
-
-  assert.equal(
-    typeof mcpTool.renderCall,
-    "undefined",
-    "MCP tool has no renderCall before registration",
-  );
-
-  // registerToolDisplayOverrides registers session_start handler;
-  // MCP tool decoration happens inside that handler
-  registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-
-  // MCP tools not decorated yet (deferred to session_start)
-  assert.equal(
-    typeof mcpTool.renderCall,
-    "undefined",
-    "MCP tool not decorated until session_start fires",
-  );
-
-  // Trigger the session_start event
-  if (eventHandlers.session_start) {
-    eventHandlers.session_start();
-  }
-
-  assert.ok(
-    typeof mcpTool.renderCall === "function",
-    "MCP tool receives renderCall after session_start",
-  );
-  assert.ok(
-    typeof mcpTool.renderResult === "function",
-    "MCP tool receives renderResult after session_start",
-  );
-});
-
-test("4: MCP tools get re-decorated on reload (new wrappedMcpToolNames set)", () => {
-  // isMcpToolCandidate checks for name==="mcp" or description matching \bmcp\b
-  const mcpTool: Record<string, unknown> = {
-    name: "weather",
-    description: "MCP weather tool for forecasts",
-    parameters: { type: "object", properties: {} },
-    execute: () => "sunny",
-  };
-
-  // First call: create a stub and trigger session_start
-  const { api: api1, eventHandlers: handlers1 } = createExtensionApiStub([mcpTool]);
-  registerToolDisplayOverrides(api1, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  handlers1.session_start?.();
-
-  assert.ok(
-    typeof mcpTool.renderCall === "function",
-    "MCP tool receives renderCall after first registration + session_start",
-  );
-  const firstRenderCall = mcpTool.renderCall;
-
-  // Reload: create a NEW stub (new getAllTools result) and trigger session_start
-  const { api: api2, eventHandlers: handlers2 } = createExtensionApiStub([mcpTool]);
-  registerToolDisplayOverrides(api2, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  handlers2.session_start?.();
-
-  const secondRenderCall = mcpTool.renderCall;
-
-  assert.ok(
-    typeof secondRenderCall === "function",
-    "MCP tool has renderCall after reload",
-  );
-});
 
 // ---------------------------------------------------------------------------
 // 5. User message box cleanup
@@ -885,50 +807,6 @@ test("10: active bash spinner timer is cleaned up when execution transitions fro
 // 11. State isolation between reloads
 // ---------------------------------------------------------------------------
 
-test("11: registerToolDisplayOverrides creates fresh state on each call", () => {
-  // Each call to registerToolDisplayOverrides creates new:
-  // - builtInToolCache (cleared)
-  // - registeredBuiltInToolOverrides Set
-  // - deferredBuiltInToolOverrides Map
-  // - wrappedMcpToolNames Set
-  // - ToolDisplayApi on globalThis
-
-  const mcpTool: Record<string, unknown> = {
-    name: "server-tool",
-    description: "An MCP tool",
-    parameters: {},
-    execute: () => "result",
-  };
-
-  // First call with MCP tool
-  const stub1 = createExtensionApiStub([mcpTool]);
-  registerToolDisplayOverrides(stub1.api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  // Trigger session_start to invoke registerMcpToolOverrides
-  stub1.eventHandlers.session_start?.();
-
-  assert.ok(
-    typeof mcpTool.renderCall === "function",
-    "MCP tool decorated in first registration",
-  );
-
-  const firstDeco = mcpTool.renderCall;
-
-  // Second call - fresh wrappedMcpToolNames set means re-decoration
-  const stub2 = createExtensionApiStub([mcpTool]);
-  registerToolDisplayOverrides(stub2.api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  stub2.eventHandlers.session_start?.();
-
-  // The MCP tool is the same object, so it should have been re-decorated
-  // Even though the first call already decorated it, the second call's new
-  // wrappedMcpToolNames set doesn't know about it.
-  // The decoration may produce the same function or a new one; either is fine
-  // as long as renderCall is still a function.
-  assert.ok(
-    typeof mcpTool.renderCall === "function",
-    "MCP tool still has renderCall after second registration",
-  );
-});
-
 test("11: each tool override call clones parameters independently", () => {
   const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 
@@ -975,42 +853,6 @@ test("11: each tool override call clones parameters independently", () => {
 // ---------------------------------------------------------------------------
 // 12. Config persistence across reloads
 // ---------------------------------------------------------------------------
-
-test("12: config-store reloads config on fingerprint change between calls", () => {
-  const configUrl = new URL("../config.json", import.meta.url);
-  const originalConfigJson = readFileSync(configUrl, "utf8");
-
-  try {
-    const initialResult = loadToolDisplayConfig();
-
-    // Config is cached, but if we change the file, fingerprint changes.
-    // Since local extension config can intentionally differ from defaults,
-    // verify loading returns a valid config and save/reload preserves it.
-    assert.ok(initialResult.config, "config loaded successfully");
-    assert.equal(typeof initialResult.config.readOutputMode, "string");
-    assert.equal(typeof initialResult.config.searchOutputMode, "string");
-
-    // saveToolDisplayConfig clears the cache, forcing a re-read
-    const saveResult = saveToolDisplayConfig(initialResult.config);
-    assert.ok(saveResult.success, "config saved successfully (cache cleared)");
-
-    // After save, cache is cleared. Next load re-reads from disk.
-    const afterSaveResult = loadToolDisplayConfig();
-    assert.ok(afterSaveResult.config, "config re-loaded after cache clear");
-    assert.equal(
-      afterSaveResult.config.readOutputMode,
-      initialResult.config.readOutputMode,
-      "re-loaded read output mode matches saved config",
-    );
-    assert.equal(
-      afterSaveResult.config.searchOutputMode,
-      initialResult.config.searchOutputMode,
-      "re-loaded search output mode matches saved config",
-    );
-  } finally {
-    writeFileSync(configUrl, originalConfigJson, "utf8");
-  }
-});
 
 test("12: extension loads config fresh on each call (no stale cache)", () => {
   // The extension's toolDisplayExtension function calls loadToolDisplayConfig()
@@ -1204,25 +1046,3 @@ test("lifecycle: full session lifecycle (init→reload→invoke handlers) does n
 // ---------------------------------------------------------------------------
 // Summmary test
 // ---------------------------------------------------------------------------
-
-test("reload behavior test suite: summary of all tests", () => {
-  const testNames = [
-    "1: Basic reload detection",
-    "2: Tool override restoration (re-registration + deferred)",
-    "3: Bash override cleanup (spinner timer lifecycle)",
-    "4: MCP override cleanup (re-decoration on reload)",
-    "5: User message box cleanup (prototype re-patching)",
-    "6: Command unregistration / re-registration",
-    "7: Thinking label cleanup (handler re-registration)",
-    "8: Lifecycle event cleanup (session_start / before_agent_start)",
-    "9: Double reload safety",
-    "10: Partial reload (mid-spinner cleanup)",
-    "11: State isolation between reloads",
-    "12: Config persistence and cache invalidation",
-    "13: Debug logger flush and cleanup",
-    "14: Modal cleanup and close safety",
-  ];
-
-  // This test acts as a manifest; all tests above it are the real verification
-  assert.equal(testNames.length, 14, "all 14 reload edge cases covered");
-});
