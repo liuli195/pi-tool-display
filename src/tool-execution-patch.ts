@@ -1,0 +1,100 @@
+import {
+  ToolExecutionComponent,
+  type ExtensionAPI,
+  type ToolRenderResultOptions,
+} from "@earendil-works/pi-coding-agent";
+import { onReloadShutdown } from "./extension-lifecycle.js";
+import { toRecord } from "./tool-metadata.js";
+import {
+  formatGenericToolCallLine,
+  formatMcpCallLine,
+  getRuntimeCustomToolOverride,
+  renderCustomToolResult,
+  type RenderTheme,
+} from "./tool-overrides.js";
+import type { ToolDisplayConfig } from "./types.js";
+
+type Renderer = (...args: any[]) => unknown;
+type Resolver = (this: ToolExecutionLike) => Renderer | undefined;
+
+interface ToolExecutionLike {
+  toolDefinition?: Record<string, unknown>;
+  builtInToolDefinition?: unknown;
+}
+
+interface PatchState {
+  owner: object;
+  originalCall: Resolver;
+  originalResult: Resolver;
+  patchedCall: Resolver;
+  patchedResult: Resolver;
+}
+
+const PATCH_STATE = Symbol.for("pi-tool-display.toolExecutionPatch.v1");
+const PATCH_OWNER = {};
+type PatchablePrototype = ToolExecutionLike & {
+  getCallRenderer: Resolver;
+  getResultRenderer: Resolver;
+  [PATCH_STATE]?: PatchState;
+};
+
+export function registerToolExecutionPatch(
+  pi: ExtensionAPI,
+  getConfig: () => ToolDisplayConfig,
+): void {
+  const prototype = ToolExecutionComponent.prototype as unknown as PatchablePrototype;
+  const existing = prototype[PATCH_STATE];
+  if (existing?.owner === PATCH_OWNER && prototype.getCallRenderer === existing.patchedCall && prototype.getResultRenderer === existing.patchedResult) {
+    return;
+  }
+
+  if (existing) {
+    if (prototype.getCallRenderer === existing.patchedCall) prototype.getCallRenderer = existing.originalCall;
+    if (prototype.getResultRenderer === existing.patchedResult) prototype.getResultRenderer = existing.originalResult;
+    delete prototype[PATCH_STATE];
+  }
+
+  const originalCall = prototype.getCallRenderer;
+  const originalResult = prototype.getResultRenderer;
+
+  const getOverride = (instance: ToolExecutionLike) => {
+    if (instance.builtInToolDefinition) return undefined;
+    const name = instance.toolDefinition?.name;
+    if (typeof name !== "string") return undefined;
+    const override = getRuntimeCustomToolOverride(name, getConfig());
+    return override?.enabled ? { name, override } : undefined;
+  };
+
+  const patchedCall: Resolver = function () {
+    const matched = getOverride(this);
+    if (!matched) return originalCall.call(this);
+
+    return (args: unknown, theme: RenderTheme) => matched.override.kind === "mcp"
+      ? formatMcpCallLine(
+          matched.name,
+          typeof this.toolDefinition?.label === "string" ? this.toolDefinition.label : `MCP ${matched.name}`,
+          toRecord(args),
+          theme,
+        )
+      : formatGenericToolCallLine(matched.name, args, theme);
+  };
+
+  const patchedResult: Resolver = function () {
+    const matched = getOverride(this);
+    if (!matched) return originalResult.call(this);
+
+    return (result: unknown, options: ToolRenderResultOptions, theme: RenderTheme) =>
+      renderCustomToolResult(result as never, options, getConfig(), matched.override.outputMode, theme);
+  };
+
+  const state = { owner: PATCH_OWNER, originalCall, originalResult, patchedCall, patchedResult };
+  prototype.getCallRenderer = patchedCall;
+  prototype.getResultRenderer = patchedResult;
+  prototype[PATCH_STATE] = state;
+
+  onReloadShutdown(pi, () => {
+    if (prototype.getCallRenderer === patchedCall) prototype.getCallRenderer = originalCall;
+    if (prototype.getResultRenderer === patchedResult) prototype.getResultRenderer = originalResult;
+    if (prototype[PATCH_STATE] === state) delete prototype[PATCH_STATE];
+  });
+}
