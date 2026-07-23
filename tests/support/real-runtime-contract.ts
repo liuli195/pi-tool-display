@@ -11,6 +11,7 @@ interface RunObservation {
   executions: Array<{ name: string; pristine: Function; initialized: Function; disposed: Function }>;
   toolCall: { arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] };
   modelContext: string;
+  modelInvocationInputs: string;
   sessionSerializationAfterDispose: string;
   tuiOutput: { cold: string; expandedCold: string; reload: string; newCall: string };
 }
@@ -66,10 +67,27 @@ async function importRuntimePackage(root: string, name: string) {
   throw new Error(`Unsupported Pi package shape: cannot resolve @earendil-works/${name}`);
 }
 
-function installDeterministicStream(agent: any, stream: (...args: unknown[]) => unknown) {
-  if (typeof agent?.streamFunction === "function") agent.streamFunction = stream;
-  else if (typeof agent?.streamFn === "function") agent.streamFn = stream;
+function installDeterministicStream(agent: any, stream: (...args: unknown[]) => unknown, observe: (seam: "streamFunction" | "streamFn", args: unknown[]) => void) {
+  const install = (seam: "streamFunction" | "streamFn") => {
+    agent[seam] = (...args: unknown[]) => { observe(seam, args); return stream(...args); };
+  };
+  if (typeof agent?.streamFunction === "function") install("streamFunction");
+  else if (typeof agent?.streamFn === "function") install("streamFn");
   else throw new Error("Unsupported Pi Agent shape: expected streamFunction or streamFn");
+}
+
+function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unknown[]): string {
+  if (args.length !== 3) throw new Error(`Unsupported Pi ${seam} invocation shape: expected model, context, options; received ${args.length} arguments`);
+  const context = args[1] as any;
+  if (!context || typeof context.systemPrompt !== "string" || !Array.isArray(context.messages) || !Array.isArray(context.tools)) {
+    throw new Error(`Unsupported Pi ${seam} context shape: expected systemPrompt, messages, and tools`);
+  }
+  for (const tool of context.tools) {
+    if (!tool || typeof tool.name !== "string" || typeof tool.description !== "string" || !tool.parameters || typeof tool.parameters !== "object") {
+      throw new Error(`Unsupported Pi ${seam} tool schema shape`);
+    }
+  }
+  return JSON.stringify(context);
 }
 
 async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, createTools: (probe: { updates: string[]; arguments?: unknown }) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
@@ -154,6 +172,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       if (event.toolCallId === toolCallId) observedEvents.push(event);
     });
     const ai = await importRuntimePackage(root, "pi-ai");
+    const modelInvocations: string[] = [];
     let response = 0;
     installDeterministicStream(runtime.session.agent, () => {
       const stream = new ai.AssistantMessageEventStream();
@@ -165,7 +184,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       };
       queueMicrotask(() => { stream.push({ type: "start", partial: message }); stream.push({ type: "done", reason: message.stopReason, message }); });
       return stream;
-    });
+    }, (seam, invocationArgs) => modelInvocations.push(captureModelInvocation(seam, invocationArgs)));
     const realNow = Date.now;
     Date.now = () => 2;
     try {
@@ -209,6 +228,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
         eventOrder: observedEvents.map(({ type }) => type.replace("tool_execution_", "")),
       },
       modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
+      modelInvocationInputs: JSON.stringify(modelInvocations),
       sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),
       tuiOutput: { cold, expandedCold, reload, newCall },
       actionsBeforeFirstOutput: actionsAtFirstOutput,

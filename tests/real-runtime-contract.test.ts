@@ -64,6 +64,9 @@ for (const entry of matrix) {
       assert.equal(run.toolCall.result, "contract final output");
       assert.deepEqual(run.toolCall.eventOrder, ["start", "update", "end"]);
       assert.match(run.modelContext, /contract-cold-read/);
+      assert.match(run.modelInvocationInputs, /contract-cold-read/);
+      assert.match(run.modelInvocationInputs, /contract_probe/);
+      assert.match(run.modelInvocationInputs, /Deterministic contract tool/);
       assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
       assert.match(plain(run.tuiOutput.reload), /contract\.txt/);
       assert.match(plain(run.tuiOutput.newCall), /contract_probe/);
@@ -73,6 +76,7 @@ for (const entry of matrix) {
     assert.deepEqual(observation.present.ownership, observation.absent.ownership);
     assert.deepEqual(observation.present.toolCall, observation.absent.toolCall);
     assert.equal(observation.present.modelContext, observation.absent.modelContext);
+    assert.equal(observation.present.modelInvocationInputs, observation.absent.modelInvocationInputs);
     assert.equal(observation.present.sessionSerializationAfterDispose, observation.absent.sessionSerializationAfterDispose);
   });
 }
