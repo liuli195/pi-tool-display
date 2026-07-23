@@ -16,10 +16,13 @@ interface RunObservation {
     keys: string[];
     invocationTypes: Record<string, string>;
     invocations: Array<Record<string, Function>>;
+    behavior: string;
+    unsupported: Array<{ key: string; reason: string }>;
     producer: {
       key: string;
       pristine: Function; initialized: Function; disposed: Function;
       pristineDescriptor: PropertyDescriptor; initializedDescriptor: PropertyDescriptor; disposedDescriptor: PropertyDescriptor;
+      pristineOwnerDescriptors: PropertyDescriptorMap; initializedOwnerDescriptors: PropertyDescriptorMap; disposedOwnerDescriptors: PropertyDescriptorMap;
     };
   };
   sessionSerializationAfterDispose: string;
@@ -196,13 +199,13 @@ function arrayDataValues(value: unknown[], path: string): unknown[] {
   });
 }
 
-function callbackProducerDescriptor(value: object): { key: string; value: Function; descriptor: PropertyDescriptor } {
+function callbackProducerDescriptor(value: object): { key: string; value: Function; descriptor: PropertyDescriptor; owner: object } {
   for (const key of ["createLoopConfig", "getConfig"]) {
     for (let owner: object | null = value; owner; owner = Object.getPrototypeOf(owner)) {
       const descriptor = Object.getOwnPropertyDescriptor(owner, key);
       if (!descriptor) continue;
       if (!("value" in descriptor) || typeof descriptor.value !== "function") throw new Error(`Unsupported ${key} producer descriptor`);
-      return { key, value: descriptor.value, descriptor };
+      return { key, value: descriptor.value, descriptor, owner };
     }
   }
   throw new Error("Unsupported Pi Agent shape: expected callback config producer");
@@ -228,6 +231,36 @@ export function captureModelInvocation(seam: "streamFunction" | "streamFn", args
 function captureHostCallbacks(args: unknown[]): Record<string, Function> {
   const { optionEntries } = invocationParts(args);
   return Object.fromEntries(optionEntries.filter(([key, value]) => hostCallbackOptionKeys.has(key) && typeof value === "function")) as Record<string, Function>;
+}
+
+const safelyProbeableGeneratedCallbacks = new Set(["getSteeringMessages", "getFollowUpMessages"]);
+
+async function probeGeneratedCallbacks(callbacks: Record<string, Function>): Promise<{ behavior: string; unsupported: Array<{ key: string; reason: string }> }> {
+  const observations: unknown[] = [];
+  const unsupported: Array<{ key: string; reason: string }> = [];
+  for (const key of Object.keys(callbacks).sort()) {
+    if (!safelyProbeableGeneratedCallbacks.has(key)) {
+      unsupported.push({ key, reason: "host contract cannot be safely reproduced; provenance is covered by the pristine Agent config-producer descriptor seam" });
+      continue;
+    }
+    const args: unknown[] = [];
+    const order: string[] = [];
+    const results: unknown[] = [];
+    let thrown: unknown = snapshotUndefined;
+    for (let invocation = 0; invocation < 2; invocation++) {
+      order.push(`${key}:${invocation}:start`);
+      try {
+        results.push(await callbacks[key](...args));
+        order.push(`${key}:${invocation}:return`);
+      } catch (error) {
+        order.push(`${key}:${invocation}:throw`);
+        thrown = error instanceof Error ? { name: error.name, message: error.message } : error;
+        break;
+      }
+    }
+    observations.push({ key, args, results, sideEffects: { repeatedInvocationResults: results }, order, error: thrown });
+  }
+  return { behavior: JSON.stringify(snapshotValue(observations, "callback observations", new Set())), unsupported };
 }
 
 async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, createTools: (probe: { updates: string[]; arguments?: unknown }) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
@@ -343,6 +376,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     await waitForOutput(terminal, "contract_probe");
     unsubscribe();
     const newCall = terminal.take();
+    const callbackContract = await probeGeneratedCallbacks(callbackInvocations[0] ?? {});
 
     const session = runtime.session;
     const tools = session.getAllTools();
@@ -383,12 +417,17 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
         keys: Object.keys(callbackInvocations[0] ?? {}).sort(),
         invocationTypes: Object.fromEntries(Object.entries(callbackInvocations[0] ?? {}).map(([key, value]) => [key, typeof value])),
         invocations: callbackInvocations,
+        behavior: callbackContract.behavior,
+        unsupported: callbackContract.unsupported,
         producer: {
           key: pristineProducer.key,
           pristine: pristineProducer.value, initialized: initializedProducer.value, disposed: disposedProducer.value,
           pristineDescriptor: pristineProducer.descriptor,
           initializedDescriptor: initializedProducer.descriptor,
           disposedDescriptor: disposedProducer.descriptor,
+          pristineOwnerDescriptors: Object.getOwnPropertyDescriptors(pristineProducer.owner),
+          initializedOwnerDescriptors: Object.getOwnPropertyDescriptors(initializedProducer.owner),
+          disposedOwnerDescriptors: Object.getOwnPropertyDescriptors(disposedProducer.owner),
         },
       },
       sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),

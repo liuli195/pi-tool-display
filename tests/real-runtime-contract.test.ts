@@ -120,6 +120,8 @@ for (const entry of matrix) {
       assert.strictEqual(run.hostCallbacks.producer.disposed, run.hostCallbacks.producer.pristine);
       assert.deepEqual(run.hostCallbacks.producer.initializedDescriptor, run.hostCallbacks.producer.pristineDescriptor);
       assert.deepEqual(run.hostCallbacks.producer.disposedDescriptor, run.hostCallbacks.producer.pristineDescriptor);
+      assert.deepEqual(run.hostCallbacks.producer.initializedOwnerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
+      assert.deepEqual(run.hostCallbacks.producer.disposedOwnerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
       assert.deepEqual(run.hostCallbacks.invocationTypes, Object.fromEntries(run.hostCallbacks.keys.map((key) => [key, "function"])));
       for (const callbacks of run.hostCallbacks.invocations) {
         assert.deepEqual(Object.keys(callbacks).sort(), run.hostCallbacks.keys);
@@ -135,6 +137,10 @@ for (const entry of matrix) {
     assert.equal(observation.present.modelContext, observation.absent.modelContext);
     assert.equal(observation.present.modelVisibleInvocations, observation.absent.modelVisibleInvocations);
     assert.deepEqual(observation.present.hostCallbacks.keys, observation.absent.hostCallbacks.keys);
+    assert.equal(observation.present.hostCallbacks.behavior, observation.absent.hostCallbacks.behavior);
+    assert.match(observation.present.hostCallbacks.behavior, /get(?:Steering|FollowUp)Messages/);
+    assert.deepEqual(observation.present.hostCallbacks.unsupported, observation.absent.hostCallbacks.unsupported);
+    assert.ok(observation.present.hostCallbacks.unsupported.every(({ reason }) => reason.includes("pristine Agent config-producer descriptor seam")));
     assert.equal(observation.present.sessionSerializationAfterDispose, observation.absent.sessionSerializationAfterDispose);
   });
 }
