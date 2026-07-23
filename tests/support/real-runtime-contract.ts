@@ -12,6 +12,7 @@ interface RunObservation {
   toolCall: { arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] };
   modelContext: string;
   modelVisibleInvocations: string;
+  hostCallbacks: { keys: string[]; baseline: Record<string, Function>; invocations: Array<Record<string, Function>> };
   sessionSerializationAfterDispose: string;
   tuiOutput: { cold: string; expandedCold: string; reload: string; newCall: string };
 }
@@ -144,9 +145,18 @@ function projectObject(value: unknown, path: string, exclude: ReadonlySet<string
   return result;
 }
 
-export function modelVisibleInvocationSnapshot(args: unknown[]): string {
+function invocationParts(args: unknown[]): { model: unknown; context: object; options: object; contextEntries: Array<[string, unknown]>; optionEntries: Array<[string, unknown]> } {
   if (args.length !== 3) throw new Error(`Unsupported model invocation shape: expected model, context, options; received ${args.length} arguments`);
-  const contextEntries = ownDataEntries(args[1] as object, "context");
+  const entries = ownDataEntries(args, "invocation arguments");
+  const model = entries.find(([key]) => key === "0")?.[1];
+  const context = entries.find(([key]) => key === "1")?.[1];
+  const options = entries.find(([key]) => key === "2")?.[1];
+  if (!context || typeof context !== "object" || !options || typeof options !== "object") throw new Error("Unsupported model invocation context/options shape");
+  return { model, context, options, contextEntries: ownDataEntries(context, "context"), optionEntries: ownDataEntries(options, "options") };
+}
+
+export function modelVisibleInvocationSnapshot(args: unknown[]): string {
+  const { model, context: contextValue, options: optionsValue, contextEntries, optionEntries } = invocationParts(args);
   const toolsEntry = contextEntries.find(([key]) => key === "tools");
   if (toolsEntry && !Array.isArray(toolsEntry[1])) throw new Error("Unsupported model context tools shape");
   const tools = (toolsEntry?.[1] as unknown[] | undefined)?.map((tool, index) => {
@@ -155,32 +165,37 @@ export function modelVisibleInvocationSnapshot(args: unknown[]): string {
     const execute = entries.find(([key]) => key === "execute");
     if (!execute || typeof execute[1] !== "function") throw new Error(`Unsupported model tool shape at ${path}: execute must be an own function`);
     const prepare = entries.find(([key]) => key === "prepareArguments");
-    if (prepare && prepare[1] !== undefined && typeof prepare[1] !== "function") {
-      throw new Error(`Unsupported model tool shape at ${path}: prepareArguments must be undefined or an own function`);
-    }
+    if (prepare && prepare[1] !== undefined && typeof prepare[1] !== "function") throw new Error(`Unsupported model tool shape at ${path}: prepareArguments must be undefined or an own function`);
     return projectObject(tool, path, new Set(["execute", "prepareArguments"]));
   });
-  const context = projectObject(args[1], "context", new Set(), new Map([["tools", tools]]));
-  const optionsEntries = ownDataEntries(args[2] as object, "options");
-  for (const [key, value] of optionsEntries) {
+  const context = projectObject(contextValue, "context", new Set(), new Map([["tools", tools]]));
+  for (const [key, value] of optionEntries) {
     if (hostCallbackOptionKeys.has(key) && value !== undefined && typeof value !== "function") throw new Error(`Unsupported ${key} option shape`);
   }
-  const options = projectObject(args[2], "options", hostCallbackOptionKeys);
-  return JSON.stringify(snapshotValue({ model: args[0], context, options }, "invocation", new Set()));
+  const options = projectObject(optionsValue, "options", hostCallbackOptionKeys);
+  return JSON.stringify(snapshotValue({ model, context, options }, "invocation", new Set()));
 }
 
-function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unknown[]): string {
-  if (args.length !== 3) throw new Error(`Unsupported Pi ${seam} invocation shape: expected model, context, options; received ${args.length} arguments`);
-  const context = args[1] as any;
-  if (!context || typeof context.systemPrompt !== "string" || !Array.isArray(context.messages) || !Array.isArray(context.tools)) {
+export function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unknown[]): string {
+  const { contextEntries } = invocationParts(args);
+  const field = (key: string) => contextEntries.find(([name]) => name === key)?.[1];
+  const tools = field("tools");
+  if (typeof field("systemPrompt") !== "string" || !Array.isArray(field("messages")) || !Array.isArray(tools)) {
     throw new Error(`Unsupported Pi ${seam} context shape: expected systemPrompt, messages, and tools`);
   }
-  for (const tool of context.tools) {
-    if (!tool || typeof tool.name !== "string" || typeof tool.description !== "string" || !tool.parameters || typeof tool.parameters !== "object") {
+  for (const [index, tool] of tools.entries()) {
+    const entries = ownDataEntries(tool as object, `context.tools[${index}]`);
+    const value = (key: string) => entries.find(([name]) => name === key)?.[1];
+    if (typeof value("name") !== "string" || typeof value("description") !== "string" || !value("parameters") || typeof value("parameters") !== "object") {
       throw new Error(`Unsupported Pi ${seam} tool schema shape`);
     }
   }
   return modelVisibleInvocationSnapshot(args);
+}
+
+function captureHostCallbacks(args: unknown[]): Record<string, Function> {
+  const { optionEntries } = invocationParts(args);
+  return Object.fromEntries(optionEntries.filter(([key, value]) => hostCallbackOptionKeys.has(key) && typeof value === "function")) as Record<string, Function>;
 }
 
 async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, createTools: (probe: { updates: string[]; arguments?: unknown }) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
@@ -266,6 +281,9 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     });
     const ai = await importRuntimePackage(root, "pi-ai");
     const modelInvocations: string[] = [];
+    const callbackInvocations: Array<Record<string, Function>> = [];
+    const agentCallbacks = Object.fromEntries(ownDataEntries(runtime.session.agent, "agent")
+      .filter(([key, value]) => hostCallbackOptionKeys.has(key) && typeof value === "function")) as Record<string, Function>;
     let response = 0;
     installDeterministicStream(runtime.session.agent, () => {
       const stream = new ai.AssistantMessageEventStream();
@@ -277,7 +295,10 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       };
       queueMicrotask(() => { stream.push({ type: "start", partial: message }); stream.push({ type: "done", reason: message.stopReason, message }); });
       return stream;
-    }, (seam, invocationArgs) => modelInvocations.push(captureModelInvocation(seam, invocationArgs)));
+    }, (seam, invocationArgs) => {
+      modelInvocations.push(captureModelInvocation(seam, invocationArgs));
+      callbackInvocations.push(captureHostCallbacks(invocationArgs));
+    });
     const realNow = Date.now;
     Date.now = () => 2;
     try {
@@ -322,6 +343,11 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       },
       modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
       modelVisibleInvocations: JSON.stringify(modelInvocations),
+      hostCallbacks: {
+        keys: Object.keys(callbackInvocations[0] ?? {}).sort(),
+        baseline: agentCallbacks,
+        invocations: callbackInvocations,
+      },
       sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),
       tuiOutput: { cold, expandedCold, reload, newCall },
       actionsBeforeFirstOutput: actionsAtFirstOutput,

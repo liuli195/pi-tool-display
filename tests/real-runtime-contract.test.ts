@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { dirname, resolve } from "node:path";
 
-import { modelVisibleInvocationSnapshot, runPureDisplayContract } from "./support/real-runtime-contract.js";
+import { captureModelInvocation, modelVisibleInvocationSnapshot, runPureDisplayContract } from "./support/real-runtime-contract.js";
 
 test("model-visible invocation snapshot is complete and fails closed for host-only or lossy shapes", () => {
   const signal = new AbortController().signal;
@@ -32,6 +32,21 @@ test("model-visible invocation snapshot is complete and fails closed for host-on
   assert.throws(() => modelVisibleInvocationSnapshot([decorated, {}, {}]), /Unsupported decorated array/);
   const callbackAccessor = Object.defineProperty({}, "afterToolCall", { enumerable: true, get: () => () => {} });
   assert.throws(() => modelVisibleInvocationSnapshot([{}, {}, callbackAccessor]), /Unsupported accessor/);
+});
+
+test("real capture path rejects context and tool accessors without invoking them", () => {
+  let reads = 0;
+  const context = Object.defineProperty({ systemPrompt: "prompt", messages: [], tools: [] }, "systemPrompt", {
+    enumerable: true, get: () => { reads++; return "prompt"; },
+  });
+  assert.throws(() => captureModelInvocation("streamFunction", [{}, context, {}]), /Unsupported accessor/);
+  assert.equal(reads, 0);
+
+  const tool = Object.defineProperty({ name: "probe", description: "probe", parameters: {} }, "name", {
+    enumerable: true, get: () => { reads++; return "probe"; },
+  });
+  assert.throws(() => captureModelInvocation("streamFunction", [{}, { systemPrompt: "prompt", messages: [], tools: [tool] }, {}]), /Unsupported accessor/);
+  assert.equal(reads, 0);
 });
 
 interface RuntimeMatrixEntry { name: string; version?: string; env: string; required: boolean }
@@ -96,6 +111,11 @@ for (const entry of matrix) {
       assert.match(run.modelVisibleInvocations, /contract-cold-read/);
       assert.match(run.modelVisibleInvocations, /contract_probe/);
       assert.match(run.modelVisibleInvocations, /Deterministic contract tool/);
+      assert.deepEqual(run.hostCallbacks.keys, Object.keys(run.hostCallbacks.baseline).sort());
+      for (const callbacks of run.hostCallbacks.invocations) {
+        assert.deepEqual(Object.keys(callbacks).sort(), run.hostCallbacks.keys);
+        for (const key of run.hostCallbacks.keys) assert.strictEqual(callbacks[key], run.hostCallbacks.baseline[key]);
+      }
       assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
       assert.match(plain(run.tuiOutput.reload), /contract\.txt/);
       assert.match(plain(run.tuiOutput.newCall), /contract_probe/);
@@ -106,6 +126,7 @@ for (const entry of matrix) {
     assert.deepEqual(observation.present.toolCall, observation.absent.toolCall);
     assert.equal(observation.present.modelContext, observation.absent.modelContext);
     assert.equal(observation.present.modelVisibleInvocations, observation.absent.modelVisibleInvocations);
+    assert.deepEqual(observation.present.hostCallbacks.keys, observation.absent.hostCallbacks.keys);
     assert.equal(observation.present.sessionSerializationAfterDispose, observation.absent.sessionSerializationAfterDispose);
   });
 }
