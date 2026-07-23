@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-23
+
+### Added
+- Added independent `bashErrorOutputMode` and `bashErrorPreviewLines` settings, defaulting to a three-visual-line preview while keeping the failure header visible.
+
+### Fixed
+- Fold long single-line Bash error output by terminal visual lines instead of source line count.
+
 ## [0.6.0] - 2026-07-23
 
 ### Added

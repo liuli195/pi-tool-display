@@ -138,38 +138,35 @@ function buildCommandDisplay(args: BashCallArgs): string {
 	return prefix ? `${prefix} ${command}` : command;
 }
 
-class BashCallComponent implements Component {
+export class VisualLinePreviewComponent implements Component {
 	private text = new Text("", 0, 0);
 
 	constructor(
-		private mode: ToolDisplayConfig["bashCommandMode"],
 		private previewLines: number,
 		private expanded: boolean,
 		private theme: BashCallRenderTheme,
 	) {}
 
-	setDisplay(text: string, mode: ToolDisplayConfig["bashCommandMode"], previewLines: number, expanded: boolean): void {
+	setDisplay(text: string, previewLines: number, expanded: boolean): void {
 		this.text.setText(text);
-		this.mode = mode;
 		this.previewLines = previewLines;
 		this.expanded = expanded;
 	}
 
 	render(width: number): string[] {
 		const lines = this.text.render(width);
-		if (this.expanded || this.mode === "full") return lines;
+		if (this.expanded || lines.length <= this.previewLines) return lines;
 
-		const limit = this.mode === "summary" ? 1 : this.previewLines;
-		if (lines.length <= limit) return lines;
-
-		const hint = this.theme.fg("muted", `... (${lines.length - limit} more visual lines • Ctrl+O to expand)`);
-		return [...lines.slice(0, limit), truncateToWidth(hint, width)];
+		const hint = this.theme.fg("muted", `... (${lines.length - this.previewLines} more visual lines • Ctrl+O to expand)`);
+		return [...lines.slice(0, this.previewLines), truncateToWidth(hint, width)];
 	}
 
 	invalidate(): void {
 		this.text.invalidate();
 	}
 }
+
+class BashCallComponent extends VisualLinePreviewComponent {}
 
 function buildBashCallText(
 	args: BashCallArgs,
@@ -202,15 +199,12 @@ export function renderBashCall(
 	context: BashCallRenderContextLike,
 	config: Pick<ToolDisplayConfig, "bashCommandMode" | "bashCommandPreviewLines"> = DEFAULT_TOOL_DISPLAY_CONFIG,
 ): Component {
+	const previewLines = config.bashCommandMode === "summary" ? 1 : config.bashCommandPreviewLines;
+	const expanded = context.expanded === true || config.bashCommandMode === "full";
 	const text = context.lastComponent instanceof BashCallComponent
 		? context.lastComponent
-		: new BashCallComponent(config.bashCommandMode, config.bashCommandPreviewLines, context.expanded === true, theme);
-	const setDisplay = (content: string): void => text.setDisplay(
-		content,
-		config.bashCommandMode,
-		config.bashCommandPreviewLines,
-		context.expanded === true,
-	);
+		: new BashCallComponent(previewLines, expanded, theme);
+	const setDisplay = (content: string): void => text.setDisplay(content, previewLines, expanded);
 	const carrier = toStateCarrier(context.state);
 	const toolCallId = getToolCallId(context);
 	const spinnerState = getOrCreateSpinnerState(toolCallId, carrier);

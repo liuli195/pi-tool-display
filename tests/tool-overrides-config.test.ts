@@ -326,11 +326,8 @@ test("bash live partial output respects opencode collapse settings", async () =>
 	);
 });
 
-test("bash errors render with an explicit failure header and preview", async () => {
-	const config = buildConfig({
-		bashOutputMode: "summary",
-		previewLines: 2,
-	});
+test("bash errors use their independent summary mode", async () => {
+	const config = buildConfig({ bashErrorOutputMode: "summary" });
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 	registerToolDisplayOverrides(api, () => config);
 	await eventHandlers.before_agent_start?.();
@@ -341,6 +338,28 @@ test("bash errors render with an explicit failure header and preview", async () 
 			text: "npm ERR! missing script: test\nSee npm help run-script\n",
 			isError: true,
 		}),
-		"↳ command failed\nnpm ERR! missing script: test\nSee npm help run-script",
+		"↳ command failed · 2 lines returned",
 	);
+});
+
+test("bash error preview folds long single lines by terminal width", async () => {
+	const config = buildConfig({
+		bashOutputMode: "summary",
+		bashErrorOutputMode: "preview",
+		bashErrorPreviewLines: 3,
+	});
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
+	registerToolDisplayOverrides(api, () => config);
+	await eventHandlers.before_agent_start?.();
+
+	const bashTool = registeredTools.find((tool) => tool.name === "bash");
+	assert.ok(bashTool?.renderResult);
+	const component = bashTool.renderResult(
+		{ content: [{ type: "text", text: "error ".repeat(80) }], isError: true },
+		{ isPartial: false, expanded: false },
+		createTheme(),
+	);
+	const lines = component.render(60);
+	assert.equal(lines.length, 5);
+	assert.match(lines[4] ?? "", /more visual lines.*Ctrl\+O to expand/);
 });

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import {
 	BUILT_IN_TOOL_OVERRIDE_NAMES,
 	BASH_COMMAND_MODES,
+	BASH_ERROR_OUTPUT_MODES,
 	BASH_OUTPUT_MODES,
 	CUSTOM_TOOL_OUTPUT_MODES,
 	CUSTOM_TOOL_OVERRIDE_KINDS,
@@ -70,6 +71,12 @@ function toBashCommandMode(value: unknown): ToolDisplayConfig["bashCommandMode"]
 	return BASH_COMMAND_MODES.includes(value as ToolDisplayConfig["bashCommandMode"])
 		? (value as ToolDisplayConfig["bashCommandMode"])
 		: DEFAULT_TOOL_DISPLAY_CONFIG.bashCommandMode;
+}
+
+function toBashErrorOutputMode(value: unknown): ToolDisplayConfig["bashErrorOutputMode"] {
+	return BASH_ERROR_OUTPUT_MODES.includes(value as ToolDisplayConfig["bashErrorOutputMode"])
+		? (value as ToolDisplayConfig["bashErrorOutputMode"])
+		: DEFAULT_TOOL_DISPLAY_CONFIG.bashErrorOutputMode;
 }
 
 function toDiffViewMode(value: unknown): ToolDisplayConfig["diffViewMode"] {
@@ -244,6 +251,13 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 			1,
 			80,
 			DEFAULT_TOOL_DISPLAY_CONFIG.bashCommandPreviewLines,
+		),
+		bashErrorOutputMode: toBashErrorOutputMode(source.bashErrorOutputMode),
+		bashErrorPreviewLines: clampNumber(
+			source.bashErrorPreviewLines,
+			1,
+			80,
+			DEFAULT_TOOL_DISPLAY_CONFIG.bashErrorPreviewLines,
 		),
 		diffViewMode: toDiffViewMode(source.diffViewMode),
 		diffIndicatorMode: toDiffIndicatorMode(source.diffIndicatorMode),

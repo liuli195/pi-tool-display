@@ -21,9 +21,9 @@ import {
   createWriteTool,
   formatSize,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, Spacer, Text, type Component } from "@earendil-works/pi-tui";
 import { resolvePiAgentDir } from "./agent-dir.js";
-import { renderBashCall } from "./bash-display.js";
+import { renderBashCall, VisualLinePreviewComponent } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
 import {
@@ -1043,29 +1043,31 @@ function renderBashErrorResult(
   config: ToolDisplayConfig,
   theme: RenderTheme,
   details: BashToolDetails | undefined,
-): Text {
+): Component {
   const lines = prepareOutputLines(rawOutput, options);
-  let text = theme.fg("error", "↳ command failed");
+  const container = new Container();
+  container.addChild(textResult(theme.fg("error", options.expanded || config.bashErrorOutputMode !== "summary"
+    ? "↳ command failed"
+    : `↳ command failed · ${lines.length} ${pluralize(lines.length, "line")} returned`)));
 
-  if (lines.length > 0) {
-    const maxLines = getBashPreviewLineLimit(lines, options, config);
-    if (options.expanded || maxLines > 0) {
-      const { shown, remaining } = previewLines(lines, maxLines);
-      text += `\n${shown
-        .map((line) => theme.fg("error", sanitizeAnsiForThemedOutput(line)))
-        .join("\n")}`;
-      text += formatTruncationHint(remaining, options.expanded, theme);
+  if (lines.length > 0 && (options.expanded || config.bashErrorOutputMode !== "summary")) {
+    const maxLines = options.expanded ? getExpandedPreviewLineLimit(lines, config) : lines.length;
+    const { shown, remaining } = previewLines(lines, maxLines);
+    let body = shown.map((line) => theme.fg("error", sanitizeAnsiForThemedOutput(line))).join("\n");
+    body += formatTruncationHint(remaining, options.expanded, theme);
+    if (config.showTruncationHints) body += formatBashTruncationHints(details, theme);
+    if (options.expanded) body += formatExpandedPreviewCapHint(lines, config, theme);
+
+    if (!options.expanded && config.bashErrorOutputMode === "preview") {
+      const preview = new VisualLinePreviewComponent(config.bashErrorPreviewLines, false, theme);
+      preview.setDisplay(body, config.bashErrorPreviewLines, false);
+      container.addChild(preview);
+    } else {
+      container.addChild(textResult(body));
     }
   }
 
-  if (config.showTruncationHints) {
-    text += formatBashTruncationHints(details, theme);
-  }
-  if (options.expanded && lines.length > 0) {
-    text += formatExpandedPreviewCapHint(lines, config, theme);
-  }
-
-  return textResult(text);
+  return container;
 }
 
 function renderSearchResult(

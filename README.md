@@ -155,6 +155,8 @@ A starter template is included at `config/config.example.json`.
 | `bashCollapsedLines` | number | `10` | Lines shown for collapsed bash output (opencode mode) |
 | `bashCommandMode` | string | `"preview"` | Bash command display: `full`, `summary`, or `preview` |
 | `bashCommandPreviewLines` | number | `3` | Visual command lines shown in preview mode; Ctrl+O expands the full command |
+| `bashErrorOutputMode` | string | `"preview"` | Failed Bash output: `full`, `summary`, or `preview`; the failure header always remains visible |
+| `bashErrorPreviewLines` | number | `3` | Visual error lines shown in preview mode; Ctrl+O expands the error output |
 | `diffViewMode` | string | `"auto"` | `auto`, `split`, or `unified` |
 | `diffIndicatorMode` | string | `"bars"` | `bars` (vertical indicators), `classic` (+/- markers), or `none` |
 | `diffSplitMinWidth` | number | `120` | Minimum width before auto mode prefers split diffs |
@@ -269,6 +271,8 @@ Notes:
   "bashCollapsedLines": 15,
   "bashCommandMode": "preview",
   "bashCommandPreviewLines": 3,
+  "bashErrorOutputMode": "preview",
+  "bashErrorPreviewLines": 3,
   "diffViewMode": "auto",
   "diffIndicatorMode": "bars",
   "diffSplitMinWidth": 120,

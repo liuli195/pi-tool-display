@@ -28,6 +28,7 @@ interface ModalOverlayOptions {
 const PREVIEW_LINE_VALUES = ["4", "8", "12", "20", "40"] as const;
 const BASH_PREVIEW_LINE_VALUES = ["0", "5", "10", "20", "40"] as const;
 const BASH_COMMAND_PREVIEW_LINE_VALUES = ["1", "2", "3", "5", "10"] as const;
+const BASH_ERROR_PREVIEW_LINE_VALUES = ["1", "2", "3", "5", "10"] as const;
 const PRESET_COMMAND_HINT = TOOL_DISPLAY_PRESETS.join("|");
 
 function toOnOff(value: boolean): string {
@@ -52,6 +53,7 @@ function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCap
 		`bash=${config.bashOutputMode}`,
 		`bashLines=${config.bashCollapsedLines}`,
 		`bashCommand=${config.bashCommandMode}/${config.bashCommandPreviewLines}`,
+		`bashError=${config.bashErrorOutputMode}/${config.bashErrorPreviewLines}`,
 		`diff=${config.diffViewMode}/${config.diffIndicatorMode}@${config.diffSplitMinWidth}`,
 		`diffLines=${config.diffCollapsedLines}`,
 		`diffWrap=${toOnOff(config.diffWordWrap)}`,
@@ -288,6 +290,44 @@ function buildInspectorSettings(
 			searchTerms: ["bash", "command", "preview", "lines", "visual"],
 		},
 		{
+			id: "bashErrorOutputMode",
+			label: "Bash error output",
+			currentValue: config.bashErrorOutputMode,
+			values: ["full", "summary", "preview"],
+			inspectorTitle: "Bash Error Output",
+			inspectorSummary: [
+				"Controls red output from failed shell commands independently from normal output.",
+				"The failure header is always visible.",
+			],
+			inspectorOptions: [
+				"full — always show complete error output",
+				"summary — show the failure header and error line count",
+				"preview — show the configured number of visual error lines",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Ctrl+O expands preview and summary output.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["bash", "error", "stderr", "failed", "preview", "red"],
+		},
+		{
+			id: "bashErrorPreviewLines",
+			label: "Bash error preview lines",
+			currentValue: String(config.bashErrorPreviewLines),
+			values: BASH_ERROR_PREVIEW_LINE_VALUES,
+			inspectorTitle: "Bash Error Preview Lines",
+			inspectorSummary: [
+				"Sets how many visual error lines remain visible in preview mode.",
+				"Accepted manual range: 1 to 80 lines.",
+			],
+			inspectorOptions: ["1/2/3/5/10 — progressively larger error previews"],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"This setting only affects failed bash commands in preview mode.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["bash", "error", "stderr", "preview", "lines", "visual"],
+		},
+		{
 			id: "diffViewMode",
 			label: "Edit diff layout",
 			currentValue: config.diffViewMode,
@@ -408,6 +448,16 @@ function applySetting(config: ToolDisplayConfig, id: string, value: string): Too
 			return {
 				...config,
 				bashCommandPreviewLines: parseNumber(value, config.bashCommandPreviewLines),
+			};
+		case "bashErrorOutputMode":
+			return {
+				...config,
+				bashErrorOutputMode: value as ToolDisplayConfig["bashErrorOutputMode"],
+			};
+		case "bashErrorPreviewLines":
+			return {
+				...config,
+				bashErrorPreviewLines: parseNumber(value, config.bashErrorPreviewLines),
 			};
 		case "diffViewMode":
 			return {

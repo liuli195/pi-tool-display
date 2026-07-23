@@ -29,6 +29,8 @@ test("config normalization clamps invalid values and migrates legacy read overri
     previewLines: 999,
     expandedPreviewMaxLines: -1,
     bashCollapsedLines: 999,
+    bashErrorOutputMode: "invalid",
+    bashErrorPreviewLines: -1,
     diffViewMode: "stacked",
     diffSplitMinWidth: 1,
     diffCollapsedLines: 999,
@@ -44,6 +46,8 @@ test("config normalization clamps invalid values and migrates legacy read overri
   assert.equal(config.previewLines, 80);
   assert.equal(config.expandedPreviewMaxLines, 0);
   assert.equal(config.bashCollapsedLines, 80);
+  assert.equal(config.bashErrorOutputMode, "preview");
+  assert.equal(config.bashErrorPreviewLines, 1);
   assert.equal(config.diffViewMode, "unified");
   assert.equal(config.diffSplitMinWidth, 70);
   assert.equal(config.diffCollapsedLines, 240);

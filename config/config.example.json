@@ -32,6 +32,8 @@
   "bashCollapsedLines": 10,
   "bashCommandMode": "preview",
   "bashCommandPreviewLines": 3,
+  "bashErrorOutputMode": "preview",
+  "bashErrorPreviewLines": 3,
   "diffViewMode": "auto",
   "diffIndicatorMode": "bars",
   "diffSplitMinWidth": 120,
