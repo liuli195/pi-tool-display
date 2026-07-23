@@ -3,7 +3,26 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { dirname, resolve } from "node:path";
 
-import { runPureDisplayContract } from "./support/real-runtime-contract.js";
+import { faithfulInvocationSnapshot, runPureDisplayContract } from "./support/real-runtime-contract.js";
+
+test("model invocation snapshot preserves the complete tuple and rejects lossy values", () => {
+  const signal = new AbortController().signal;
+  assert.equal(faithfulInvocationSnapshot([
+    { id: "model", provider: "contract", optional: undefined },
+    { systemPrompt: "prompt", messages: [], tools: [] },
+    { signal, temperature: 0, headers: { z: "last", a: "first" } },
+  ]), '{"context":{"messages":[],"systemPrompt":"prompt","tools":[]},"model":{"id":"model","optional":{"$type":"undefined"},"provider":"contract"},"options":{"headers":{"a":"first","z":"last"},"signal":{"$type":"AbortSignal","aborted":false,"reason":{"$type":"undefined"}},"temperature":0}}');
+  assert.equal(faithfulInvocationSnapshot([
+    {}, { tools: [{ name: "probe", execute() {}, prepareArguments: undefined }] }, {},
+  ]), '{"context":{"tools":[{"name":"probe"}]},"model":{},"options":{}}');
+  assert.throws(() => faithfulInvocationSnapshot([{}, { tools: [{ execute() {}, prepareArguments: "lossy" }] }, {}]), /prepareArguments must be undefined or an own function/);
+  assert.equal(faithfulInvocationSnapshot([{}, {}, { afterToolCall: function finalize(result: unknown) { return result; } }]),
+    '{"context":{"tools":{"$type":"undefined"}},"model":{},"options":{"afterToolCall":{"$type":"function","length":1,"name":"finalize","source":"function finalize(result){return result}"}}}');
+  assert.throws(() => faithfulInvocationSnapshot([{}, {}, { afterToolCall: "lossy" }]), /Unsupported afterToolCall option shape/);
+  assert.match(faithfulInvocationSnapshot([{}, {}, { beforeToolCall: function validate() {} }]), /"beforeToolCall":\{"\$type":"function","length":0,"name":"validate"/);
+  assert.throws(() => faithfulInvocationSnapshot([{}, {}, { callback() {} }]), /nonserializable function/);
+  assert.throws(() => faithfulInvocationSnapshot([{}, {}, new Map()]), /Unsupported object shape/);
+});
 
 interface RuntimeMatrixEntry { name: string; version?: string; env: string; required: boolean }
 const matrix = JSON.parse(readFileSync(new URL("./runtime-matrix.json", import.meta.url), "utf8")) as RuntimeMatrixEntry[];

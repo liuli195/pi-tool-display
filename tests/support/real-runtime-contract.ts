@@ -76,6 +76,79 @@ function installDeterministicStream(agent: any, stream: (...args: unknown[]) => 
   else throw new Error("Unsupported Pi Agent shape: expected streamFunction or streamFn");
 }
 
+const snapshotUndefined = { $type: "undefined" } as const;
+
+function snapshotValue(value: unknown, path: string, seen: Set<object>): unknown {
+  if (value === undefined) return snapshotUndefined;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error(`Unsupported nonserializable number at ${path}`);
+    return Object.is(value, -0) ? { $type: "number", value: "-0" } : value;
+  }
+  if (typeof value !== "object") throw new Error(`Unsupported nonserializable ${typeof value} at ${path}`);
+  if (seen.has(value)) throw new Error(`Unsupported nonserializable cycle at ${path}`);
+  seen.add(value);
+  try {
+    if (value instanceof AbortSignal) {
+      return { $type: "AbortSignal", aborted: value.aborted, reason: snapshotValue(value.reason, `${path}.reason`, seen) };
+    }
+    if (Array.isArray(value)) {
+      if (Object.keys(value).length !== value.length) throw new Error(`Unsupported sparse or decorated array at ${path}`);
+      return value.map((item, index) => snapshotValue(item, `${path}[${index}]`, seen));
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw new Error(`Unsupported object shape at ${path}`);
+    if (Object.getOwnPropertySymbols(value).length) throw new Error(`Unsupported symbol keys at ${path}`);
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(value).sort()) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+      if (descriptor.get || descriptor.set) throw new Error(`Unsupported accessor at ${path}.${key}`);
+      result[key] = snapshotValue(descriptor.value, `${path}.${key}`, seen);
+    }
+    return result;
+  } finally {
+    seen.delete(value);
+  }
+}
+
+export function faithfulInvocationSnapshot(args: unknown[]): string {
+  if (args.length !== 3) throw new Error(`Unsupported model invocation shape: expected model, context, options; received ${args.length} arguments`);
+  const context = args[1] as any;
+  const tools = context?.tools?.map((tool: any, index: number) => {
+    if (!Object.hasOwn(tool, "execute") || typeof tool.execute !== "function") {
+      throw new Error(`Unsupported model tool shape at context.tools[${index}]: execute must be an own function`);
+    }
+    if (Object.hasOwn(tool, "prepareArguments") && tool.prepareArguments !== undefined && typeof tool.prepareArguments !== "function") {
+      throw new Error(`Unsupported model tool shape at context.tools[${index}]: prepareArguments must be undefined or an own function`);
+    }
+    // These are host-only behavior, never provider-visible; assert their exact shapes before omitting nondeterministic function identities.
+    const { execute: _execute, prepareArguments: _prepareArguments, ...modelVisibleTool } = tool;
+    return modelVisibleTool;
+  });
+  const modelVisibleContext = { ...context, tools };
+  const options = args[2] as any;
+  let faithfulOptions = options;
+  const callbackOptionKeys = [
+    "convertToLlm", "transformContext", "getApiKey", "shouldStopAfterTurn", "prepareNextTurn",
+    "getSteeringMessages", "getFollowUpMessages", "beforeToolCall", "afterToolCall", "onPayload", "onResponse",
+  ] as const;
+  for (const key of callbackOptionKeys) {
+    if (!options || !Object.hasOwn(options, key)) continue;
+    const callback = options[key];
+    if (callback !== undefined && typeof callback !== "function") throw new Error(`Unsupported ${key} option shape`);
+    faithfulOptions = {
+      ...faithfulOptions,
+      [key]: callback === undefined ? undefined : {
+        $type: "function",
+        name: callback.name,
+        length: callback.length,
+        source: Function.prototype.toString.call(callback),
+      },
+    };
+  }
+  return JSON.stringify(snapshotValue({ model: args[0], context: modelVisibleContext, options: faithfulOptions }, "invocation", new Set()));
+}
+
 function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unknown[]): string {
   if (args.length !== 3) throw new Error(`Unsupported Pi ${seam} invocation shape: expected model, context, options; received ${args.length} arguments`);
   const context = args[1] as any;
@@ -87,7 +160,7 @@ function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unkno
       throw new Error(`Unsupported Pi ${seam} tool schema shape`);
     }
   }
-  return JSON.stringify(context);
+  return faithfulInvocationSnapshot(args);
 }
 
 async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, createTools: (probe: { updates: string[]; arguments?: unknown }) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
