@@ -23,6 +23,7 @@ interface RunObservation {
       pristine: Function; initialized: Function; disposed: Function;
       pristineDescriptor: PropertyDescriptor; initializedDescriptor: PropertyDescriptor; disposedDescriptor: PropertyDescriptor;
       pristineOwnerDescriptors: PropertyDescriptorMap; initializedOwnerDescriptors: PropertyDescriptorMap; disposedOwnerDescriptors: PropertyDescriptorMap;
+      pristineSnapshots: readonly ProducerSnapshot[]; initializedSnapshots: readonly ProducerSnapshot[];
     };
   };
   sessionSerializationAfterDispose: string;
@@ -199,6 +200,19 @@ function arrayDataValues(value: unknown[], path: string): unknown[] {
   });
 }
 
+interface ProducerSnapshot {
+  readonly key: string;
+  readonly value: Function;
+  readonly descriptor: Readonly<PropertyDescriptor>;
+  readonly ownerDescriptors: Readonly<PropertyDescriptorMap>;
+}
+
+function immutableDescriptors(value: object): Readonly<PropertyDescriptorMap> {
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  for (const key of Reflect.ownKeys(descriptors)) Object.freeze((descriptors as any)[key]);
+  return Object.freeze(descriptors);
+}
+
 function callbackProducerDescriptor(value: object): { key: string; value: Function; descriptor: PropertyDescriptor; owner: object } {
   for (const key of ["createLoopConfig", "getConfig"]) {
     for (let owner: object | null = value; owner; owner = Object.getPrototypeOf(owner)) {
@@ -209,6 +223,16 @@ function callbackProducerDescriptor(value: object): { key: string; value: Functi
     }
   }
   throw new Error("Unsupported Pi Agent shape: expected callback config producer");
+}
+
+function snapshotCallbackProducer(value: object): ProducerSnapshot {
+  const producer = callbackProducerDescriptor(value);
+  return Object.freeze({
+    key: producer.key,
+    value: producer.value,
+    descriptor: Object.freeze({ ...producer.descriptor }),
+    ownerDescriptors: immutableDescriptors(producer.owner),
+  });
 }
 
 export function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unknown[]): string {
@@ -235,30 +259,28 @@ function captureHostCallbacks(args: unknown[]): Record<string, Function> {
 
 const safelyProbeableGeneratedCallbacks = new Set(["getSteeringMessages", "getFollowUpMessages"]);
 
-async function probeGeneratedCallbacks(callbacks: Record<string, Function>): Promise<{ behavior: string; unsupported: Array<{ key: string; reason: string }> }> {
+async function probeGeneratedCallbacks(Agent: new () => any, producer: ProducerSnapshot, keys: string[]): Promise<{ behavior: string; unsupported: Array<{ key: string; reason: string }> }> {
   const observations: unknown[] = [];
   const unsupported: Array<{ key: string; reason: string }> = [];
-  for (const key of Object.keys(callbacks).sort()) {
+  for (const key of keys) {
     if (!safelyProbeableGeneratedCallbacks.has(key)) {
       unsupported.push({ key, reason: "host contract cannot be safely reproduced; provenance is covered by the pristine Agent config-producer descriptor seam" });
       continue;
     }
+    const agent = new Agent();
+    const message = { role: "user", content: `contract ${key}`, timestamp: 0 };
+    if (key === "getSteeringMessages") agent.steer(message);
+    else agent.followUp(message);
+    const configEntries = ownDataEntries(producer.value.call(agent), "isolated callback config");
+    const callback = configEntries.find(([name]) => name === key)?.[1];
+    if (typeof callback !== "function") throw new Error(`Unsupported isolated ${key} callback shape`);
     const args: unknown[] = [];
-    const order: string[] = [];
-    const results: unknown[] = [];
-    let thrown: unknown = snapshotUndefined;
-    for (let invocation = 0; invocation < 2; invocation++) {
-      order.push(`${key}:${invocation}:start`);
-      try {
-        results.push(await callbacks[key](...args));
-        order.push(`${key}:${invocation}:return`);
-      } catch (error) {
-        order.push(`${key}:${invocation}:throw`);
-        thrown = error instanceof Error ? { name: error.name, message: error.message } : error;
-        break;
-      }
-    }
-    observations.push({ key, args, results, sideEffects: { repeatedInvocationResults: results }, order, error: thrown });
+    const before = agent.hasQueuedMessages();
+    let result: unknown = snapshotUndefined;
+    let error: unknown = snapshotUndefined;
+    try { result = await callback(...args); }
+    catch (thrown) { error = thrown instanceof Error ? { name: thrown.name, message: thrown.message } : thrown; }
+    observations.push({ key, args, result, error, queue: { before, after: agent.hasQueuedMessages() } });
   }
   return { behavior: JSON.stringify(snapshotValue(observations, "callback observations", new Set())), unsupported };
 }
@@ -289,9 +311,10 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
 
     const entry = resolve(import.meta.dirname, "..", "..", "index.ts");
     const agentCore = await importRuntimePackage(root, "pi-agent-core");
-    const pristineProducer = callbackProducerDescriptor(agentCore.Agent.prototype);
-    let initializedProducer = pristineProducer;
+    const pristineProducers: ProducerSnapshot[] = [];
+    const initializedProducers: ProducerSnapshot[] = [];
     const createRuntime = async ({ cwd, agentDir: nextAgentDir, sessionManager: nextManager, sessionStartEvent }: any) => {
+      pristineProducers.push(snapshotCallbackProducer(agentCore.Agent.prototype));
       const services = await pi.createAgentSessionServices({
         cwd, agentDir: nextAgentDir,
         resourceLoaderOptions: {
@@ -299,11 +322,11 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
           noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
         },
       });
+      initializedProducers.push(snapshotCallbackProducer(agentCore.Agent.prototype));
       const created = await pi.createAgentSessionFromServices({
         services, sessionManager: nextManager, sessionStartEvent,
         customTools,
       });
-      initializedProducer = callbackProducerDescriptor(created.session.agent);
       return { ...created, services, diagnostics: services.diagnostics };
     };
     const runtime = await pi.createAgentSessionRuntime(createRuntime, { cwd: process.cwd(), agentDir, sessionManager });
@@ -338,7 +361,9 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     await waitForOutput(terminal, "contract fixture first line");
     const expandedCold = terminal.take();
 
+    pristineProducers.push(snapshotCallbackProducer(runtime.session.agent));
     await mode.handleReloadCommand();
+    initializedProducers.push(snapshotCallbackProducer(runtime.session.agent));
     await tick();
     const reload = terminal.take();
 
@@ -376,15 +401,18 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     await waitForOutput(terminal, "contract_probe");
     unsubscribe();
     const newCall = terminal.take();
-    const callbackContract = await probeGeneratedCallbacks(callbackInvocations[0] ?? {});
+    const callbackKeys = Object.keys(callbackInvocations[0] ?? {}).sort();
+    const callbackContract = await probeGeneratedCallbacks(agentCore.Agent, pristineProducers[0], callbackKeys);
 
     const session = runtime.session;
     const tools = session.getAllTools();
     const initializedSessionDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
     mode.stop();
     await runtime.dispose();
-    const disposedProducer = callbackProducerDescriptor(session.agent);
-    if (initializedProducer.key !== pristineProducer.key || disposedProducer.key !== pristineProducer.key) throw new Error("Pi Agent callback config producer changed during extension lifecycle");
+    const disposedProducer = snapshotCallbackProducer(session.agent);
+    const pristineProducer = pristineProducers[0];
+    const initializedProducer = initializedProducers.at(-1)!;
+    if (pristineProducers.some(({ key }) => key !== pristineProducer.key) || initializedProducers.some(({ key }) => key !== pristineProducer.key) || disposedProducer.key !== pristineProducer.key) throw new Error("Pi Agent callback config producer changed during extension lifecycle");
     const disposedDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
     const definitions = [...pristineDefinitions].map(([name, pristine]: any) => {
       const initialized = (definitionsInitialized.get(name) ?? initializedSessionDefinitions.get(name)) as object;
@@ -414,7 +442,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
       modelVisibleInvocations: JSON.stringify(modelInvocations),
       hostCallbacks: {
-        keys: Object.keys(callbackInvocations[0] ?? {}).sort(),
+        keys: callbackKeys,
         invocationTypes: Object.fromEntries(Object.entries(callbackInvocations[0] ?? {}).map(([key, value]) => [key, typeof value])),
         invocations: callbackInvocations,
         behavior: callbackContract.behavior,
@@ -425,9 +453,11 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
           pristineDescriptor: pristineProducer.descriptor,
           initializedDescriptor: initializedProducer.descriptor,
           disposedDescriptor: disposedProducer.descriptor,
-          pristineOwnerDescriptors: Object.getOwnPropertyDescriptors(pristineProducer.owner),
-          initializedOwnerDescriptors: Object.getOwnPropertyDescriptors(initializedProducer.owner),
-          disposedOwnerDescriptors: Object.getOwnPropertyDescriptors(disposedProducer.owner),
+          pristineOwnerDescriptors: pristineProducer.ownerDescriptors,
+          initializedOwnerDescriptors: initializedProducer.ownerDescriptors,
+          disposedOwnerDescriptors: disposedProducer.ownerDescriptors,
+          pristineSnapshots: Object.freeze([...pristineProducers]),
+          initializedSnapshots: Object.freeze([...initializedProducers]),
         },
       },
       sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),

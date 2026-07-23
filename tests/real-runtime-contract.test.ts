@@ -122,6 +122,16 @@ for (const entry of matrix) {
       assert.deepEqual(run.hostCallbacks.producer.disposedDescriptor, run.hostCallbacks.producer.pristineDescriptor);
       assert.deepEqual(run.hostCallbacks.producer.initializedOwnerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
       assert.deepEqual(run.hostCallbacks.producer.disposedOwnerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
+      assert.equal(run.hostCallbacks.producer.pristineSnapshots.length, 2); // initial load and real reload
+      assert.equal(run.hostCallbacks.producer.initializedSnapshots.length, 2);
+      assert.ok(Object.isFrozen(run.hostCallbacks.producer.pristineSnapshots));
+      assert.ok(Object.isFrozen(run.hostCallbacks.producer.initializedSnapshots));
+      for (const snapshot of [...run.hostCallbacks.producer.pristineSnapshots, ...run.hostCallbacks.producer.initializedSnapshots]) {
+        assert.strictEqual(snapshot.value, run.hostCallbacks.producer.pristine);
+        assert.deepEqual(snapshot.descriptor, run.hostCallbacks.producer.pristineDescriptor);
+        assert.deepEqual(snapshot.ownerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
+        assert.ok(Object.isFrozen(snapshot) && Object.isFrozen(snapshot.descriptor) && Object.isFrozen(snapshot.ownerDescriptors));
+      }
       assert.deepEqual(run.hostCallbacks.invocationTypes, Object.fromEntries(run.hostCallbacks.keys.map((key) => [key, "function"])));
       for (const callbacks of run.hostCallbacks.invocations) {
         assert.deepEqual(Object.keys(callbacks).sort(), run.hostCallbacks.keys);
@@ -138,7 +148,11 @@ for (const entry of matrix) {
     assert.equal(observation.present.modelVisibleInvocations, observation.absent.modelVisibleInvocations);
     assert.deepEqual(observation.present.hostCallbacks.keys, observation.absent.hostCallbacks.keys);
     assert.equal(observation.present.hostCallbacks.behavior, observation.absent.hostCallbacks.behavior);
-    assert.match(observation.present.hostCallbacks.behavior, /get(?:Steering|FollowUp)Messages/);
+    const callbackBehavior = JSON.parse(observation.present.hostCallbacks.behavior);
+    assert.ok(callbackBehavior.some(({ key }: any) => /get(?:Steering|FollowUp)Messages/.test(key)));
+    assert.ok(callbackBehavior.every(({ args, result, error, queue }: any) =>
+      Array.isArray(args) && Array.isArray(result) && error?.$type === "undefined" && queue?.before === true && queue?.after === false));
+    assert.ok(callbackBehavior.every((probe: any) => !("sideEffects" in probe) && !("results" in probe)));
     assert.deepEqual(observation.present.hostCallbacks.unsupported, observation.absent.hostCallbacks.unsupported);
     assert.ok(observation.present.hostCallbacks.unsupported.every(({ reason }) => reason.includes("pristine Agent config-producer descriptor seam")));
     assert.equal(observation.present.sessionSerializationAfterDispose, observation.absent.sessionSerializationAfterDispose);
