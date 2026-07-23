@@ -123,6 +123,16 @@ for (const entry of matrix) {
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#CC.*old line/);
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#DD.*new line/);
 
+    for (const frame of [cold, plain(observation.present.tuiOutput.reload)]) {
+      assert.match(frame, /write.*written\.txt.*2 lines/);
+      assert.match(frame, /Wrote written\.txt/);
+      assert.doesNotMatch(frame, /(?:pending )?(?:create|overwrite)|additions?|deletions?/i);
+    }
+    assert.match(plain(observation.present.tuiOutput.newCall), /write.*written\.txt.*2 lines/);
+    assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /4#(?:EE|FF):/);
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /4#EE.*old supplied/);
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /4#FF.*new supplied/);
+
     const hidden = await runPureDisplayContract(runtimeRoot, "hidden");
     for (const name of ["generic_fixture", "mcp", "mcp_direct_fixture"]) {
       for (const frame of [hidden.firstCollapsedOutput, hidden.present.tuiOutput.reload, hidden.present.tuiOutput.newCall]) {
@@ -167,7 +177,9 @@ for (const entry of matrix) {
         assert.match(source?.path ?? "", name === "generic_fixture" ? /generic-fixture\.js$/ : /pi-mcp-adapter[\\/]index\.ts$/);
       }
       assert.ok(run.definitions.some(({ name }) => name === "edit"));
+      assert.ok(run.definitions.some(({ name }) => name === "write"));
       assert.ok(run.executions.some(({ name }) => name === "edit"));
+      assert.ok(run.executions.some(({ name }) => name === "write"));
       for (const definition of run.definitions) {
         assert.strictEqual(definition.initialized, definition.pristine);
         assert.strictEqual(definition.disposed, definition.pristine);
@@ -179,11 +191,11 @@ for (const entry of matrix) {
         assert.strictEqual(execution.disposed, execution.pristine);
         assert.equal(typeof execution.pristine, "function");
       }
-      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls", "edit"]);
+      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls", "edit", "write"]);
       for (const call of run.toolCalls) {
         assert.deepEqual(call.callbackUpdates, [`contract ${call.name} streaming output`]);
         assert.deepEqual(call.updateEvents, [`contract ${call.name} streaming output`]);
-        assert.match(call.result, /new-|contract read final|Edited fixture/);
+        assert.match(call.result, /new-|contract read final|Edited fixture|Wrote written/);
         assert.deepEqual(call.eventOrder, ["start", "update", "end"]);
       }
       assert.match(run.modelContext, /contract-cold-read/);

@@ -38,11 +38,9 @@ import {
   shortenPath,
   splitLines,
 } from "./render-utils.js";
-import { renderEditDiffResult, renderWriteDiffResult } from "./diff-renderer.js";
+import { renderEditDiffResult } from "./diff-renderer.js";
 import {
   buildPendingEditPreviewData,
-  buildPendingWritePreviewData,
-  readWorkspaceUtf8File,
   type PendingDiffPreviewData,
 } from "./pending-diff-preview.js";
 import {
@@ -57,11 +55,6 @@ import type {
   CustomToolOverrideConfig,
   ToolDisplayConfig,
 } from "./types.js";
-import {
-  countWriteContentLines,
-  getWriteContentSizeBytes,
-  shouldRenderWriteCallSummary,
-} from "./write-display-utils.js";
 
 interface BuiltInTools {
   read: ReturnType<typeof createReadTool>;
@@ -114,11 +107,6 @@ interface ToolRenderContextLike {
   expanded?: boolean;
 }
 
-export interface WriteExecutionMeta {
-  previousContent?: string;
-  fileExistedBeforeWrite: boolean;
-}
-
 interface PendingDiffPreviewState {
   key?: string;
   data?: PendingDiffPreviewData;
@@ -138,10 +126,7 @@ const builtInToolCache = new Map<string, BuiltInTools>();
 const RUNTIME_BUILT_IN_OVERRIDE = Symbol.for("pi-tool-display.runtimeBuiltInOverride.v1");
 const runtimeBuiltInToolOverrides = new Map<string, { definition: RuntimeToolDefinition; owner: string }>();
 const RTK_COMPACTION_LABEL = "compacted by RTK";
-export const WRITE_EXECUTION_META_LIMIT = 100;
-const WRITE_EXECUTION_META_STATE_KEY = "__piToolDisplayWriteExecutionMeta";
 const EDIT_PENDING_PREVIEW_STATE_KEY = "__piToolDisplayEditPendingPreview";
-const WRITE_PENDING_PREVIEW_STATE_KEY = "__piToolDisplayWritePendingPreview";
 
 const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
 const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
@@ -338,21 +323,6 @@ function createLazyClonedParameters(bootstrapTools: BuiltInTools): Record<keyof 
   return createLazyToolRecord(bootstrapTools, (tool) => cloneToolParameters(tool.parameters));
 }
 
-function captureExistingWriteContent(
-  cwd: string,
-  rawPath: unknown,
-): { existed: boolean; content?: string } {
-  if (typeof rawPath !== "string" || !rawPath.trim()) {
-    return { existed: false };
-  }
-
-  const existing = readWorkspaceUtf8File(cwd, rawPath);
-  return {
-    existed: existing.exists,
-    content: existing.content,
-  };
-}
-
 function formatExpandHint(theme: RenderTheme): string {
   return theme.fg("muted", " • Ctrl+O to expand");
 }
@@ -474,64 +444,6 @@ function toStateRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
-export function recordWriteExecutionMeta(
-  pendingMetaByToolCallId: Map<string, WriteExecutionMeta>,
-  toolCallId: string,
-  meta: WriteExecutionMeta,
-): void {
-  pendingMetaByToolCallId.delete(toolCallId);
-  pendingMetaByToolCallId.set(toolCallId, meta);
-
-  while (pendingMetaByToolCallId.size > WRITE_EXECUTION_META_LIMIT) {
-    const oldestToolCallId: string | undefined = pendingMetaByToolCallId.keys().next().value as string | undefined;
-    if (oldestToolCallId === undefined) {
-      return;
-    }
-    pendingMetaByToolCallId.delete(oldestToolCallId);
-  }
-}
-
-export function clearWriteExecutionMeta(
-  pendingMetaByToolCallId: Map<string, WriteExecutionMeta>,
-): void {
-  pendingMetaByToolCallId.clear();
-}
-
-export function getWriteExecutionMeta(
-  context: ToolRenderContextLike | undefined,
-  pendingMetaByToolCallId: Map<string, WriteExecutionMeta>,
-): WriteExecutionMeta | undefined {
-  if (!context) {
-    return undefined;
-  }
-
-  const carrier = toStateRecord(context.state);
-  const existing = carrier
-    ? toRecord(carrier[WRITE_EXECUTION_META_STATE_KEY])
-    : undefined;
-  if (existing && Object.keys(existing).length > 0) {
-    return existing as unknown as WriteExecutionMeta;
-  }
-
-  if (!context.toolCallId) {
-    return undefined;
-  }
-
-  const pending = pendingMetaByToolCallId.get(context.toolCallId);
-  if (!pending) {
-    return undefined;
-  }
-
-  if (carrier) {
-    const storedMeta: WriteExecutionMeta = { ...pending };
-    carrier[WRITE_EXECUTION_META_STATE_KEY] = storedMeta;
-    pendingMetaByToolCallId.delete(context.toolCallId);
-    return storedMeta;
-  }
-
-  return pending;
-}
-
 function getPendingDiffPreviewState(
   context: ToolRenderContextLike | undefined,
   stateKey: string,
@@ -590,21 +502,16 @@ function buildPendingDiffCallComponent(
     return container;
   }
 
-  container.addChild(
-    renderWriteDiffResult(
-      previewData.nextContent,
-      {
-        expanded: context.expanded === true,
-        filePath: previewData.filePath,
-        previousContent: previewData.previousContent,
-        fileExistedBeforeWrite: previewData.fileExistedBeforeWrite,
-        headerLabel: previewData.headerLabel,
-      },
-      config,
-      theme,
-      "",
-    ),
-  );
+  const oldLines = (previewData.previousContent ?? "").replace(/\r/g, "").split("\n");
+  const newLines = previewData.nextContent.replace(/\r/g, "").split("\n");
+  const diff = `@@ -1,${oldLines.length} +1,${newLines.length} @@\n${oldLines.map((line) => `-${line}`).join("\n")}\n${newLines.map((line) => `+${line}`).join("\n")}`;
+  container.addChild(renderEditDiffResult(
+    { diff },
+    { expanded: context.expanded === true, filePath: previewData.filePath },
+    config,
+    theme,
+    "",
+  ));
   return container;
 }
 
@@ -1516,7 +1423,6 @@ export function registerToolDisplayOverrides(
   const bootstrapTools = getBuiltInTools(process.cwd());
   const builtInPromptMetadata = createLazyPromptMetadata(bootstrapTools);
   const clonedParameters = createLazyClonedParameters(bootstrapTools);
-  const writeExecutionMetaByToolCallId = new Map<string, WriteExecutionMeta>();
   const registeredBuiltInToolOverrides = new Set<BuiltInToolOverrideName>();
 
   const isExternallyOwnedBuiltInTool = (toolName: BuiltInToolOverrideName): boolean => {
@@ -1550,7 +1456,7 @@ export function registerToolDisplayOverrides(
     register: () => void,
   ): void => {
     if (
-      (["read", "grep", "find", "ls"] as string[]).includes(toolName) ||
+      (["read", "grep", "find", "ls", "edit", "write"] as string[]).includes(toolName) ||
       registeredBuiltInToolOverrides.has(toolName) ||
       !activeTools.has(toolName) ||
       !getConfig().registerToolOverrides[toolName] ||
@@ -1588,82 +1494,6 @@ export function registerToolDisplayOverrides(
       logToolDisplayDebug("Active tool discovery unavailable; skipped built-in renderer registration.", error);
       return;
     }
-
-  registerIfOwned(activeTools, "write", () => {
-    registerRuntimeTool(pi, {
-      name: "write",
-    label: "write",
-    description: bootstrapTools.write.description,
-    ...builtInPromptMetadata.write,
-    parameters: clonedParameters.write,
-    prepareArguments: getToolPrepareArguments(bootstrapTools.write),
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      const previous = captureExistingWriteContent(ctx.cwd, params.path);
-      recordWriteExecutionMeta(writeExecutionMetaByToolCallId, toolCallId, {
-        fileExistedBeforeWrite: previous.existed,
-        previousContent: previous.content,
-      });
-
-      return getBuiltInTools(ctx.cwd).write.execute(
-        toolCallId,
-        params as never,
-        signal,
-        onUpdate as never,
-      );
-    },
-    renderCall(args, theme, context) {
-      const content = getToolContentArg(args);
-      const lineCount = countWriteContentLines(content);
-      const sizeBytes = getWriteContentSizeBytes(content);
-      const path = shortenPath(getToolPathArg(args));
-      const suffix = shouldRenderWriteCallSummary({
-        hasContent: content !== undefined,
-        hasDetailedResultHeader: false,
-      })
-        ? formatWriteCallSuffix(lineCount, sizeBytes, theme)
-        : "";
-      const summaryText = `${theme.fg("toolTitle", theme.bold("write"))} ${theme.fg("accent", path || "...")}${suffix}`;
-      if (!context.argsComplete || !context.isPartial) {
-        return textResult(summaryText);
-      }
-
-      const previewKey = JSON.stringify({ path: getToolPathArg(args) ?? null, content: content ?? null });
-      const previewData = resolvePendingDiffPreview(
-        context,
-        WRITE_PENDING_PREVIEW_STATE_KEY,
-        previewKey,
-        () => buildPendingWritePreviewData(args, context.cwd),
-      );
-      return buildPendingDiffCallComponent(summaryText, previewData, context, getConfig(), theme);
-    },
-    renderResult(result, options, theme, context) {
-      const content = getToolContentArg(context?.args);
-      const lineCount = countWriteContentLines(content);
-      const { fallbackText, earlyResult } = handleEditOrWriteResult(result, options, context, theme, lineCount, "writing", "Write failed.");
-      if (earlyResult) {
-        return earlyResult;
-      }
-
-      const config = getConfig();
-      const executionMeta = getWriteExecutionMeta(
-        context,
-        writeExecutionMetaByToolCallId,
-      );
-      return renderWriteDiffResult(
-        content,
-        {
-          expanded: options.expanded,
-          filePath: getToolPathArg(context?.args),
-          previousContent: executionMeta?.previousContent,
-          fileExistedBeforeWrite: executionMeta?.fileExistedBeforeWrite ?? false,
-        },
-        config,
-        theme,
-        fallbackText,
-      );
-    },
-    });
-  });
 
   registerIfOwned(activeTools, "bash", () => {
     registerRuntimeTool(pi, {
@@ -1745,11 +1575,9 @@ export function registerToolDisplayOverrides(
   };
 
   pi.on("session_start", async () => {
-    clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
     registerActiveBuiltInRenderers();
   });
   pi.on("before_agent_start", async () => {
-    clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
     registerActiveBuiltInRenderers();
   });
 }

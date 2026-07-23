@@ -196,7 +196,7 @@ test("pre-upgrade built-in rows without runtime provenance redraw through curren
     registerToolDisplayOverrides(api, () => currentConfig);
     registerToolExecutionPatch(api, () => currentConfig);
     await handlers.session_start?.();
-    assert.deepEqual(owners.map((owner) => owner.name).sort(), ["bash", "write"]);
+    assert.deepEqual(owners.map((owner) => owner.name).sort(), ["bash"]);
     edit.setExpanded(false);
     assert.doesNotMatch(plainRender(edit), /new three/);
     edit.setExpanded(true);
@@ -213,7 +213,8 @@ test("pre-upgrade built-in rows without runtime provenance redraw through curren
     write.setExpanded(false);
     assert.doesNotMatch(plainRender(write), /six/);
     write.setExpanded(true);
-    assert.match(plainRender(write), /six/);
+    assert.match(plainRender(write), /Wrote file\.txt/);
+    assert.doesNotMatch(plainRender(write), /six|create|overwrite/i);
   } finally {
     handlers.session_shutdown?.({ reason: "reload" });
     disposeAll();

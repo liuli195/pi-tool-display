@@ -4,6 +4,7 @@ import { renderEditDiffResult } from "./diff-renderer.js";
 import { extractTextOutput, shortenPath } from "./render-utils.js";
 import type { ToolDisplayConfig } from "./types.js";
 import { toRecord } from "./tool-metadata.js";
+import { countWriteContentLines, getWriteContentSizeBytes } from "./write-display-utils.js";
 import { formatGenericToolCallLine, formatMcpCallLine, formatSearchCallLine, getRuntimeBuiltInToolOverride, getRuntimeCustomToolOverride, getSearchScope, renderCustomToolResult, renderReadDisplayCall, renderReadDisplayResult, renderSearchResult, type RenderTheme } from "./tool-overrides.js";
 
 export type ToolRenderer = (...args: any[]) => any;
@@ -92,6 +93,35 @@ function editEvidence(result: unknown, args: Readonly<Record<string, unknown>>):
   return suppliedDiff(resultRecord.details) ?? suppliedDiff(resultRecord) ?? suppliedDiff(args) ?? replacementDiff(args);
 }
 
+function explicitDiffEvidence(result: unknown, args: Readonly<Record<string, unknown>>): string | undefined {
+  const resultRecord = toRecord(result);
+  return suppliedDiff(resultRecord.details) ?? suppliedDiff(resultRecord) ?? suppliedDiff(args);
+}
+
+function writeRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>, native: NativeRendererSlots): DisplayPlan {
+  const path = typeof row.arguments.path === "string" ? row.arguments.path : typeof row.arguments.file_path === "string" ? row.arguments.file_path : "...";
+  const renderCall: ToolRenderer = (args: unknown, theme: RenderTheme) => {
+    const content = toRecord(args).content;
+    const lines = countWriteContentLines(content);
+    const bytes = getWriteContentSizeBytes(content);
+    const metrics = typeof content === "string" ? ` (${lines} ${lines === 1 ? "line" : "lines"}, ${bytes} ${bytes === 1 ? "byte" : "bytes"})` : "";
+    return new Text(`${theme.fg("toolTitle", theme.bold("write"))} ${theme.fg("accent", shortenPath(path))}${theme.fg("muted", metrics)}`, 0, 0);
+  };
+  const renderResult: ToolRenderer = (result: any, options: ToolRenderResultOptions, theme: RenderTheme, context?: { isError?: boolean }) => {
+    const fallback = extractTextOutput(result);
+    if (options.isPartial) return new Text(theme.fg("muted", "↳ writing..."), 0, 0);
+    if (result?.isError || context?.isError) return new Text(theme.fg("error", fallback || "Write failed."), 0, 0);
+    const diff = explicitDiffEvidence(result, row.arguments);
+    return diff
+      ? renderEditDiffResult({ diff }, { expanded: options.expanded, filePath: path }, config as ToolDisplayConfig, theme, fallback)
+      : new Text(fallback || theme.fg("muted", "Write completed."), 0, 0);
+  };
+  const failOpen = (renderer: ToolRenderer, fallback?: ToolRenderer): ToolRenderer => (...args: any[]) => {
+    try { return renderer(...args); } catch { return fallback?.(...args); }
+  };
+  return { call: failOpen(renderCall, native.call), result: failOpen(renderResult, native.result), shell: "default" };
+}
+
 function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>, native: NativeRendererSlots): DisplayPlan {
   const path = typeof row.arguments.path === "string" ? row.arguments.path : typeof row.arguments.file_path === "string" ? row.arguments.file_path : "...";
   const renderCall: ToolRenderer = (args: unknown, theme: RenderTheme, context?: { isPartial?: boolean; argsComplete?: boolean }) => {
@@ -138,6 +168,7 @@ export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
         return { ...native, call, result };
       }
       if (row.toolName === "edit" && config.registerToolOverrides.edit) return { ...native, ...editRenderers(row, config, native) };
+      if (row.toolName === "write" && config.registerToolOverrides.write) return { ...native, ...writeRenderers(row, config, native) };
       if (row.builtIn && pi) {
         const definition = getRuntimeBuiltInToolOverride(pi, row.toolName);
         if (definition) return {
