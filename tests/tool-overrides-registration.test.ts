@@ -100,10 +100,10 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
 	assert.equal(registeredTools.length, 0, "registration waits until owners are known");
 	await eventHandlers.session_start?.();
-	assert.deepEqual(registeredTools.map((tool) => tool.name).sort(), ["bash", "edit", "write"]);
+	assert.deepEqual(registeredTools.map((tool) => tool.name).sort(), ["bash", "write"]);
 	await eventHandlers.before_agent_start?.();
 
-	assert.equal(registeredTools.length, 3);
+	assert.equal(registeredTools.length, 2);
 	assert.equal(registeredTools.some((tool) => ["read", "grep", "find", "ls"].includes(tool.name)), false);
 
 	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
@@ -120,14 +120,14 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
-		if (["read", "grep", "find", "ls"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
+		if (["read", "grep", "find", "ls", "edit"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
 		const builtInMetadata = builtInTool as unknown as RegisteredToolLike;
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
 		assert.equal(registeredTool.promptSnippet, builtInMetadata.promptSnippet);
 	}
 
-	assert.deepEqual(byName.get("read")?.promptGuidelines, (builtInTools.read as unknown as RegisteredToolLike).promptGuidelines);
-	assert.deepEqual(byName.get("edit")?.promptGuidelines, (builtInTools.edit as unknown as RegisteredToolLike).promptGuidelines);
+	assert.deepEqual(byName.get("read")?.promptGuidelines, undefined);
+	assert.deepEqual(byName.get("edit")?.promptGuidelines, undefined);
 	assert.deepEqual(byName.get("write")?.promptGuidelines, (builtInTools.write as unknown as RegisteredToolLike).promptGuidelines);
 	assert.equal(byName.get("grep")?.promptGuidelines, undefined);
 	assert.equal(byName.get("find")?.promptGuidelines, undefined);
@@ -170,7 +170,7 @@ test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI k
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
-		if (["read", "grep", "find", "ls"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
+		if (["read", "grep", "find", "ls", "edit"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
 		assert.notEqual(
 			registeredTool.parameters,
@@ -181,14 +181,11 @@ test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI k
 	}
 });
 
-test("registerToolDisplayOverrides forces edit into the default render shell so tool backgrounds fill the full row", async () => {
+test("registerToolDisplayOverrides leaves edit definition untouched", async () => {
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
-
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
 	await eventHandlers.before_agent_start?.();
-
-	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
-	assert.equal(byName.get("edit")?.renderShell, "default");
+	assert.equal(registeredTools.some((tool) => tool.name === "edit"), false);
 });
 
 test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools active", async () => {
@@ -219,7 +216,7 @@ test("tools with matching third-party owners but missing provenance are not shad
 
 		const names = new Set(registeredTools.map((tool) => tool.name));
 		assert.equal(names.has("read"), false);
-		assert.equal(names.has("edit"), true, "a built-in with no matching owner remains ownerless");
+		assert.equal(names.has("edit"), false, "edit rendering does not register an executable tool");
 	}
 });
 

@@ -61,14 +61,14 @@ test("pending edit preview matches LF edit input against CRLF files", () => {
     );
 
     assert.equal(preview?.notice, undefined);
-    assert.equal(preview?.nextContent, "alpha\r\nupdated\r\ngamma\r\n");
-    assert.equal(preview?.previousContent, "alpha\r\nbeta\r\ngamma\r\n");
+    assert.equal(preview?.nextContent, "alpha\nupdated");
+    assert.equal(preview?.previousContent, "alpha\nbeta");
   } finally {
     rmSync(baseDir, { recursive: true, force: true });
   }
 });
 
-test("pending edit preview reports a concise notice for true edit mismatches", () => {
+test("pending edit preview trusts supplied evidence without reading the current file", () => {
   const baseDir = mkdtempSync(join(tmpdir(), "pi-tool-display-preview-miss-"));
 
   try {
@@ -87,8 +87,9 @@ test("pending edit preview reports a concise notice for true edit mismatches", (
       baseDir,
     );
 
-    assert.equal(preview?.nextContent, undefined);
-    assert.equal(preview?.notice, "Preview not shown: edit #1 did not match the current file contents.");
+    assert.equal(preview?.previousContent, "missing");
+    assert.equal(preview?.nextContent, "updated");
+    assert.equal(preview?.notice, undefined);
   } finally {
     rmSync(baseDir, { recursive: true, force: true });
   }

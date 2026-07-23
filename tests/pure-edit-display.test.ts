@@ -91,7 +91,7 @@ test("pending edit evidence performs zero node:fs and node:fs/promises workspace
   const originals = new Map<any, Map<string, unknown>>();
   let reads = 0;
   for (const [owner, keys] of [[fs, ["readFileSync", "existsSync", "statSync", "realpathSync"]], [promises, ["readFile", "access", "stat", "realpath"]]] as const) {
-    originals.set(owner, new Map(keys.map((key) => [key, owner[key]])));
+    originals.set(owner, new Map(keys.map((key) => [key, owner[key]] as const)));
     for (const key of keys) owner[key] = () => { reads++; throw new Error("workspace read"); };
   }
   syncBuiltinESMExports();

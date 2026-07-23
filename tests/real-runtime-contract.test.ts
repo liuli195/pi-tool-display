@@ -116,12 +116,12 @@ for (const entry of matrix) {
       assert.match(text, /edit.*fixture\.txt/);
       assert.doesNotMatch(text, /12#(?:AA|BB):/);
     }
-    assert.match(plain(observation.present.tuiOutput.expandedCold), /12#AA:old cold/);
-    assert.match(plain(observation.present.tuiOutput.expandedReload), /12#BB:new cold/);
+    assert.match(plain(observation.present.tuiOutput.expandedCold), /12#AA.*old cold/);
+    assert.match(plain(observation.present.tuiOutput.expandedReload), /12#BB.*new cold/);
     assert.match(plain(observation.present.tuiOutput.newCall), /edit.*fixture\.txt/);
     assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /7#(?:CC|DD):/);
-    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#CC:old line/);
-    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#DD:new line/);
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#CC.*old line/);
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#DD.*new line/);
 
     const hidden = await runPureDisplayContract(runtimeRoot, "hidden");
     for (const name of ["generic_fixture", "mcp", "mcp_direct_fixture"]) {

@@ -103,7 +103,7 @@ test("entry point registers built-in tool overrides after loading", async () => 
   for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
 
   const toolNames = capturedTools.map((t) => t.name);
-  assert.deepEqual(toolNames.sort(), ["bash", "edit", "write"]);
+  assert.deepEqual(toolNames.sort(), ["bash", "write"]);
 });
 
 test("session_start handler refreshes capabilities and notifies pending errors", async () => {
@@ -274,7 +274,7 @@ test("overridden tools include renderCall and renderResult functions", async () 
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} } });
-  assert.equal(capturedTools.length, 3);
+  assert.equal(capturedTools.length, 2);
   assert.equal(capturedTools.some((tool) => ["read", "grep", "find", "ls"].includes(tool.name)), false);
 
   for (const tool of capturedTools) {
@@ -296,7 +296,7 @@ test("overridden tools preserve promptSnippet and promptGuidelines from built-in
 
   const byName = new Map(capturedTools.map((t) => [t.name, t]));
 
-  for (const name of ["bash", "edit", "write"] as const) {
+  for (const name of ["bash", "write"] as const) {
     const tool = byName.get(name);
     assert.ok(tool, `${name} is registered`);
     // promptSnippet should be a non-empty string or undefined
