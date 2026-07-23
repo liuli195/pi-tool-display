@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import test from "node:test";
 import {
 	createBashTool,
@@ -12,7 +11,6 @@ import {
 	createLsTool,
 	createReadTool,
 	createWriteTool,
-	ToolExecutionComponent,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
@@ -102,14 +100,11 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
 	assert.equal(registeredTools.length, 0, "registration waits until owners are known");
 	await eventHandlers.session_start?.();
-	assert.deepEqual(
-		registeredTools.map((tool) => tool.name).sort(),
-		["bash", "edit", "find", "ls", "read", "write"],
-	);
+	assert.deepEqual(registeredTools.map((tool) => tool.name).sort(), ["bash", "edit", "write"]);
 	await eventHandlers.before_agent_start?.();
 
-	assert.equal(registeredTools.length, 6);
-	assert.equal(registeredTools.some((tool) => tool.name === "grep"), false);
+	assert.equal(registeredTools.length, 3);
+	assert.equal(registeredTools.some((tool) => ["read", "grep", "find", "ls"].includes(tool.name)), false);
 
 	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
 	const cwd = process.cwd();
@@ -125,7 +120,7 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
-		if (name === "grep") { assert.equal(registeredTool, undefined); continue; }
+		if (["read", "grep", "find", "ls"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
 		const builtInMetadata = builtInTool as unknown as RegisteredToolLike;
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
 		assert.equal(registeredTool.promptSnippet, builtInMetadata.promptSnippet);
@@ -148,36 +143,11 @@ test("registerToolDisplayOverrides registers only active built-in renderers afte
 	await eventHandlers.session_start?.();
 
 	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
-	for (const name of ["read", "bash"] as const) {
-		const registeredTool = byName.get(name);
-		assert.ok(registeredTool, `expected active '${name}' renderer`);
-		assert.equal(typeof registeredTool.renderCall, "function");
-		assert.equal(typeof registeredTool.renderResult, "function");
-	}
-	assert.equal(byName.has("find"), false);
-	assert.equal(byName.has("ls"), false);
-});
-
-test("Pi registers renderers before constructing restored-history tool rows", async () => {
-	const piEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-	const interactiveMode = readFileSync(join(dirname(piEntry), "modes", "interactive", "interactive-mode.js"), "utf8");
-	assert.ok(
-		interactiveMode.indexOf("await this.rebindCurrentSession()") < interactiveMode.indexOf("this.renderInitialMessages()"),
-		"installed Pi must await session_start handlers before restoring history",
-	);
-
-	const { api, registeredTools, eventHandlers } = createExtensionApiStub([], ["read"]);
-	registerToolDisplayOverrides(api, () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, readOutputMode: "summary" }));
-	await eventHandlers.session_start?.();
-
-	const read = registeredTools.find((tool) => tool.name === "read");
-	assert.ok(read?.renderCall && read.renderResult);
-	const row = Object.assign(Object.create(ToolExecutionComponent.prototype), {
-		builtInToolDefinition: {},
-		toolDefinition: read,
-	}) as { getCallRenderer(): unknown; getResultRenderer(): unknown };
-	assert.equal(row.getCallRenderer(), read.renderCall);
-	assert.equal(row.getResultRenderer(), read.renderResult);
+	const bash = byName.get("bash");
+	assert.ok(bash);
+	assert.equal(typeof bash.renderCall, "function");
+	assert.equal(typeof bash.renderResult, "function");
+	for (const name of ["read", "grep", "find", "ls"]) assert.equal(byName.has(name), false);
 });
 
 test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI keeps extension renderers active", async () => {
@@ -200,7 +170,7 @@ test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI k
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
-		if (name === "grep") { assert.equal(registeredTool, undefined); continue; }
+		if (["read", "grep", "find", "ls"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
 		assert.notEqual(
 			registeredTool.parameters,
@@ -235,8 +205,8 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 	assert.equal(registeredNames.has("read"), false);
 	assert.equal(registeredNames.has("edit"), false);
 	assert.equal(registeredNames.has("grep"), false);
-	assert.equal(registeredNames.has("find"), true);
-	assert.equal(registeredNames.has("ls"), true);
+	assert.equal(registeredNames.has("find"), false);
+	assert.equal(registeredNames.has("ls"), false);
 	assert.equal(registeredNames.has("bash"), true);
 	assert.equal(registeredNames.has("write"), true);
 });

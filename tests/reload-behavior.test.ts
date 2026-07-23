@@ -158,7 +158,7 @@ test("2: built-in tool overrides are re-registered on reload", async () => {
 
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers.slice()) if (event === "before_agent_start") await handler();
-  assert.ok(capturedTools.length >= countBeforeReload + 6);
+  assert.ok(capturedTools.length >= countBeforeReload + 3);
 });
 
 test("2: re-registered tools have renderCall and renderResult functions after reload", async () => {
@@ -171,8 +171,8 @@ test("2: re-registered tools have renderCall and renderResult functions after re
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers.slice()) if (event === "before_agent_start") await handler();
   const secondCallTools = capturedTools.slice(firstCount);
-  assert.equal(secondCallTools.length, 6);
-  assert.equal(secondCallTools.some((tool) => tool.name === "grep"), false);
+  assert.equal(secondCallTools.length, 3);
+  assert.equal(secondCallTools.some((tool) => ["read", "grep", "find", "ls"].includes(tool.name)), false);
   for (const tool of secondCallTools) {
     assert.equal(typeof tool.renderCall, "function", `${tool.name} from reload has renderCall`);
     assert.equal(typeof tool.renderResult, "function", `${tool.name} from reload has renderResult`);
@@ -185,7 +185,7 @@ test("2: reload shuts down the old runtime before the new runtime registers curr
   for (const { event, handler } of first.capturedHandlers) {
     if (event === "session_start") await handler({ reason: "startup" }, {});
   }
-  assert.equal(first.capturedTools.length, 6);
+  assert.equal(first.capturedTools.length, 3);
 
   for (const { event, handler } of first.capturedHandlers) {
     if (event === "session_shutdown") await handler({ reason: "reload" }, {});
@@ -209,10 +209,10 @@ test("2: built-in tool overrides wait for lifecycle ownership discovery", async 
   registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
   assert.equal(registeredTools.length, 0);
   await eventHandlers.session_start?.();
-  assert.equal(registeredTools.length, 6);
-  assert.equal(registeredTools.some((tool) => tool.name === "grep"), false);
+  assert.equal(registeredTools.length, 3);
+  assert.equal(registeredTools.some((tool) => ["read", "grep", "find", "ls"].includes(tool.name)), false);
   await eventHandlers.before_agent_start?.();
-  assert.equal(registeredTools.length, 6, "lifecycle retries do not duplicate renderers");
+  assert.equal(registeredTools.length, 3, "lifecycle retries do not duplicate renderers");
 });
 
 // ---------------------------------------------------------------------------

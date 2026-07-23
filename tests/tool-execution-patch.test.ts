@@ -88,7 +88,7 @@ test("MCP proxy and direct tools use only ordinary custom override configuration
 
 test("unconfigured third-party and built-in tools retain their original renderers", () => {
   const { api, handlers } = apiStub();
-  registerToolExecutionPatch(api, () => config({ read: true, configured: true }));
+  registerToolExecutionPatch(api, () => ({ ...config({ configured: true }), registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides, read: false } }));
   try {
     const originalCall = () => ({ render: () => ["original call"] });
     const originalResult = () => ({ render: () => ["original result"] });

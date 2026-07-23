@@ -153,7 +153,7 @@ function renderToolCall(
 	};
 }
 
-test("read-only ownership keeps summary line counts confined to read", async () => {
+test("read display no longer depends on tool registration", async () => {
 	const config = buildConfig({
 		registerToolOverrides: {
 			read: true,
@@ -171,14 +171,7 @@ test("read-only ownership keeps summary line counts confined to read", async () 
 	registerToolDisplayOverrides(api, () => config);
 	await eventHandlers.before_agent_start?.();
 
-	assert.deepEqual(
-		registeredTools.map((tool) => tool.name),
-		["read"],
-	);
-	assert.equal(
-		renderToolResult(registeredTools[0], "single line\n"),
-		"↳ loaded 1 line • Ctrl+O to expand",
-	);
+	assert.deepEqual(registeredTools, []);
 });
 
 test("bash output modes stay distinct across opencode, summary, and preview", async () => {

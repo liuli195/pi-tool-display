@@ -1294,11 +1294,11 @@ export function formatGenericToolCallLine(
   );
 }
 
-function getSearchScope(args: Record<string, unknown>): string {
+export function getSearchScope(args: Record<string, unknown>): string {
   return shortenPath((args.path as string) || ".");
 }
 
-function formatSearchCallLine(
+export function formatSearchCallLine(
   toolName: string,
   accent: string,
   mutedSuffix: string,
@@ -1352,7 +1352,7 @@ function getAdapterPath(args: unknown, adapter: ToolDisplayAdapter): string | un
   return undefined;
 }
 
-function renderReadDisplayCall(
+export function renderReadDisplayCall(
   args: unknown,
   theme: RenderTheme,
   adapter: ToolDisplayAdapter = {},
@@ -1370,7 +1370,7 @@ function renderReadDisplayCall(
   return textResult(line);
 }
 
-function renderReadDisplayResult(
+export function renderReadDisplayResult(
   result: ToolRenderInput,
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
@@ -1654,7 +1654,7 @@ export function registerToolDisplayOverrides(
     register: () => void,
   ): void => {
     if (
-      toolName === "grep" ||
+      (["read", "grep", "find", "ls"] as string[]).includes(toolName) ||
       registeredBuiltInToolOverrides.has(toolName) ||
       !activeTools.has(toolName) ||
       !getConfig().registerToolOverrides[toolName] ||

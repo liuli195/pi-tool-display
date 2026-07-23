@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import type { ToolDisplayConfig } from "./types.js";
 import { toRecord } from "./tool-metadata.js";
-import { formatGenericToolCallLine, formatMcpCallLine, getRuntimeBuiltInToolOverride, getRuntimeCustomToolOverride, renderCustomToolResult, renderSearchResult, type RenderTheme } from "./tool-overrides.js";
+import { formatGenericToolCallLine, formatMcpCallLine, formatSearchCallLine, getRuntimeBuiltInToolOverride, getRuntimeCustomToolOverride, getSearchScope, renderCustomToolResult, renderReadDisplayCall, renderReadDisplayResult, renderSearchResult, type RenderTheme } from "./tool-overrides.js";
 
 export type ToolRenderer = (...args: any[]) => any;
 export interface ToolRowDescriptor {
@@ -19,10 +19,22 @@ export interface RendererCatalog {
 export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
   return {
     resolve(row, config, native) {
-      if (row.toolName === "grep" && config.registerToolOverrides.grep) {
-        const renderResult: ToolRenderer = (result: any, options: ToolRenderResultOptions, theme: RenderTheme) =>
-          renderSearchResult(result, options, config as ToolDisplayConfig, theme, "match", result?.details, "matches");
-        return { ...native, result: renderResult };
+      if (row.toolName === "read" && config.registerToolOverrides.read) return {
+        ...native,
+        call: (args: unknown, theme: RenderTheme) => renderReadDisplayCall(args, theme),
+        result: (result: any, options: ToolRenderResultOptions, theme: RenderTheme) => renderReadDisplayResult(result, options, config as ToolDisplayConfig, theme),
+      };
+      if (["grep", "find", "ls"].includes(row.toolName) && config.registerToolOverrides[row.toolName as "grep" | "find" | "ls"]) {
+        const labels = row.toolName === "grep" ? ["match", "matches"] : row.toolName === "ls" ? ["entry", "entries"] : ["result", undefined];
+        const call: ToolRenderer = (args: Record<string, unknown>, theme: RenderTheme) => {
+          const scope = getSearchScope(args);
+          const limit = args.limit !== undefined ? ` (limit ${args.limit})` : "";
+          if (row.toolName === "grep") return formatSearchCallLine("grep", `/${args.pattern}/`, ` in ${scope}${args.glob ? ` (${args.glob})` : ""}${args.limit !== undefined ? ` limit ${args.limit}` : ""}`, theme);
+          return formatSearchCallLine(row.toolName, row.toolName === "find" ? String(args.pattern) : scope, row.toolName === "find" ? ` in ${scope}${limit}` : limit, theme);
+        };
+        const result: ToolRenderer = (value: any, options: ToolRenderResultOptions, theme: RenderTheme) =>
+          renderSearchResult(value, options, config as ToolDisplayConfig, theme, labels[0]!, value?.details, labels[1]);
+        return { ...native, call, result };
       }
       if (row.builtIn && pi) {
         const definition = getRuntimeBuiltInToolOverride(pi, row.toolName);

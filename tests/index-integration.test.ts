@@ -103,13 +103,7 @@ test("entry point registers built-in tool overrides after loading", async () => 
   for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
 
   const toolNames = capturedTools.map((t) => t.name);
-  assert.ok(toolNames.includes("find"), "find tool override registered");
-  assert.ok(toolNames.includes("ls"), "ls tool override registered");
-  assert.ok(toolNames.includes("write"), "write tool override registered");
-
-  // Disabled tools (if config disables them) would not appear; the default
-  // config enables all, so we expect at least these 3 immediately.
-  assert.ok(toolNames.length >= 3, "at least 3 tool overrides registered immediately");
+  assert.deepEqual(toolNames.sort(), ["bash", "edit", "write"]);
 });
 
 test("session_start handler refreshes capabilities and notifies pending errors", async () => {
@@ -153,8 +147,7 @@ test("multiple calls to toolDisplayExtension are idempotent", async () => {
   // to the extension loader to deduplicate), but the extension itself must
   // not crash.
   const toolNames = capturedTools.map((t) => t.name);
-  assert.ok(toolNames.filter((n) => n === "find").length >= 1, "find registered at least once");
-  assert.ok(toolNames.filter((n) => n === "ls").length >= 1, "ls registered at least once");
+  assert.equal(toolNames.some((name) => ["read", "grep", "find", "ls"].includes(name)), false);
   assert.ok(toolNames.filter((n) => n === "write").length >= 1, "write registered at least once");
 
   const cmdNames = capturedCommands.map((c) => c.name);
@@ -281,8 +274,8 @@ test("overridden tools include renderCall and renderResult functions", async () 
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} } });
-  assert.equal(capturedTools.length, 6);
-  assert.equal(capturedTools.some((tool) => tool.name === "grep"), false);
+  assert.equal(capturedTools.length, 3);
+  assert.equal(capturedTools.some((tool) => ["read", "grep", "find", "ls"].includes(tool.name)), false);
 
   for (const tool of capturedTools) {
     assert.ok(
@@ -303,7 +296,7 @@ test("overridden tools preserve promptSnippet and promptGuidelines from built-in
 
   const byName = new Map(capturedTools.map((t) => [t.name, t]));
 
-  for (const name of ["find", "ls", "write"] as const) {
+  for (const name of ["bash", "edit", "write"] as const) {
     const tool = byName.get(name);
     assert.ok(tool, `${name} is registered`);
     // promptSnippet should be a non-empty string or undefined
