@@ -24,6 +24,11 @@ export interface ProducerRendererAdapter {
 export interface RendererCatalog {
   resolve(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>, native: NativeRendererSlots): DisplayPlan | undefined;
 }
+export class RendererAdapterConflict extends Error {
+  constructor(readonly toolName: string, readonly adapters: readonly { id: string; kind: ProducerRendererAdapter["kind"] }[]) {
+    super(`Renderer Adapter conflict for ${toolName}: ${adapters.map(({ id, kind }) => `${id} (${kind})`).join(", ")}`);
+  }
+}
 
 const producerAdapters = new Map<string, Set<ProducerRendererAdapter>>();
 
@@ -68,7 +73,10 @@ export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
       if (row.builtIn) return undefined;
       const configured = getRuntimeCustomToolOverride(row.toolName, config as ToolDisplayConfig);
       const producers = producerAdapters.get(row.toolName);
-      if (!configured?.enabled && producers && producers.size > 1) throw new Error(`Renderer Adapter conflict for ${row.toolName}`);
+      if (!configured?.enabled && producers && producers.size > 1) throw new RendererAdapterConflict(
+        row.toolName,
+        [...producers].map(({ id, kind }) => ({ id, kind })),
+      );
       const custom = configured?.enabled ? configured : producers?.values().next().value;
       if (!custom) return undefined;
       const replacementCall = custom.renderCall ?? ((args: unknown, theme: RenderTheme) => custom.kind === "mcp"
