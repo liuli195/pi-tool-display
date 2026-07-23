@@ -57,6 +57,10 @@ test("real capture path rejects context and tool accessors without invoking them
 interface RuntimeMatrixEntry { name: string; version?: string; env: string; required: boolean }
 const matrix = JSON.parse(readFileSync(new URL("./runtime-matrix.json", import.meta.url), "utf8")) as RuntimeMatrixEntry[];
 const plain = (value: string) => value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+const stableFixturePaths = (ownership: Array<{ name: string; sourceInfo: any }>) => ownership.map(({ name, sourceInfo }) => ({
+  name,
+  sourceInfo: { ...sourceInfo, path: sourceInfo.path?.replace(/pi-tool-display-contract-[^\\/]+/, "pi-tool-display-contract") },
+}));
 
 test("runtime matrix pins development, Pi 0.81.1, and the declared minimum", () => {
   assert.deepEqual(matrix.map(({ name, version }) => ({ name, version })), [
@@ -90,12 +94,17 @@ for (const entry of matrix) {
     assert.doesNotMatch(plain(observation.present.tuiOutput.reload), /contract read first line/);
     assert.match(plain(observation.present.tuiOutput.newCall), /3 lines/);
     assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /contract read final first line/);
-    for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) {
-      assert.match(cold, new RegExp(name));
-      assert.match(plain(observation.present.tuiOutput.reload), new RegExp(name));
-      assert.match(plain(observation.present.tuiOutput.newCall), new RegExp(name));
-      assert.doesNotMatch(cold, new RegExp(`${name} first line`));
-      assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), new RegExp(`${name} final output`));
+    const summaries = [
+      ["generic_fixture", "↳ 2 lines returned", "generic first line"],
+      ["mcp", "↳ 3 lines returned", "mcp proxy first line"],
+      ["mcp_direct_fixture", "↳ 4 lines returned", "mcp direct first line"],
+    ] as const;
+    for (const frame of [cold, plain(observation.present.tuiOutput.reload), plain(observation.present.tuiOutput.newCall)]) {
+      for (const [name, summary, nativeOutput] of summaries) {
+        assert.match(frame, new RegExp(`\\b${name}\\b`));
+        assert.match(frame, new RegExp(`${summary}(?: • Ctrl\\+O to expand)?`), `${name} must render its exact line-count summary`);
+        assert.doesNotMatch(frame, new RegExp(nativeOutput));
+      }
     }
     for (const frame of [observation.present.tuiOutput.expandedCold, observation.present.tuiOutput.expandedReload]) {
       assert.match(plain(frame), /contract read first line/);
@@ -104,10 +113,10 @@ for (const entry of matrix) {
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract read final third line/);
 
     const hidden = await runPureDisplayContract(runtimeRoot, "hidden");
-    for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) {
+    for (const name of ["generic_fixture", "mcp", "mcp_direct_fixture"]) {
       for (const frame of [hidden.firstCollapsedOutput, hidden.present.tuiOutput.reload, hidden.present.tuiOutput.newCall]) {
-        assert.match(plain(frame), new RegExp(name));
-        assert.doesNotMatch(plain(frame), new RegExp(`${name} (?:first|final) output|${name} first line`));
+        assert.match(plain(frame), new RegExp(`\\b${name}\\b`));
+        assert.doesNotMatch(plain(frame), /generic first line|mcp (?:proxy|direct) first line|lines returned/);
       }
     }
     for (const frame of [hidden.firstCollapsedOutput, hidden.present.tuiOutput.reload, hidden.present.tuiOutput.newCall,
@@ -118,9 +127,9 @@ for (const entry of matrix) {
     }
 
     const preview = await runPureDisplayContract(runtimeRoot, "preview");
-    for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) {
-      for (const frame of [preview.firstCollapsedOutput, preview.present.tuiOutput.reload]) assert.match(plain(frame), new RegExp(`${name} first line`));
-      assert.match(plain(preview.present.tuiOutput.newCall), new RegExp(`${name} final output`));
+    for (const output of ["generic first line", "mcp proxy first line", "mcp direct first line"]) {
+      for (const frame of [preview.firstCollapsedOutput, preview.present.tuiOutput.reload, preview.present.tuiOutput.newCall])
+        assert.match(plain(frame), new RegExp(output));
     }
     for (const frame of [preview.firstCollapsedOutput, preview.present.tuiOutput.reload]) {
       const text = plain(frame);
@@ -132,18 +141,19 @@ for (const entry of matrix) {
       assert.match(plain(frame), /contract read third line/);
     assert.match(plain(preview.present.tuiOutput.expandedNewCall), /contract read final third line/);
 
-    assert.ok(observation.present.loadedExtensionPaths.some((path) => path.endsWith("index.ts")));
-    assert.ok(observation.absent.loadedExtensionPaths.every((path) => !path.endsWith("index.ts")));
+    const displayExtensionPath = resolve(import.meta.dirname, "..", "index.ts");
+    assert.ok(observation.present.loadedExtensionPaths.includes(displayExtensionPath));
+    assert.ok(!observation.absent.loadedExtensionPaths.includes(displayExtensionPath));
     for (const run of [observation.absent, observation.present]) {
       assert.ok(run.activeToolNames.includes("read") && run.activeToolNames.includes("find") && run.activeToolNames.includes("ls"));
       assert.ok(run.activeToolNamesAtStartup.includes("read"));
       assert.ok(!run.activeToolNamesAtStartup.includes("find") && !run.activeToolNamesAtStartup.includes("ls"));
-      for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) assert.ok(run.activeToolNames.includes(name));
+      for (const name of ["generic_fixture", "mcp", "mcp_direct_fixture"]) assert.ok(run.activeToolNames.includes(name));
       assert.ok(run.ownership.every((tool) => tool.sourceInfo));
-      for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) {
-        assert.deepEqual(run.ownership.find(tool => tool.name === name)?.sourceInfo, {
-          path: `<sdk:${name}>`, source: "sdk", scope: "temporary", origin: "top-level", baseDir: undefined,
-        });
+      for (const name of ["generic_fixture", "mcp", "mcp_direct_fixture"]) {
+        const source = run.ownership.find(tool => tool.name === name)?.sourceInfo as any;
+        assert.notEqual(source?.source, "sdk", `${name} must come through Pi's extension loader`);
+        assert.match(source?.path ?? "", name === "generic_fixture" ? /generic-fixture\.js$/ : /pi-mcp-adapter[\\/]index\.ts$/);
       }
       for (const definition of run.definitions) {
         assert.strictEqual(definition.initialized, definition.pristine);
@@ -156,11 +166,11 @@ for (const entry of matrix) {
         assert.strictEqual(execution.disposed, execution.pristine);
         assert.equal(typeof execution.pristine, "function");
       }
-      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls", "generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]);
+      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls"]);
       for (const call of run.toolCalls) {
         assert.deepEqual(call.callbackUpdates, [`contract ${call.name} streaming output`]);
         assert.deepEqual(call.updateEvents, [`contract ${call.name} streaming output`]);
-        assert.match(call.result, /new-|contract read final|fixture final output/);
+        assert.match(call.result, /new-|contract read final/);
         assert.deepEqual(call.eventOrder, ["start", "update", "end"]);
       }
       assert.match(run.modelContext, /contract-cold-read/);
@@ -193,7 +203,7 @@ for (const entry of matrix) {
 
     assert.deepEqual(observation.present.activeToolNames, observation.absent.activeToolNames);
     assert.deepEqual(observation.present.activeToolNamesAtStartup, observation.absent.activeToolNamesAtStartup);
-    assert.deepEqual(observation.present.ownership, observation.absent.ownership);
+    assert.deepEqual(stableFixturePaths(observation.present.ownership), stableFixturePaths(observation.absent.ownership));
     assert.deepEqual(observation.present.toolCalls, observation.absent.toolCalls);
     assert.equal(observation.present.modelContext, observation.absent.modelContext);
     assert.equal(observation.present.modelVisibleInvocations, observation.absent.modelVisibleInvocations);

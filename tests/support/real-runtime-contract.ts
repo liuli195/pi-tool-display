@@ -295,6 +295,9 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
   const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-contract-"));
   const terminal = new MemoryTerminal();
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  let runtime: any;
+  let mode: any;
+  let disposed = false;
   try {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
@@ -303,13 +306,41 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       readOutputMode: outputMode === "count" ? "summary" : outputMode,
       previewLines: 1,
       showTruncationHints: true,
-      customToolOverrides: Object.fromEntries(["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"].map(name => [name, {
+      customToolOverrides: Object.fromEntries(["generic_fixture", "mcp", "mcp_direct_fixture"].map(name => [name, {
         enabled: true,
         kind: name === "generic_fixture" ? "generic" : "mcp",
         outputMode: outputMode === "count" ? "summary" : outputMode,
         overrideCallRenderer: false,
       }])),
     }));
+    const mcpServerPath = join(agentDir, "contract-mcp-server.mjs");
+    const mcpSdkRoot = resolve(import.meta.dirname, "..", "..", "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm");
+    await writeFile(mcpServerPath, `import { McpServer } from ${JSON.stringify(pathToFileURL(join(mcpSdkRoot, "server", "mcp.js")).href)};
+import { StdioServerTransport } from ${JSON.stringify(pathToFileURL(join(mcpSdkRoot, "server", "stdio.js")).href)};
+const server = new McpServer({ name: "pi-tool-display-contract", version: "1.0.0" });
+server.registerTool("mcp_proxy_fixture", { description: "Real MCP proxy fixture" }, async () => ({ content: [{ type: "text", text: "mcp proxy first line\\nmcp proxy second line\\nmcp proxy third line" }] }));
+server.registerTool("mcp_direct_fixture", { description: "Real MCP direct fixture" }, async () => ({ content: [{ type: "text", text: "mcp direct first line\\nmcp direct second line\\nmcp direct third line\\nmcp direct fourth line" }] }));
+await server.connect(new StdioServerTransport());
+`);
+    const mcpDefinition = { command: process.execPath, args: [mcpServerPath], directTools: ["mcp_direct_fixture"], exposeResources: false };
+    const adapterRoot = resolve(import.meta.dirname, "..", "..", "node_modules", "pi-mcp-adapter");
+    const { computeServerHash } = await import(pathToFileURL(join(adapterRoot, "metadata-cache.ts")).href);
+    await writeFile(join(agentDir, "mcp.json"), JSON.stringify({
+      mcpServers: { contract: mcpDefinition },
+      settings: { toolPrefix: "none" },
+    }));
+    await writeFile(join(agentDir, "mcp-cache.json"), JSON.stringify({ version: 1, servers: { contract: {
+      configHash: computeServerHash(mcpDefinition), cachedAt: Date.now(), resources: [], tools: [
+        { name: "mcp_proxy_fixture", description: "Real MCP proxy fixture", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+        { name: "mcp_direct_fixture", description: "Real MCP direct fixture", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+      ],
+    } } }));
+    const genericExtensionPath = join(agentDir, "generic-fixture.js");
+    await writeFile(genericExtensionPath, `export default function (pi) { pi.registerTool({
+  name: "generic_fixture", label: "Generic fixture", description: "Pi loader direct registration fixture",
+  parameters: { type: "object", properties: {}, additionalProperties: false },
+  async execute() { return { content: [{ type: "text", text: "generic first line\\ngeneric second line" }], details: {} }; }
+}); }\n`);
     const observerPath = join(agentDir, "thinking-observer.js");
     await writeFile(observerPath, `export default function (pi) {
   for (const type of ["message_update", "message_end", "context"])
@@ -317,7 +348,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
 }\n`);
     const sessionFile = join(agentDir, "contract.jsonl");
     await writeFile(sessionFile, sessionJsonl);
-    const probes: Record<string, { updates: string[]; arguments?: unknown }> = Object.fromEntries(["read", "find", "ls", "generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"].map((name) => [name, { updates: [] }]));
+    const probes: Record<string, { updates: string[]; arguments?: unknown }> = Object.fromEntries(["read", "find", "ls"].map((name) => [name, { updates: [] }]));
     const customTools = createTools(probes);
     const pristineDefinitions = new Map(customTools.map((tool: any) => [tool.name, tool]));
     const sessionManager = pi.SessionManager.open(sessionFile);
@@ -338,7 +369,9 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       const services = await pi.createAgentSessionServices({
         cwd, agentDir: nextAgentDir,
         resourceLoaderOptions: {
-          additionalExtensionPaths: withExtension ? [entry, observerPath] : [observerPath],
+          additionalExtensionPaths: withExtension
+            ? [join(adapterRoot, "index.ts"), genericExtensionPath, entry, observerPath]
+            : [join(adapterRoot, "index.ts"), genericExtensionPath, observerPath],
           noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
         },
       });
@@ -349,11 +382,11 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       });
       return { ...created, services, diagnostics: services.diagnostics };
     };
-    const runtime = await pi.createAgentSessionRuntime(createRuntime, { cwd: process.cwd(), agentDir, sessionManager });
+    runtime = await pi.createAgentSessionRuntime(createRuntime, { cwd: process.cwd(), agentDir, sessionManager });
     const definitionsInitialized = new Map(runtime.session.getAllTools().map((tool: any) => [tool.name, runtime.session.getToolDefinition(tool.name)]));
     runtime.session.setActiveToolsByName(runtime.session.getActiveToolNames().filter((name: string) => name !== "find" && name !== "ls"));
     const activeToolNamesAtStartup = runtime.session.getActiveToolNames();
-    const mode = new pi.InteractiveMode(runtime) as any;
+    mode = new pi.InteractiveMode(runtime) as any;
     mode.ui.terminal = terminal;
     const actionsBeforeFirstOutput: string[] = [];
     const track = (name: string, target: any, method: string) => {
@@ -401,7 +434,9 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       { id: "contract-new-read", name: "read", arguments: { path: "fixture.txt" } },
       { id: "contract-new-find", name: "find", arguments: { pattern: "*.txt", path: "." } },
       { id: "contract-new-ls", name: "ls", arguments: { path: "." } },
-      ...["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"].map((name, index) => ({ id: `contract-new-custom-${index}`, name, arguments: { fixture: name } })),
+      { id: "contract-new-generic", name: "generic_fixture", arguments: {} },
+      { id: "contract-new-proxy", name: "mcp", arguments: { tool: "mcp_proxy_fixture", args: "{}" } },
+      { id: "contract-new-direct", name: "mcp_direct_fixture", arguments: {} },
     ];
     const observedEvents: any[] = [];
     const unsubscribe = runtime.session.subscribe((event: any) => {
@@ -456,6 +491,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     const initializedSessionDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
     mode.stop();
     await runtime.dispose();
+    disposed = true;
     const disposedProducer = snapshotCallbackProducer(session.agent);
     const pristineProducer = pristineProducers[0];
     const initializedProducer = initializedProducers.at(-1)!;
@@ -481,7 +517,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       ownership: tools.map((tool: any) => ({ name: tool.name, sourceInfo: tool.sourceInfo })),
       definitions,
       executions: definitions.map(({ name, pristine, initialized, disposed }: any) => ({ name, pristine: pristine.execute, initialized: initialized.execute, disposed: disposed.execute })),
-      toolCalls: calls.map((call) => ({
+      toolCalls: calls.filter(({ name }) => probes[name]).map((call) => ({
         name: call.name,
         arguments: probes[call.name].arguments,
         callbackUpdates: probes[call.name].updates,
@@ -519,9 +555,14 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     };
     return observation;
   } finally {
-    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-    await rm(agentDir, { recursive: true, force: true });
+    try {
+      mode?.stop();
+      if (runtime && !disposed) await runtime.dispose();
+    } finally {
+      if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+      await rm(agentDir, { recursive: true, force: true });
+    }
   }
 }
 
@@ -550,16 +591,21 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
     role: "toolResult", toolCallId: row.id, toolName: row.name,
     content: [{ type: "text", text: row.text }], details: row.details, isError: false, timestamp: 2,
   });
-  for (const [index, name] of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"].entries()) {
+  const restoredFixtures = [
+    ["generic_fixture", {}, "generic first line\ngeneric second line"],
+    ["mcp", { tool: "mcp_proxy_fixture", args: "{}" }, "mcp proxy first line\nmcp proxy second line\nmcp proxy third line"],
+    ["mcp_direct_fixture", {}, "mcp direct first line\nmcp direct second line\nmcp direct third line\nmcp direct fourth line"],
+  ] as const;
+  for (const [index, [name, arguments_, output]] of restoredFixtures.entries()) {
     seed.appendMessage({
       role: "assistant",
-      content: [{ type: "toolCall", id: `contract-cold-${index}`, name, arguments: { fixture: name } }],
+      content: [{ type: "toolCall", id: `contract-cold-${index}`, name, arguments: arguments_ }],
       api: "contract", provider: "contract", model: "contract", stopReason: "toolUse",
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 3 + index * 2,
     });
     seed.appendMessage({
       role: "toolResult", toolCallId: `contract-cold-${index}`, toolName: name,
-      content: [{ type: "text", text: `${name} first line\n${name} folded second line\n${name} folded third line` }], isError: false, timestamp: 4 + index * 2,
+      content: [{ type: "text", text: output }], isError: false, timestamp: 4 + index * 2,
     });
   }
   seed.appendThinkingLevelChange("medium");
@@ -569,13 +615,10 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
       read: "contract read final first line\ncontract read final second line\ncontract read final third line",
       find: "new-first.txt\nnew-second.txt\nnew-third.txt",
       ls: "new-alpha.txt\nnew-beta.txt\nnew-gamma.txt",
-      generic_fixture: "generic_fixture final output",
-      mcp_proxy_fixture: "mcp_proxy_fixture final output",
-      mcp_direct_fixture: "mcp_direct_fixture final output",
     };
     const fixture = (name: string) => ({
-      name, label: name, description: `Deterministic ${name} contract tool`,
-      sourceInfo: name.endsWith("fixture") ? { owner: `contract-${name}`, source: "contract-direct" } : { source: "local", path: `contract-third-party-${name}.ts` },
+      name, label: `Third-party ${name}`, description: `Deterministic same-name ${name} contract tool`,
+      sourceInfo: { source: "local", path: `contract-third-party-${name}.ts` },
       parameters: { type: "object", properties: {}, additionalProperties: true },
       execute: async (_id: string, args: unknown, _signal: unknown, onUpdate: (result: unknown) => void) => {
         probes[name].arguments = args;

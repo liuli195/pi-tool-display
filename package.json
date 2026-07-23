@@ -80,8 +80,9 @@
     "ws": "8.21.0"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "pi-mcp-adapter": "^2.11.0",
     "tsx": "4.22.4",
-    "typescript": "6.0.3",
-    "@earendil-works/pi-coding-agent": "^0.80.3"
+    "typescript": "6.0.3"
   }
 }
