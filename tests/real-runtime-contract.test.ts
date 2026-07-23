@@ -111,6 +111,10 @@ for (const entry of matrix) {
       assert.match(plain(frame), /contract read third line/);
     }
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract read final third line/);
+    assert.match(plain(observation.present.tuiOutput.expandedCold), /12#AA:old cold/);
+    assert.match(plain(observation.present.tuiOutput.expandedReload), /12#BB:new cold/);
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#CC:old line/);
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#DD:new line/);
 
     const hidden = await runPureDisplayContract(runtimeRoot, "hidden");
     for (const name of ["generic_fixture", "mcp", "mcp_direct_fixture"]) {
@@ -166,11 +170,11 @@ for (const entry of matrix) {
         assert.strictEqual(execution.disposed, execution.pristine);
         assert.equal(typeof execution.pristine, "function");
       }
-      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls"]);
+      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls", "edit"]);
       for (const call of run.toolCalls) {
         assert.deepEqual(call.callbackUpdates, [`contract ${call.name} streaming output`]);
         assert.deepEqual(call.updateEvents, [`contract ${call.name} streaming output`]);
-        assert.match(call.result, /new-|contract read final/);
+        assert.match(call.result, /new-|contract read final|Edited fixture/);
         assert.deepEqual(call.eventOrder, ["start", "update", "end"]);
       }
       assert.match(run.modelContext, /contract-cold-read/);

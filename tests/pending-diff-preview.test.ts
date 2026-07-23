@@ -49,9 +49,9 @@ test("pending preview skips direct reads outside the workspace", () => {
         workspace,
       );
 
-      assert.equal(editPreview?.previousContent, undefined);
-      assert.equal(editPreview?.nextContent, undefined);
-      assert.match(editPreview?.notice ?? "", /outside the current workspace/);
+      assert.equal(editPreview?.previousContent, "secret");
+      assert.equal(editPreview?.nextContent, "safe");
+      assert.equal(editPreview?.notice, undefined);
       assert.equal(writePreview?.previousContent, undefined);
       assert.equal(writePreview?.nextContent, "replacement\n");
       assert.match(writePreview?.notice ?? "", /outside the current workspace/);
@@ -72,8 +72,8 @@ test("pending preview skips files over the read-size limit", () => {
       workspace,
     );
 
-    assert.equal(preview?.previousContent, undefined);
-    assert.equal(preview?.nextContent, undefined);
-    assert.match(preview?.notice ?? "", /preview read limit/);
+    assert.equal(preview?.previousContent, "x");
+    assert.equal(preview?.nextContent, "y");
+    assert.equal(preview?.notice, undefined);
   });
 });

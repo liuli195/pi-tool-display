@@ -348,7 +348,7 @@ await server.connect(new StdioServerTransport());
 }\n`);
     const sessionFile = join(agentDir, "contract.jsonl");
     await writeFile(sessionFile, sessionJsonl);
-    const probes: Record<string, { updates: string[]; arguments?: unknown }> = Object.fromEntries(["read", "find", "ls"].map((name) => [name, { updates: [] }]));
+    const probes: Record<string, { updates: string[]; arguments?: unknown }> = Object.fromEntries(["read", "find", "ls", "edit"].map((name) => [name, { updates: [] }]));
     const customTools = createTools(probes);
     const pristineDefinitions = new Map(customTools.map((tool: any) => [tool.name, tool]));
     const sessionManager = pi.SessionManager.open(sessionFile);
@@ -429,11 +429,12 @@ await server.connect(new StdioServerTransport());
     mode.toggleToolOutputExpansion();
     terminal.take();
 
-    runtime.session.setActiveToolsByName([...new Set([...runtime.session.getActiveToolNames(), "read", "find", "ls"])]);
+    runtime.session.setActiveToolsByName([...new Set([...runtime.session.getActiveToolNames(), "read", "find", "ls", "edit"])]);
     const calls = [
       { id: "contract-new-read", name: "read", arguments: { path: "fixture.txt" } },
       { id: "contract-new-find", name: "find", arguments: { pattern: "*.txt", path: "." } },
       { id: "contract-new-ls", name: "ls", arguments: { path: "." } },
+      { id: "contract-new-edit", name: "edit", arguments: { path: "fixture.txt", oldText: "old line", newText: "new line", oldStart: 7, newStart: 7 } },
       { id: "contract-new-generic", name: "generic_fixture", arguments: {} },
       { id: "contract-new-proxy", name: "mcp", arguments: { tool: "mcp_proxy_fixture", args: "{}" } },
       { id: "contract-new-direct", name: "mcp_direct_fixture", arguments: {} },
@@ -581,6 +582,7 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
     { id: "contract-cold-read", name: "read", arguments: { path: "fixture.txt" }, text: "contract read first line\ncontract read second line\ncontract read third line", details: { truncation: { truncated: true, originalLines: 9 } } },
     { id: "contract-cold-find", name: "find", arguments: { pattern: "*.txt", path: "." }, text: "first.txt\nsecond.txt\nthird.txt", details: {} },
     { id: "contract-cold-ls", name: "ls", arguments: { path: "." }, text: "alpha.txt\nbeta.txt\ngamma.txt", details: {} },
+    { id: "contract-cold-edit", name: "edit", arguments: { path: "fixture.txt", oldText: "old cold", newText: "new cold", oldStart: 12, newStart: 12 }, text: "Edited fixture.txt", details: { diff: "@@ -12,1 +12,1 @@\n- 12#AA:old cold\n+ 12#BB:new cold" } },
   ];
   seed.appendMessage({
     role: "assistant", content: historical.map(({ id, name, arguments: args }) => ({ type: "toolCall", id, name, arguments: args })),
@@ -615,6 +617,7 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
       read: "contract read final first line\ncontract read final second line\ncontract read final third line",
       find: "new-first.txt\nnew-second.txt\nnew-third.txt",
       ls: "new-alpha.txt\nnew-beta.txt\nnew-gamma.txt",
+      edit: "Edited fixture.txt",
     };
     const fixture = (name: string) => ({
       name, label: `Third-party ${name}`, description: `Deterministic same-name ${name} contract tool`,
@@ -625,7 +628,7 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
         const update = `contract ${name} streaming output`;
         probes[name].updates.push(update);
         onUpdate({ content: [{ type: "text", text: update }], details: {} });
-        return { content: [{ type: "text", text: outputs[name] }], details: name === "read" ? { truncation: { truncated: true, originalLines: 9 } } : {} };
+        return { content: [{ type: "text", text: outputs[name] }], details: name === "read" ? { truncation: { truncated: true, originalLines: 9 } } : name === "edit" ? { diff: "@@ -7,1 +7,1 @@\n-  7#CC:old line\n+  7#DD:new line" } : {} };
       },
     });
     return [...pi.createCodingTools(process.cwd()).filter((tool: any) => !Object.hasOwn(outputs, tool.name)), ...Object.keys(outputs).map(fixture)];

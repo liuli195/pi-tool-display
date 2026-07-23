@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 import { createToolDisplayResolver } from "../src/tool-display-resolver.ts";
 import { createRendererCatalog } from "../src/renderer-catalog.ts";
@@ -55,6 +56,53 @@ test("edit malformed or missing evidence degrades truthfully and keeps states us
   assert.match(render(selected.result!({ content: [{ type: "text", text: "permission denied" }], isError: true }, { expanded: false, isPartial: false }, theme)), /permission denied/);
   assert.match(render(selected.result!({ content: [], details: {} }, { expanded: false, isPartial: true }, theme)), /editing/);
   assert.match(render(selected.result!({ content: [{ type: "text", text: "aborted" }], details: {} }, { expanded: false, isPartial: false }, theme, { isError: true })), /aborted/);
+});
+
+test("edit evidence is cycle-safe, rejects mixed patches, and preserves each edit line metadata", () => {
+  const selected = plan({ path: "a.ts", edits: [
+    { oldText: "first", newText: "one", oldStart: 7, newStart: 8 },
+    { oldText: "second", newText: "two", startLine: 20 },
+  ] });
+  const output = render(selected.result!({ content: [], details: {} }, { expanded: true, isPartial: false }, theme));
+  assert.match(output, /7.*first/);
+  assert.match(output, /20.*second/);
+
+  const cyclic: any = { patches: [] };
+  cyclic.patches.push(cyclic);
+  assert.doesNotThrow(() => selected.result!({ content: [{ type: "text", text: "cycle fallback" }], details: cyclic }, { expanded: true, isPartial: false }, theme));
+  const malformed = plan({ path: "a.ts" });
+  assert.match(render(malformed.result!({ content: [{ type: "text", text: "mixed fallback" }], details: { patches: [{ diff: "@@ -1 +1 @@\n-a\n+b" }, { nope: true }] } }, { expanded: true, isPartial: false }, theme)), /mixed fallback/);
+});
+
+test("renderer exceptions fail open to native", () => {
+  const fallback = { render: () => ["native fallback"] };
+  const selected = resolver({ diffLayout: "invalid" as never }).resolve(
+    { toolName: "edit", arguments: { path: "a", oldText: "a", newText: "b" }, builtIn: true },
+    { call: () => fallback, result: () => fallback },
+  );
+  assert.doesNotThrow(() => selected.result!({ details: {} }, { expanded: true }, theme));
+});
+
+test("pending edit evidence performs zero node:fs and node:fs/promises reads", async () => {
+  const require = createRequire(import.meta.url);
+  const fs = require("node:fs");
+  const promises = require("node:fs/promises");
+  const originalSync = fs.readFileSync;
+  const originalAsync = promises.readFile;
+  let reads = 0;
+  fs.readFileSync = () => { reads++; throw new Error("workspace read"); };
+  promises.readFile = async () => { reads++; throw new Error("workspace read"); };
+  syncBuiltinESMExports();
+  try {
+    const { buildPendingEditPreviewData } = await import(`../src/pending-diff-preview.ts?no-edit-read=${Date.now()}`);
+    const preview = buildPendingEditPreviewData({ path: "a.ts", oldText: "old", newText: "new" }, process.cwd());
+    assert.equal(reads, 0);
+    assert.equal(preview?.previousContent, "old");
+  } finally {
+    fs.readFileSync = originalSync;
+    promises.readFile = originalAsync;
+    syncBuiltinESMExports();
+  }
 });
 
 test("unconfigured edit remains native", () => {

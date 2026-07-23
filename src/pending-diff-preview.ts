@@ -323,47 +323,14 @@ export function buildPendingWritePreviewData(input: unknown, cwd: string): Pendi
   };
 }
 
-export function buildPendingEditPreviewData(input: unknown, cwd: string): PendingDiffPreviewData | undefined {
+export function buildPendingEditPreviewData(input: unknown, _cwd: string): PendingDiffPreviewData | undefined {
   const filePath = getToolPath(input, true);
-  if (!filePath) {
-    return undefined;
-  }
-
-  const existing = readWorkspaceUtf8File(cwd, filePath);
-  if (existing.error) {
-    return {
-      filePath,
-      fileExistedBeforeWrite: false,
-      headerLabel: "pending edit",
-      notice: existing.error,
-    };
-  }
-
-  if (!existing.exists || typeof existing.content !== "string") {
-    return {
-      filePath,
-      fileExistedBeforeWrite: false,
-      headerLabel: "pending edit",
-      notice: "Preview unavailable because the target file does not exist yet.",
-    };
-  }
-
-  const projected = buildProjectedEditContent(existing.content, getEditReplacements(input));
-  if (!projected.ok) {
-    const failedProjection = projected as Extract<ProjectedEditResult, { ok: false }>;
-    return {
-      filePath,
-      previousContent: existing.content,
-      fileExistedBeforeWrite: true,
-      headerLabel: "pending edit",
-      notice: failedProjection.reason,
-    };
-  }
-
+  const edits = getEditReplacements(input);
+  if (!filePath || edits.length !== 1) return undefined;
   return {
     filePath,
-    previousContent: existing.content,
-    nextContent: projected.content,
+    previousContent: edits[0]!.oldText,
+    nextContent: edits[0]!.newText,
     fileExistedBeforeWrite: true,
     headerLabel: "pending edit",
   };

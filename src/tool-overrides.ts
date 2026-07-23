@@ -1543,8 +1543,7 @@ function installToolDisplayApi(getConfig: ConfigGetter): ToolDisplayApi {
         decorated.renderCall = resolvedAdapter.renderCall;
       } else if (kind === "read" && (overrideExisting || typeof decorated.renderCall !== "function")) {
         decorated.renderCall = (args: unknown, theme: RenderTheme) => renderReadDisplayCall(args, theme, resolvedAdapter);
-      } else if (kind === "edit" && (overrideExisting || typeof decorated.renderCall !== "function")) {
-        decorated.renderCall = (args: unknown, theme: RenderTheme, context: ToolRenderContextLike) => renderEditDisplayCall(args, theme, context, resolvedAdapter, getConfig);
+
       } else if (kind === "mcp" && (overrideExisting || typeof decorated.renderCall !== "function")) {
         decorated.renderCall = (args: unknown, theme: RenderTheme) => {
           const toolName = getTextField(decorated, "name") ?? "mcp";
@@ -1558,17 +1557,12 @@ function installToolDisplayApi(getConfig: ConfigGetter): ToolDisplayApi {
       } else if (kind === "read" && (overrideExisting || typeof decorated.renderResult !== "function")) {
         decorated.renderResult = (result: ToolRenderInput, options: ToolRenderResultOptions, theme: RenderTheme) =>
           renderReadDisplayResult(result, options, getConfig(), theme);
-      } else if (kind === "edit" && (overrideExisting || typeof decorated.renderResult !== "function")) {
-        decorated.renderResult = (result: ToolRenderInput & { isError?: boolean }, options: ToolRenderResultOptions, theme: RenderTheme, context?: ToolRenderContextLike) =>
-          renderEditDisplayResult(result, options, theme, context, resolvedAdapter, getConfig);
+
       } else if (kind === "mcp" && (overrideExisting || typeof decorated.renderResult !== "function")) {
         decorated.renderResult = (result: ToolRenderInput, options: ToolRenderResultOptions, theme: RenderTheme) =>
           renderMcpResult(result, options, getConfig(), theme);
       }
 
-      if (kind === "edit" && (overrideExisting || typeof decorated.renderShell !== "string")) {
-        decorated.renderShell = "default";
-      }
 
       return decorated as T;
     },
@@ -1692,32 +1686,6 @@ export function registerToolDisplayOverrides(
       logToolDisplayDebug("Active tool discovery unavailable; skipped built-in renderer registration.", error);
       return;
     }
-
-  registerIfOwned(activeTools, "edit", () => {
-    registerRuntimeTool(pi, {
-      name: "edit",
-    label: "edit",
-    description: bootstrapTools.edit.description,
-    ...builtInPromptMetadata.edit,
-    parameters: clonedParameters.edit,
-    renderShell: "default",
-    prepareArguments: getToolPrepareArguments(bootstrapTools.edit),
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return getBuiltInTools(ctx.cwd).edit.execute(
-        toolCallId,
-        params as never,
-        signal,
-        onUpdate as never,
-      );
-    },
-    renderCall(args, theme, context) {
-      return renderEditDisplayCall(args, theme, context, {}, getConfig);
-    },
-    renderResult(result, options, theme, context) {
-      return renderEditDisplayResult(result as never, options, theme, context, {}, getConfig);
-    },
-    });
-  });
 
   registerIfOwned(activeTools, "write", () => {
     registerRuntimeTool(pi, {

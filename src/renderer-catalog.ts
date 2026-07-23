@@ -50,27 +50,32 @@ function changedPatch(value: unknown): string | undefined {
   return value.split(/\r?\n/).some((line) => /^[-+](?!---|\+\+\+)/.test(line)) ? value : undefined;
 }
 
-function suppliedDiff(value: unknown): string | undefined {
-  const record = toRecord(value);
-  for (const key of ["diff", "patch"] as const) {
-    const patch = changedPatch(record[key]);
-    if (patch) return patch;
-  }
-  for (const key of ["patches", "edits"] as const) {
-    if (!Array.isArray(record[key])) continue;
-    const patches = record[key].map(suppliedDiff).filter((patch): patch is string => !!patch);
-    if (patches.length) return patches.join("\n");
-  }
-  return undefined;
+function suppliedDiff(value: unknown, seen = new Set<object>()): string | undefined {
+  if (!value || typeof value !== "object" || seen.has(value)) return undefined;
+  seen.add(value);
+  try {
+    const record = toRecord(value);
+    for (const key of ["diff", "patch"] as const) {
+      if (record[key] !== undefined) return changedPatch(record[key]);
+    }
+    for (const key of ["patches", "edits"] as const) {
+      if (record[key] === undefined) continue;
+      if (!Array.isArray(record[key]) || record[key].length === 0) return undefined;
+      const patches = record[key].map((item) => suppliedDiff(item, seen));
+      return patches.every((patch): patch is string => !!patch) ? patches.join("\n") : undefined;
+    }
+    return undefined;
+  } finally { seen.delete(value); }
 }
 
+const lineNumber = (value: unknown, fallback: number) => Number.isSafeInteger(value) && (value as number) > 0 ? value as number : fallback;
 function replacementDiff(value: unknown): string | undefined {
   const record = toRecord(value);
   const replacements = Array.isArray(record.edits) ? record.edits.map(toRecord) : [record];
   if (!replacements.length || replacements.some((edit) => typeof edit.oldText !== "string" || typeof edit.newText !== "string")) return undefined;
-  const oldStart = typeof record.oldStart === "number" ? record.oldStart : typeof record.startLine === "number" ? record.startLine : 1;
-  const newStart = typeof record.newStart === "number" ? record.newStart : oldStart;
   return replacements.map((edit) => {
+    const oldStart = lineNumber(edit.oldStart ?? edit.startLine, lineNumber(record.oldStart ?? record.startLine, 1));
+    const newStart = lineNumber(edit.newStart, lineNumber(record.newStart, oldStart));
     const oldLines = (edit.oldText as string).replace(/\r/g, "").split("\n");
     const newLines = (edit.newText as string).replace(/\r/g, "").split("\n");
     return `@@ -${oldStart},${oldLines.length} +${newStart},${newLines.length} @@\n${oldLines.map((line) => `-${line}`).join("\n")}\n${newLines.map((line) => `+${line}`).join("\n")}`;
@@ -82,7 +87,7 @@ function editEvidence(result: unknown, args: Readonly<Record<string, unknown>>):
   return suppliedDiff(resultRecord.details) ?? suppliedDiff(resultRecord) ?? suppliedDiff(args) ?? replacementDiff(args);
 }
 
-function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>): DisplayPlan {
+function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>, native: NativeRendererSlots): DisplayPlan {
   const path = typeof row.arguments.path === "string" ? row.arguments.path : typeof row.arguments.file_path === "string" ? row.arguments.file_path : "...";
   const renderCall: ToolRenderer = (args: unknown, theme: RenderTheme, context?: { isPartial?: boolean; argsComplete?: boolean }) => {
     const title = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", shortenPath(path))}`;
@@ -101,7 +106,10 @@ function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfi
     const diff = editEvidence(result, row.arguments);
     return renderEditDiffResult(diff ? { diff } : undefined, { expanded: options.expanded, filePath: path }, config as ToolDisplayConfig, theme, fallback);
   };
-  return { call: renderCall, result: renderResult, shell: "default" };
+  const failOpen = (renderer: ToolRenderer, fallback?: ToolRenderer): ToolRenderer => (...args: any[]) => {
+    try { return renderer(...args); } catch { return fallback?.(...args); }
+  };
+  return { call: failOpen(renderCall, native.call), result: failOpen(renderResult, native.result), shell: "default" };
 }
 
 export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
@@ -124,7 +132,7 @@ export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
           renderSearchResult(value, options, config as ToolDisplayConfig, theme, labels[0]!, value?.details, labels[1]);
         return { ...native, call, result };
       }
-      if (row.toolName === "edit" && config.registerToolOverrides.edit) return { ...native, ...editRenderers(row, config) };
+      if (row.toolName === "edit" && config.registerToolOverrides.edit) return { ...native, ...editRenderers(row, config, native) };
       if (row.builtIn && pi) {
         const definition = getRuntimeBuiltInToolOverride(pi, row.toolName);
         if (definition) return {
