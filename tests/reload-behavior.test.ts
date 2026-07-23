@@ -74,6 +74,9 @@ function createApiStub(
     getAllTools(): unknown[] {
       return overrides.getAllTools?.() ?? [];
     },
+    getActiveTools(): string[] {
+      return ["read", "grep", "find", "ls", "bash", "edit", "write"];
+    },
     getCommands(): Array<{ name: string }> {
       return overrides.getCommands?.() ?? [];
     },
@@ -102,6 +105,9 @@ function createExtensionApiStub(allTools: unknown[] = []): {
     },
     getAllTools(): unknown[] {
       return allTools;
+    },
+    getActiveTools(): string[] {
+      return ["read", "grep", "find", "ls", "bash", "edit", "write"];
     },
   } as unknown as ExtensionAPI;
 
@@ -142,43 +148,17 @@ test("1: after reload, new lifecycle handlers are registered", () => {
 // 2. Tool override restoration
 // ---------------------------------------------------------------------------
 
-test("2: built-in tool overrides are re-registered on reload", () => {
-  const { api, capturedTools } = createApiStub();
+test("2: built-in tool overrides are re-registered on reload", async () => {
+  const { api, capturedTools, capturedHandlers } = createApiStub();
 
-  // First call
   toolDisplayExtension(api);
-  const firstTools = capturedTools.map((t) => t.name);
-  assert.ok(firstTools.includes("find"), "find registered on first call");
-
-  // Simulate reload
+  assert.equal(capturedTools.length, 0);
+  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
   const countBeforeReload = capturedTools.length;
+
   toolDisplayExtension(api);
-  const countAfterReload = capturedTools.length;
-
-  // Each call to registerToolDisplayOverrides registers the same built-in
-  // tools again (find, ls, write immediately; read/grep/edit/bash deferred).
-  assert.ok(
-    countAfterReload >= countBeforeReload + 3,
-    "at least 3 tools re-registered on reload",
-  );
-
-  // Verify tool names appear multiple times, meaning they were re-registered
-  const toolNameCounts = new Map<string, number>();
-  for (const tool of capturedTools) {
-    toolNameCounts.set(tool.name, (toolNameCounts.get(tool.name) ?? 0) + 1);
-  }
-  assert.ok(
-    (toolNameCounts.get("find") ?? 0) >= 2,
-    "find is registered at least twice (two calls)",
-  );
-  assert.ok(
-    (toolNameCounts.get("ls") ?? 0) >= 2,
-    "ls is registered at least twice (two calls)",
-  );
-  assert.ok(
-    (toolNameCounts.get("write") ?? 0) >= 2,
-    "write is registered at least twice (two calls)",
-  );
+  for (const { event, handler } of capturedHandlers.slice()) if (event === "before_agent_start") await handler();
+  assert.ok(capturedTools.length >= countBeforeReload + 7);
 });
 
 test("2: re-registered tools have renderCall and renderResult functions after reload", () => {
@@ -209,31 +189,15 @@ test("2: re-registered tools have renderCall and renderResult functions after re
   }
 });
 
-test("2: built-in tool overrides register before lifecycle events and re-register on reload", async () => {
+test("2: built-in tool overrides wait for lifecycle ownership discovery", async () => {
   const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 
   registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  const firstImmediate = registeredTools.map((t) => t.name);
-
-  for (const toolName of ["read", "edit", "grep", "bash"] as const) {
-    assert.ok(firstImmediate.includes(toolName), `${toolName} registered before lifecycle events`);
-  }
-
-  const countBeforeLifecycle = registeredTools.length;
+  assert.equal(registeredTools.length, 0);
+  await eventHandlers.session_start?.();
+  assert.equal(registeredTools.length, 7);
   await eventHandlers.before_agent_start?.();
-  assert.equal(
-    registeredTools.length,
-    countBeforeLifecycle,
-    "before_agent_start does not duplicate already registered built-ins",
-  );
-
-  registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  const countAfterReload = registeredTools.length;
-
-  assert.ok(
-    countAfterReload >= countBeforeLifecycle + 7,
-    "built-in display overrides re-register during reload initialization",
-  );
+  assert.equal(registeredTools.length, 7, "lifecycle retries do not duplicate renderers");
 });
 
 // ---------------------------------------------------------------------------
@@ -648,8 +612,10 @@ test("9: calling toolDisplayExtension three times (double reload) is safe", () =
   assert.doesNotThrow(() => toolDisplayExtension(api));
   const afterThird = { tools: capturedTools.length, cmds: capturedCommands.length };
 
-  // Each call adds more registrations (no deduplication in the stub)
-  assert.ok(afterThird.tools > afterSecond.tools, "tools registered on third call");
+  // Tool registration is deferred until owners and active tools are known.
+  assert.equal(afterFirst.tools, 0);
+  assert.equal(afterSecond.tools, 0);
+  assert.equal(afterThird.tools, 0);
   assert.ok(afterThird.cmds > afterSecond.cmds, "commands registered on third call");
 
   // Verify all tool registrations have renderCall/renderResult

@@ -55,6 +55,9 @@ function createApiStub(
     getAllTools(): unknown[] {
       return overrides.getAllTools?.() ?? [];
     },
+    getActiveTools(): string[] {
+      return ["read", "grep", "find", "ls", "bash", "edit", "write"];
+    },
     getCommands(): Array<{ name: string }> {
       return overrides.getCommands?.() ?? [];
     },
@@ -94,12 +97,13 @@ test("entry point registers tool-display command", () => {
   assert.ok(cmdNames.includes("tool-display"), "tool-display command registered");
 });
 
-test("entry point registers built-in tool overrides", () => {
-  const { api, capturedTools } = createApiStub();
+test("entry point registers built-in tool overrides after loading", async () => {
+  const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
+  assert.equal(capturedTools.length, 0);
+  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
 
   const toolNames = capturedTools.map((t) => t.name);
-  // find, ls, write are registered immediately; read/grep/edit/bash are deferred
   assert.ok(toolNames.includes("find"), "find tool override registered");
   assert.ok(toolNames.includes("ls"), "ls tool override registered");
   assert.ok(toolNames.includes("write"), "write tool override registered");
@@ -138,12 +142,13 @@ test("before_agent_start handler refreshes capabilities without crashing", async
   await assert.doesNotReject(async () => beforeHandler());
 });
 
-test("multiple calls to toolDisplayExtension are idempotent", () => {
+test("multiple calls to toolDisplayExtension are idempotent", async () => {
   const { api, capturedTools, capturedCommands, capturedHandlers } = createApiStub();
 
   // Call twice
   toolDisplayExtension(api);
   toolDisplayExtension(api);
+  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
 
   // Second call should not throw. Tools may be registered again (that's up
   // to the extension loader to deduplicate), but the extension itself must
@@ -334,14 +339,13 @@ test("overridden tools include renderCall and renderResult functions", () => {
   }
 });
 
-test("overridden tools preserve promptSnippet and promptGuidelines from built-ins", () => {
-  const { api, capturedTools } = createApiStub();
+test("overridden tools preserve promptSnippet and promptGuidelines from built-ins", async () => {
+  const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
+  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
 
   const byName = new Map(capturedTools.map((t) => [t.name, t]));
 
-  // read (deferred) won't be registered immediately; it's deferred
-  // So we only check tools registered immediately
   for (const name of ["find", "ls", "write"] as const) {
     const tool = byName.get(name);
     assert.ok(tool, `${name} is registered`);

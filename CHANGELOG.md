@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Defer built-in renderer registration until tool ownership is settled, and register only currently active built-ins, preventing inactive `find`/`ls` activation and duplicate-name conflicts with later-loaded tool extensions (#26, #29, PR #34, PR #35).
+
 ## [0.6.1] - 2026-07-23
 
 ### Added
