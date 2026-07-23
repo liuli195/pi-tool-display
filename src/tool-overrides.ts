@@ -134,7 +134,8 @@ interface BashToolOverrideOptions {
 }
 
 const builtInToolCache = new Map<string, BuiltInTools>();
-const runtimeBuiltInToolOverrides = new Map<string, RuntimeToolDefinition>();
+const RUNTIME_BUILT_IN_OVERRIDE = Symbol.for("pi-tool-display.runtimeBuiltInOverride.v1");
+const runtimeBuiltInToolOverrides = new Map<string, { definition: RuntimeToolDefinition; owner: string }>();
 const RTK_COMPACTION_LABEL = "compacted by RTK";
 export const WRITE_EXECUTION_META_LIMIT = 100;
 const WRITE_EXECUTION_META_STATE_KEY = "__piToolDisplayWriteExecutionMeta";
@@ -192,19 +193,44 @@ type GlobalWithToolDisplayApi = typeof globalThis & {
 const decoratedToolDescriptors = new WeakMap<RuntimeToolDefinition, ToolPropertyDescriptorSnapshot>();
 const decoratedTools = new Set<RuntimeToolDefinition>();
 
-function registerRuntimeTool(pi: ExtensionAPI, tool: RuntimeToolDefinition): void {
-  const name = tool.name;
-  if (name) {
-    runtimeBuiltInToolOverrides.set(name, tool);
-    registerCleanup(() => {
-      if (runtimeBuiltInToolOverrides.get(name) === tool) runtimeBuiltInToolOverrides.delete(name);
-    });
-  }
-  pi.registerTool(tool as unknown as ToolDefinition);
+function toolOwnerKey(tool: unknown): string | undefined {
+  const sourceInfo = toRecord(toRecord(tool).sourceInfo);
+  const source = getTextField(sourceInfo, "source");
+  const path = getTextField(sourceInfo, "path");
+  return source && path ? JSON.stringify({ source, path, scope: sourceInfo.scope, origin: sourceInfo.origin }) : undefined;
 }
 
-export function getRuntimeBuiltInToolOverride(toolName: string): RuntimeToolDefinition | undefined {
-  return runtimeBuiltInToolOverrides.get(toolName);
+function registerRuntimeTool(pi: ExtensionAPI, tool: RuntimeToolDefinition): void {
+  pi.registerTool(tool as unknown as ToolDefinition);
+  const name = tool.name;
+  if (!name) return;
+
+  Object.defineProperty(tool, RUNTIME_BUILT_IN_OVERRIDE, { value: true });
+  const owner = tryGetAllTools(pi, "Built-in renderer ownership confirmation unavailable; skipped historical renderer publication.")
+    ?.find((candidate) => getTextField(candidate, "name") === name);
+  const ownerKey = toolOwnerKey(owner);
+  if (!ownerKey) return;
+
+  const entry = { definition: tool, owner: ownerKey };
+  runtimeBuiltInToolOverrides.set(name, entry);
+  registerCleanup(() => {
+    if (runtimeBuiltInToolOverrides.get(name) === entry) runtimeBuiltInToolOverrides.delete(name);
+  });
+}
+
+export function isRuntimeBuiltInToolOverride(tool: unknown): boolean {
+  return typeof tool === "object" && tool !== null && (tool as Record<PropertyKey, unknown>)[RUNTIME_BUILT_IN_OVERRIDE] === true;
+}
+
+export function getRuntimeBuiltInToolOverride(pi: ExtensionAPI, toolName: string): RuntimeToolDefinition | undefined {
+  try {
+    if (!pi.getActiveTools().includes(toolName)) return undefined;
+    const entry = runtimeBuiltInToolOverrides.get(toolName);
+    const owner = pi.getAllTools().find((tool) => getTextField(tool, "name") === toolName);
+    return entry && toolOwnerKey(owner) === entry.owner ? entry.definition : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function captureToolPropertyDescriptors(

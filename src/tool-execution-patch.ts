@@ -10,6 +10,7 @@ import {
   formatMcpCallLine,
   getRuntimeBuiltInToolOverride,
   getRuntimeCustomToolOverride,
+  isRuntimeBuiltInToolOverride,
   renderCustomToolResult,
   type RenderTheme,
 } from "./tool-overrides.js";
@@ -19,8 +20,9 @@ type Renderer = (...args: any[]) => unknown;
 type Resolver = (this: ToolExecutionLike) => Renderer | undefined;
 
 interface ToolExecutionLike {
+  toolName?: string;
   toolDefinition?: Record<string, unknown>;
-  builtInToolDefinition?: unknown;
+  builtInToolDefinition?: Record<string, unknown>;
 }
 
 interface PatchState {
@@ -67,9 +69,13 @@ export function registerToolExecutionPatch(
   };
 
   const getBuiltInRenderer = (instance: ToolExecutionLike, field: "renderCall" | "renderResult") => {
-    const name = instance.toolDefinition?.name;
-    if (typeof name !== "string") return undefined;
-    const renderer = getRuntimeBuiltInToolOverride(name)?.[field];
+    const name = instance.toolDefinition?.name ?? instance.builtInToolDefinition?.name ?? instance.toolName;
+    if (
+      typeof name !== "string" ||
+      instance.builtInToolDefinition?.name !== name ||
+      (instance.toolDefinition !== undefined && !isRuntimeBuiltInToolOverride(instance.toolDefinition))
+    ) return undefined;
+    const renderer = getRuntimeBuiltInToolOverride(pi, name)?.[field];
     return typeof renderer === "function" ? renderer as Renderer : undefined;
   };
 
