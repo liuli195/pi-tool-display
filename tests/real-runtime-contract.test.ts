@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { dirname, resolve } from "node:path";
 
-import { captureModelInvocation, modelVisibleInvocationSnapshot, runPureDisplayContract } from "./support/real-runtime-contract.js";
+import { captureModelInvocation, modelVisibleInvocationSnapshot, runBashDisplayContract, runPureDisplayContract } from "./support/real-runtime-contract.js";
 
 test("model-visible invocation snapshot is complete and fails closed for host-only or lossy shapes", () => {
   const signal = new AbortController().signal;
@@ -253,5 +253,58 @@ for (const entry of matrix) {
     assert.equal(observation.present.modelVisibleThinkingContext, observation.absent.modelVisibleThinkingContext);
     assert.equal(observation.present.completeSerializedSessionBytes, observation.absent.completeSerializedSessionBytes);
     assert.equal(observation.present.sessionSerializationAfterDispose, observation.absent.sessionSerializationAfterDispose);
+
+    const bashCommand = "contract bash command with enough words to wrap across several terminal lines ".repeat(4).trim();
+    for (const commandMode of ["full", "summary", "preview"] as const) {
+      const bash = await runBashDisplayContract(runtimeRoot, commandMode);
+      assert.deepEqual(bash.paths, ["cold", "reload", "new-call"]);
+      assert.deepEqual(bash.actionsBeforeFirstOutput, []);
+      for (const frame of [bash.firstCollapsedOutput, bash.present.tuiOutput.reload]) {
+        const text = plain(frame);
+        assert.match(text, /contract bash command/);
+        assert.match(text, /contract success first line/);
+        assert.match(text, /contract error first line/);
+        assert.doesNotMatch(text, /contract (?:success|error) folded (?:second|third) line/);
+      }
+      assert.match(plain(bash.present.tuiOutput.newCall), /contract final output/);
+      for (const frame of [bash.present.tuiOutput.expandedCold, bash.present.tuiOutput.expandedReload]) {
+        assert.match(plain(frame), /contract success folded third line/);
+        assert.match(plain(frame), /contract error folded third line/);
+      }
+      const commandIsFolded = (frame: string) => /more visual lines/.test(plain(frame).split(/contract (?:success first line|streaming output|final output)/)[0]);
+      const folded = commandIsFolded(bash.firstCollapsedOutput);
+      assert.equal(commandIsFolded(bash.present.tuiOutput.reload), folded);
+      assert.equal(commandIsFolded(bash.present.tuiOutput.newCall), folded);
+      assert.equal(folded, commandMode !== "full");
+
+      for (const run of [bash.absent, bash.present]) {
+        assert.ok(run.activeToolNames.includes("bash"));
+        assert.ok(run.ownership.every((tool) => tool.sourceInfo));
+        for (const definition of run.definitions) {
+          assert.strictEqual(definition.initialized, definition.pristine);
+          assert.strictEqual(definition.disposed, definition.pristine);
+          assert.deepEqual(definition.initializedDescriptors, definition.pristineDescriptors);
+          assert.deepEqual(definition.disposedDescriptors, definition.pristineDescriptors);
+        }
+        for (const execution of run.executions) {
+          assert.strictEqual(execution.initialized, execution.pristine);
+          assert.strictEqual(execution.disposed, execution.pristine);
+        }
+        assert.deepEqual(run.toolCall.arguments, { command: bashCommand, timeout: 17 });
+        assert.deepEqual(run.toolCall.callbackUpdates, ["contract streaming output"]);
+        assert.deepEqual(run.toolCall.updateEvents, ["contract streaming output"]);
+        assert.equal(run.toolCall.result, "contract final output");
+        assert.deepEqual(run.toolCall.eventOrder, ["start", "update", "end"]);
+      }
+      assert.ok(bash.present.loadedExtensionPaths.some((path) => path.endsWith("index.ts")));
+      assert.ok(bash.absent.loadedExtensionPaths.every((path) => !path.endsWith("index.ts")));
+      assert.match(bash.present.modelVisibleInvocations, /Deterministic same-name Bash contract tool/);
+      assert.deepEqual(bash.present.activeToolNames, bash.absent.activeToolNames);
+      assert.deepEqual(bash.present.ownership, bash.absent.ownership);
+      assert.deepEqual(bash.present.toolCall, bash.absent.toolCall);
+      assert.equal(bash.present.modelContext, bash.absent.modelContext);
+      assert.equal(bash.present.modelVisibleInvocations, bash.absent.modelVisibleInvocations);
+      assert.equal(bash.present.sessionSerializationAfterDispose, bash.absent.sessionSerializationAfterDispose);
+    }
   });
 }

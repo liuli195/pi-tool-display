@@ -646,3 +646,254 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
     present,
   };
 }
+
+async function runBashScenario(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview" | "full" | "summary", createTools: (probe: { updates: string[]; arguments?: unknown }) => any[], toolName = "grep"): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
+  const root = packageRoot(resolve(runtimeRoot));
+  const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
+  const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-contract-"));
+  const terminal = new MemoryTerminal();
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  try {
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
+    await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify(toolName === "bash"
+      ? { bashCommandMode: outputMode, bashCommandPreviewLines: 1, bashOutputMode: "preview", previewLines: 1, bashErrorOutputMode: "preview", bashErrorPreviewLines: 1 }
+      : { searchOutputMode: outputMode, previewLines: 1 }));
+    const observerPath = join(agentDir, "thinking-observer.js");
+    await writeFile(observerPath, `export default function (pi) {
+  for (const type of ["message_update", "message_end", "context"])
+    pi.on(type, event => globalThis.__piToolDisplayThinkingEvents.push(JSON.stringify({ type, event })));
+}\n`);
+    const sessionFile = join(agentDir, "contract.jsonl");
+    await writeFile(sessionFile, sessionJsonl);
+    const probeObservation: { updates: string[]; arguments?: unknown } = { updates: [] };
+    const customTools = createTools(probeObservation);
+    const pristineDefinitions = new Map(customTools.map((tool: any) => [tool.name, tool]));
+    const sessionManager = pi.SessionManager.open(sessionFile);
+    const appendEntry = sessionManager._appendEntry;
+    let appendedEntries = 0;
+    sessionManager._appendEntry = function (entry: any) {
+      entry.id = `contract-entry-${++appendedEntries}`;
+      entry.timestamp = "2000-01-01T00:00:00.000Z";
+      return appendEntry.call(this, entry);
+    };
+
+    const entry = resolve(import.meta.dirname, "..", "..", "index.ts");
+    const agentCore = await importRuntimePackage(root, "pi-agent-core");
+    const pristineProducers: ProducerSnapshot[] = [];
+    const initializedProducers: ProducerSnapshot[] = [];
+    const createRuntime = async ({ cwd, agentDir: nextAgentDir, sessionManager: nextManager, sessionStartEvent }: any) => {
+      pristineProducers.push(snapshotCallbackProducer(agentCore.Agent.prototype));
+      const services = await pi.createAgentSessionServices({
+        cwd, agentDir: nextAgentDir,
+        resourceLoaderOptions: {
+          additionalExtensionPaths: withExtension ? [entry, observerPath] : [observerPath],
+          noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+        },
+      });
+      initializedProducers.push(snapshotCallbackProducer(agentCore.Agent.prototype));
+      const created = await pi.createAgentSessionFromServices({
+        services, sessionManager: nextManager, sessionStartEvent,
+        customTools,
+      });
+      return { ...created, services, diagnostics: services.diagnostics };
+    };
+    const runtime = await pi.createAgentSessionRuntime(createRuntime, { cwd: process.cwd(), agentDir, sessionManager });
+    const definitionsInitialized = new Map(runtime.session.getAllTools().map((tool: any) => [tool.name, runtime.session.getToolDefinition(tool.name)]));
+    const mode = new pi.InteractiveMode(runtime) as any;
+    mode.ui.terminal = terminal;
+    const actionsBeforeFirstOutput: string[] = [];
+    const track = (name: string, target: any, method: string) => {
+      const original = target[method];
+      target[method] = function (...args: unknown[]) {
+        actionsBeforeFirstOutput.push(name);
+        return original.apply(this, args);
+      };
+    };
+    track("ctrl-o", mode, "toggleToolOutputExpansion");
+    const requestRender = mode.ui.requestRender;
+    mode.ui.requestRender = function (...args: unknown[]) {
+      if (args[0] === true) actionsBeforeFirstOutput.push("manual-invalidation");
+      return requestRender.apply(this, args);
+    };
+    if (mode.themeController) {
+      track("theme", mode.themeController, "setThemeName");
+      track("theme", mode.themeController, "setThemeInstance");
+      track("theme", mode.themeController, "preview");
+    }
+    await mode.init();
+    await waitForOutput(terminal, toolName === "bash" ? "contract bash command" : withExtension && outputMode === "count" ? "3 matches" : "contract fixture first line");
+    const cold = terminal.output;
+    terminal.take();
+    const actionsAtFirstOutput = [...actionsBeforeFirstOutput];
+    mode.toggleToolOutputExpansion();
+    await waitForOutput(terminal, "contract fixture first line");
+    const expandedCold = terminal.take();
+
+    mode.toggleToolOutputExpansion();
+    terminal.take();
+    pristineProducers.push(snapshotCallbackProducer(runtime.session.agent));
+    await mode.handleReloadCommand();
+    initializedProducers.push(snapshotCallbackProducer(runtime.session.agent));
+    await waitForOutput(terminal, toolName === "bash" ? "contract bash command" : withExtension && outputMode === "count" ? "3 matches" : outputMode === "hidden" ? "grep" : "contract fixture first line");
+    const reload = terminal.take();
+    mode.toggleToolOutputExpansion();
+    await waitForOutput(terminal, outputMode === "hidden" ? "grep" : "contract folded third line");
+    const expandedReload = terminal.take();
+    mode.toggleToolOutputExpansion();
+    terminal.take();
+
+    const toolCallId = "contract-new-call";
+    const args = toolName === "bash" ? { command: "contract bash command with enough words to wrap across several terminal lines ".repeat(4).trim(), timeout: 17 } : { pattern: "contract", path: "." };
+    const observedEvents: any[] = [];
+    const unsubscribe = runtime.session.subscribe((event: any) => {
+      if (event.toolCallId === toolCallId) observedEvents.push(event);
+    });
+    const ai = await importRuntimePackage(root, "pi-ai");
+    const modelInvocations: string[] = [];
+    const callbackInvocations: Array<Record<string, Function>> = [];
+    let response = 0;
+    installDeterministicStream(runtime.session.agent, () => {
+      const stream = new ai.AssistantMessageEventStream();
+      const toolCall = { type: "toolCall", id: toolCallId, name: toolName, arguments: args };
+      const message = {
+        role: "assistant", content: response++ === 0 ? [toolCall] : [{ type: "text", text: "done" }],
+        api: "contract", provider: "contract", model: "contract", stopReason: response === 1 ? "toolUse" : "stop",
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 0,
+      };
+      queueMicrotask(() => { stream.push({ type: "start", partial: message }); stream.push({ type: "done", reason: message.stopReason, message }); });
+      return stream;
+    }, (seam, invocationArgs) => {
+      modelInvocations.push(captureModelInvocation(seam, invocationArgs));
+      callbackInvocations.push(captureHostCallbacks(invocationArgs));
+    });
+    const realNow = Date.now;
+    Date.now = () => 2;
+    try {
+      await runtime.session.agent.prompt("run contract probe");
+    } finally {
+      Date.now = realNow;
+    }
+    await waitForOutput(terminal, toolName === "bash" ? "contract final output" : withExtension && outputMode === "count" ? "1 match" : outputMode === "hidden" ? "grep" : "contract final output");
+    unsubscribe();
+    const newCall = terminal.take();
+    mode.toggleToolOutputExpansion();
+    await waitForOutput(terminal, outputMode === "hidden" ? "grep" : "contract final output");
+    const expandedNewCall = terminal.take();
+    const callbackKeys = Object.keys(callbackInvocations[0] ?? {}).sort();
+    const callbackContract = await probeGeneratedCallbacks(agentCore.Agent, pristineProducers[0], callbackKeys);
+
+    const session = runtime.session;
+    const thinkingMessage = {
+      role: "assistant", api: "anthropic-messages", provider: "contract", model: "contract",
+      content: [{ type: "thinking", thinking: "Thinking: provider-authored bytes" }],
+      stopReason: "stop", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }, timestamp: 2,
+    };
+    (globalThis as any).__piToolDisplayThinkingEvents = [];
+    await (session as any)._extensionRunner.emit({ type: "message_update", message: structuredClone(thinkingMessage), assistantMessageEvent: { type: "thinking_delta", delta: "provider-authored bytes" } });
+    await (session as any)._extensionRunner.emit({ type: "message_end", message: structuredClone(thinkingMessage) });
+    const modelVisibleThinkingContext = serialize(await (session as any)._extensionRunner.emitContext([structuredClone(thinkingMessage)]));
+    const thinkingEventsObservedByOtherExtension = serialize((globalThis as any).__piToolDisplayThinkingEvents);
+    const tools = session.getAllTools();
+    const initializedSessionDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
+    mode.stop();
+    await runtime.dispose();
+    const disposedProducer = snapshotCallbackProducer(session.agent);
+    const pristineProducer = pristineProducers[0];
+    const initializedProducer = initializedProducers.at(-1)!;
+    if (pristineProducers.some(({ key }) => key !== pristineProducer.key) || initializedProducers.some(({ key }) => key !== pristineProducer.key) || disposedProducer.key !== pristineProducer.key) throw new Error("Pi Agent callback config producer changed during extension lifecycle");
+    const disposedDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
+    const definitions = [...pristineDefinitions].map(([name, pristine]: any) => {
+      const initialized = (definitionsInitialized.get(name) ?? initializedSessionDefinitions.get(name)) as object;
+      const disposed = disposedDefinitions.get(name) as object;
+      return {
+        name, pristine, initialized, disposed,
+        pristineDescriptors: Object.getOwnPropertyDescriptors(pristine),
+        initializedDescriptors: Object.getOwnPropertyDescriptors(initialized),
+        disposedDescriptors: Object.getOwnPropertyDescriptors(disposed),
+      };
+    });
+    const endEvent = observedEvents.find(({ type }) => type === "tool_execution_end");
+    if (!endEvent) throw new Error(`Unsupported Pi event shape: expected tool_execution_end, received ${serialize(observedEvents.map(({ type }) => type))}`);
+    const completeSerializedSessionBytes = await readFile(sessionFile, "utf8");
+    const observation = {
+      activeToolNames: session.getActiveToolNames(),
+      loadedExtensionPaths: session.resourceLoader.getExtensions().extensions.map((extension: any) => extension.resolvedPath),
+      ownership: tools.map((tool: any) => ({ name: tool.name, sourceInfo: tool.sourceInfo })),
+      definitions,
+      executions: definitions.map(({ name, pristine, initialized, disposed }: any) => ({ name, pristine: pristine.execute, initialized: initialized.execute, disposed: disposed.execute })),
+      toolCall: {
+        arguments: probeObservation.arguments,
+        callbackUpdates: probeObservation.updates,
+        updateEvents: observedEvents.filter(({ type }) => type === "tool_execution_update").map(({ partialResult }) => partialResult.content[0].text),
+        result: endEvent.result.content[0].text,
+        eventOrder: observedEvents.map(({ type }) => type.replace("tool_execution_", "")),
+      },
+      modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
+      modelVisibleInvocations: JSON.stringify(modelInvocations),
+      thinkingEventsObservedByOtherExtension,
+      modelVisibleThinkingContext,
+      completeSerializedSessionBytes,
+      hostCallbacks: {
+        keys: callbackKeys,
+        invocationTypes: Object.fromEntries(Object.entries(callbackInvocations[0] ?? {}).map(([key, value]) => [key, typeof value])),
+        invocations: callbackInvocations,
+        behavior: callbackContract.behavior,
+        unsupported: callbackContract.unsupported,
+        producer: {
+          key: pristineProducer.key,
+          pristine: pristineProducer.value, initialized: initializedProducer.value, disposed: disposedProducer.value,
+          pristineDescriptor: pristineProducer.descriptor,
+          initializedDescriptor: initializedProducer.descriptor,
+          disposedDescriptor: disposedProducer.descriptor,
+          pristineOwnerDescriptors: pristineProducer.ownerDescriptors,
+          initializedOwnerDescriptors: initializedProducer.ownerDescriptors,
+          disposedOwnerDescriptors: disposedProducer.ownerDescriptors,
+          pristineSnapshots: Object.freeze([...pristineProducers]),
+          initializedSnapshots: Object.freeze([...initializedProducers]),
+        },
+      },
+      sessionSerializationAfterDispose: completeSerializedSessionBytes,
+      tuiOutput: { cold, expandedCold, reload, expandedReload, newCall, expandedNewCall },
+      actionsBeforeFirstOutput: actionsAtFirstOutput,
+    };
+    return observation;
+  } finally {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    await rm(agentDir, { recursive: true, force: true });
+  }
+}
+
+export async function runBashDisplayContract(runtimeRoot: string, commandMode: "full" | "summary" | "preview"): Promise<PureDisplayContractObservation> {
+  const root = packageRoot(resolve(runtimeRoot));
+  const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
+  const seed = pi.SessionManager.inMemory(process.cwd(), { id: "contract-bash-session" });
+  const command = "contract bash command with enough words to wrap across several terminal lines ".repeat(4).trim();
+  const appendCall = (id: string, args: object, text: string, isError: boolean) => {
+    seed.appendMessage({
+      role: "assistant", content: [{ type: "toolCall", id, name: "bash", arguments: args }],
+      api: "contract", provider: "contract", model: "contract", stopReason: "toolUse",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 1,
+    });
+    seed.appendMessage({ role: "toolResult", toolCallId: id, toolName: "bash", content: [{ type: "text", text }], isError, timestamp: 2 });
+  };
+  appendCall("contract-cold-bash", { command, timeout: 17 }, "contract success first line\ncontract success folded second line\ncontract success folded third line", false);
+  appendCall("contract-cold-bash-error", { command: "contract failing command", timeout: 19 }, "contract error first line\ncontract error folded second line\ncontract error folded third line", true);
+  const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
+  const createTools = (probe: { updates: string[]; arguments?: unknown }) => [...pi.createCodingTools(process.cwd()).filter((tool: any) => tool.name !== "bash"), {
+    name: "bash", label: "Third-party bash", description: "Deterministic same-name Bash contract tool",
+    parameters: { type: "object", properties: { command: { type: "string" }, timeout: { type: "number" } }, required: ["command"], additionalProperties: false },
+    execute: async (_id: string, args: unknown, _signal: unknown, onUpdate: (result: unknown) => void) => {
+      probe.arguments = args;
+      probe.updates.push("contract streaming output");
+      onUpdate({ content: [{ type: "text", text: "contract streaming output" }], details: {} });
+      await tick();
+      return { content: [{ type: "text", text: "contract final output" }], details: {} };
+    },
+  }];
+  const absent = await runBashScenario(runtimeRoot, false, sessionJsonl, commandMode, createTools, "bash");
+  const present = await runBashScenario(runtimeRoot, true, sessionJsonl, commandMode, createTools, "bash");
+  return { paths: ["cold", "reload", "new-call"], firstCollapsedOutput: present.tuiOutput.cold, actionsBeforeFirstOutput: present.actionsBeforeFirstOutput, absent, present };
+}
+
