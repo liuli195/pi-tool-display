@@ -207,8 +207,8 @@ for (const entry of matrix) {
       assert.deepEqual(run.hostCallbacks.producer.disposedDescriptor, run.hostCallbacks.producer.pristineDescriptor);
       assert.deepEqual(run.hostCallbacks.producer.initializedOwnerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
       assert.deepEqual(run.hostCallbacks.producer.disposedOwnerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
-      assert.equal(run.hostCallbacks.producer.pristineSnapshots.length, 2); // initial load and real reload
-      assert.equal(run.hostCallbacks.producer.initializedSnapshots.length, 2);
+      assert.equal(run.hostCallbacks.producer.pristineSnapshots.length, 4); // initial load and three real reloads
+      assert.equal(run.hostCallbacks.producer.initializedSnapshots.length, 4);
       assert.ok(Object.isFrozen(run.hostCallbacks.producer.pristineSnapshots));
       assert.ok(Object.isFrozen(run.hostCallbacks.producer.initializedSnapshots));
       for (const snapshot of [...run.hostCallbacks.producer.pristineSnapshots, ...run.hostCallbacks.producer.initializedSnapshots]) {
@@ -266,7 +266,23 @@ for (const entry of matrix) {
         assert.match(text, /contract error first line/);
         assert.doesNotMatch(text, /contract (?:success|error) folded (?:second|third) line/);
       }
+      const partial = plain(bash.present.tuiOutput.partialNewCall);
+      assert.match(partial, /contract streaming output/);
+      assert.doesNotMatch(partial, /contract streaming folded second line/);
+      assert.notEqual(bash.present.tuiOutput.animatedPartialNewCall, "");
+      assert.notEqual(plain(bash.present.tuiOutput.animatedPartialNewCall), partial);
       assert.match(plain(bash.present.tuiOutput.newCall), /contract final output/);
+      assert.doesNotMatch(plain(bash.present.tuiOutput.newCall), /contract final folded second line/);
+      assert.match(plain(bash.present.tuiOutput.expandedNewCall), /contract final folded second line/);
+      assert.doesNotMatch(plain(bash.present.tuiOutput.collapsedNewCall), /contract final folded second line/);
+      assert.match(plain(bash.present.tuiOutput.errorNewCall), /contract final error/);
+      assert.doesNotMatch(plain(bash.present.tuiOutput.errorNewCall), /contract error folded second line/);
+      assert.match(plain(bash.present.tuiOutput.expandedErrorNewCall), /contract error folded second line/);
+      assert.doesNotMatch(plain(bash.present.tuiOutput.collapsedErrorNewCall), /contract error folded second line/);
+      assert.deepEqual(bash.present.lifecycle, {
+        reloads: 3, stableWrappers: true, wrappersAfterDispose: 0, descriptorsRestored: true,
+        timerBaseline: 0, timersWhilePartial: 1, timersAfterCompletion: 0, timersAfterDispose: 0,
+      });
       for (const frame of [bash.present.tuiOutput.expandedCold, bash.present.tuiOutput.expandedReload]) {
         assert.match(plain(frame), /contract success folded third line/);
         assert.match(plain(frame), /contract error folded third line/);
@@ -275,6 +291,9 @@ for (const entry of matrix) {
       const folded = commandIsFolded(bash.firstCollapsedOutput);
       assert.equal(commandIsFolded(bash.present.tuiOutput.reload), folded);
       assert.equal(commandIsFolded(bash.present.tuiOutput.newCall), folded);
+      assert.equal(commandIsFolded(bash.present.tuiOutput.collapsedNewCall), folded);
+      assert.equal(commandIsFolded(bash.present.tuiOutput.errorNewCall), folded);
+      assert.equal(commandIsFolded(bash.present.tuiOutput.collapsedErrorNewCall), folded);
       assert.equal(folded, commandMode !== "full");
 
       for (const run of [bash.absent, bash.present]) {
@@ -292,8 +311,8 @@ for (const entry of matrix) {
         }
         assert.deepEqual(run.toolCall.arguments, { command: bashCommand, timeout: 17 });
         assert.deepEqual(run.toolCall.callbackUpdates, ["contract streaming output"]);
-        assert.deepEqual(run.toolCall.updateEvents, ["contract streaming output"]);
-        assert.equal(run.toolCall.result, "contract final output");
+        assert.deepEqual(run.toolCall.updateEvents, ["contract streaming output\ncontract streaming folded second line"]);
+        assert.equal(run.toolCall.result, "contract final output\ncontract final folded second line");
         assert.deepEqual(run.toolCall.eventOrder, ["start", "update", "end"]);
       }
       assert.ok(bash.present.loadedExtensionPaths.some((path) => path.endsWith("index.ts")));
@@ -305,6 +324,14 @@ for (const entry of matrix) {
       assert.equal(bash.present.modelContext, bash.absent.modelContext);
       assert.equal(bash.present.modelVisibleInvocations, bash.absent.modelVisibleInvocations);
       assert.equal(bash.present.sessionSerializationAfterDispose, bash.absent.sessionSerializationAfterDispose);
+      assert.deepEqual({
+        reloads: bash.absent.lifecycle.reloads,
+        stableWrappers: bash.absent.lifecycle.stableWrappers,
+        wrappersAfterDispose: bash.absent.lifecycle.wrappersAfterDispose,
+        descriptorsRestored: bash.absent.lifecycle.descriptorsRestored,
+        timersAfterCompletion: bash.absent.lifecycle.timersAfterCompletion,
+        timersAfterDispose: bash.absent.lifecycle.timersAfterDispose,
+      }, { reloads: 3, stableWrappers: true, wrappersAfterDispose: 0, descriptorsRestored: true, timersAfterCompletion: 0, timersAfterDispose: 0 });
     }
   });
 }

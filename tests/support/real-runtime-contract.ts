@@ -11,6 +11,7 @@ interface RunObservation {
   definitions: Array<{ name: string; pristine: object; initialized: object; disposed: object; pristineDescriptors: PropertyDescriptorMap; initializedDescriptors: PropertyDescriptorMap; disposedDescriptors: PropertyDescriptorMap }>;
   executions: Array<{ name: string; pristine: Function; initialized: Function; disposed: Function }>;
   toolCalls: Array<{ name: string; arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] }>;
+  toolCall: { arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] };
   modelContext: string;
   modelVisibleInvocations: string;
   thinkingEventsObservedByOtherExtension: string;
@@ -31,7 +32,12 @@ interface RunObservation {
     };
   };
   sessionSerializationAfterDispose: string;
-  tuiOutput: { cold: string; expandedCold: string; reload: string; expandedReload: string; newCall: string; expandedNewCall: string };
+  tuiOutput: {
+    cold: string; expandedCold: string; reload: string; expandedReload: string;
+    partialNewCall: string; animatedPartialNewCall: string; newCall: string; expandedNewCall: string; collapsedNewCall: string;
+    errorNewCall: string; expandedErrorNewCall: string; collapsedErrorNewCall: string;
+  };
+  lifecycle: { reloads: number; stableWrappers: boolean; wrappersAfterDispose: number; descriptorsRestored: boolean; timerBaseline: number; timersWhilePartial: number; timersAfterCompletion: number; timersAfterDispose: number };
 }
 
 export interface PureDisplayContractObservation {
@@ -555,7 +561,7 @@ await server.connect(new StdioServerTransport());
       tuiOutput: { cold, expandedCold, reload, expandedReload, newCall, expandedNewCall },
       actionsBeforeFirstOutput: actionsAtFirstOutput,
     };
-    return observation;
+    return observation as unknown as RunObservation & { actionsBeforeFirstOutput: string[] };
   } finally {
     try {
       mode?.stop();
@@ -647,9 +653,19 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
   };
 }
 
-async function runBashScenario(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview" | "full" | "summary", createTools: (probe: { updates: string[]; arguments?: unknown }) => any[], toolName = "grep"): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
+interface ToolProbe { updates: string[]; arguments?: unknown; release?: () => void; calls: number }
+
+async function runBashScenario(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview" | "full" | "summary", createTools: (probe: ToolProbe) => any[], toolName = "grep"): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
+  const hostPrototype = pi.ToolExecutionComponent.prototype;
+  const pristineHostDescriptors = Object.getOwnPropertyDescriptors(hostPrototype);
+  const hostStateKey = Symbol.for("pi-tool-display.piHostAdapter.v1");
+  const wrapperCount = () => Object.getOwnPropertyDescriptor(hostPrototype, hostStateKey) ? 1 : 0;
+  const validWrapper = () => {
+    const state = (hostPrototype as any)[hostStateKey];
+    return !state || (hostPrototype.getCallRenderer === state.patchedCall && hostPrototype.getResultRenderer === state.patchedResult);
+  };
   const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-contract-"));
   const terminal = new MemoryTerminal();
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -666,7 +682,7 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
 }\n`);
     const sessionFile = join(agentDir, "contract.jsonl");
     await writeFile(sessionFile, sessionJsonl);
-    const probeObservation: { updates: string[]; arguments?: unknown } = { updates: [] };
+    const probeObservation: ToolProbe = { updates: [], calls: 0 };
     const customTools = createTools(probeObservation);
     const pristineDefinitions = new Map(customTools.map((tool: any) => [tool.name, tool]));
     const sessionManager = pi.SessionManager.open(sessionFile);
@@ -716,6 +732,16 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
       if (args[0] === true) actionsBeforeFirstOutput.push("manual-invalidation");
       return requestRender.apply(this, args);
     };
+    let renderPasses = 0;
+    const renderWaiters: Array<{ after: number; done: () => void }> = [];
+    const doRender = mode.ui.doRender;
+    mode.ui.doRender = function (...args: unknown[]) {
+      const result = doRender.apply(this, args);
+      renderPasses++;
+      for (const waiter of renderWaiters.splice(0).filter(({ after }) => renderPasses > after)) waiter.done();
+      return result;
+    };
+    const waitForRenderAfter = (after: number) => renderPasses > after ? Promise.resolve() : new Promise<void>((done) => renderWaiters.push({ after, done }));
     if (mode.themeController) {
       track("theme", mode.themeController, "setThemeName");
       track("theme", mode.themeController, "setThemeInstance");
@@ -732,19 +758,42 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
 
     mode.toggleToolOutputExpansion();
     terminal.take();
-    pristineProducers.push(snapshotCallbackProducer(runtime.session.agent));
-    await mode.handleReloadCommand();
-    initializedProducers.push(snapshotCallbackProducer(runtime.session.agent));
-    await waitForOutput(terminal, toolName === "bash" ? "contract bash command" : withExtension && outputMode === "count" ? "3 matches" : outputMode === "hidden" ? "grep" : "contract fixture first line");
-    const reload = terminal.take();
+    let stableWrappers = wrapperCount() === (withExtension ? 1 : 0) && validWrapper();
+    let reload = "";
+    for (let reloadIndex = 0; reloadIndex < 3; reloadIndex++) {
+      pristineProducers.push(snapshotCallbackProducer(runtime.session.agent));
+      await mode.handleReloadCommand();
+      initializedProducers.push(snapshotCallbackProducer(runtime.session.agent));
+      stableWrappers &&= wrapperCount() === (withExtension ? 1 : 0) && validWrapper();
+      await waitForOutput(terminal, toolName === "bash" ? "contract bash command" : withExtension && outputMode === "count" ? "3 matches" : outputMode === "hidden" ? "grep" : "contract fixture first line");
+      reload = terminal.take();
+    }
     mode.toggleToolOutputExpansion();
     await waitForOutput(terminal, outputMode === "hidden" ? "grep" : "contract folded third line");
     const expandedReload = terminal.take();
     mode.toggleToolOutputExpansion();
     terminal.take();
 
-    const toolCallId = "contract-new-call";
+    let toolCallId = "contract-new-call";
     const args = toolName === "bash" ? { command: "contract bash command with enough words to wrap across several terminal lines ".repeat(4).trim(), timeout: 17 } : { pattern: "contract", path: "." };
+    const realSetInterval = globalThis.setInterval;
+    const realClearInterval = globalThis.clearInterval;
+    const animationTimers = new Set<ReturnType<typeof setInterval>>();
+    const intervalTicks: Array<() => void> = [];
+    globalThis.setInterval = ((callback: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+      const timer = realSetInterval((...callbackArgs: any[]) => {
+        callback(...callbackArgs);
+        if (delay === 200) intervalTicks.shift()?.();
+      }, delay === 200 ? 5 : delay, ...args);
+      if (delay === 200) animationTimers.add(timer);
+      return timer;
+    }) as typeof setInterval;
+    globalThis.clearInterval = ((timer: ReturnType<typeof setInterval>) => {
+      animationTimers.delete(timer);
+      return realClearInterval(timer);
+    }) as typeof clearInterval;
+    const timerBaseline = animationTimers.size;
+    const waitForIntervalTick = () => new Promise<void>((done) => intervalTicks.push(done));
     const observedEvents: any[] = [];
     const unsubscribe = runtime.session.subscribe((event: any) => {
       if (event.toolCallId === toolCallId) observedEvents.push(event);
@@ -756,9 +805,10 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
     installDeterministicStream(runtime.session.agent, () => {
       const stream = new ai.AssistantMessageEventStream();
       const toolCall = { type: "toolCall", id: toolCallId, name: toolName, arguments: args };
+      const invokesTool = response++ % 2 === 0;
       const message = {
-        role: "assistant", content: response++ === 0 ? [toolCall] : [{ type: "text", text: "done" }],
-        api: "contract", provider: "contract", model: "contract", stopReason: response === 1 ? "toolUse" : "stop",
+        role: "assistant", content: invokesTool ? [toolCall] : [{ type: "text", text: "done" }],
+        api: "contract", provider: "contract", model: "contract", stopReason: invokesTool ? "toolUse" : "stop",
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 0,
       };
       queueMicrotask(() => { stream.push({ type: "start", partial: message }); stream.push({ type: "done", reason: message.stopReason, message }); });
@@ -769,17 +819,49 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
     });
     const realNow = Date.now;
     Date.now = () => 2;
+    let partialNewCall = "", animatedPartialNewCall = "", newCall = "", expandedNewCall = "", collapsedNewCall = "";
+    let errorNewCall = "", expandedErrorNewCall = "", collapsedErrorNewCall = "";
+    let timersWhilePartial = timerBaseline, timersAfterCompletion = timerBaseline;
+    let prompt: Promise<void>;
     try {
-      await runtime.session.agent.prompt("run contract probe");
+      prompt = runtime.session.agent.prompt("run contract probe");
+      await waitForOutput(terminal, "contract streaming output");
+      if (!observedEvents.some(({ type }) => type === "tool_execution_update")) throw new Error("partial output rendered before the real tool update event");
+      partialNewCall = terminal.take();
+      timersWhilePartial = animationTimers.size;
+      if (animationTimers.size > timerBaseline) {
+        const rendersBeforeAnimation = renderPasses;
+        await waitForIntervalTick();
+        await waitForRenderAfter(rendersBeforeAnimation);
+        animatedPartialNewCall = terminal.take();
+      }
+      probeObservation.release?.();
+      await prompt;
+      await waitForOutput(terminal, toolName === "bash" ? "contract final output" : withExtension && outputMode === "count" ? "1 match" : outputMode === "hidden" ? "grep" : "contract final output");
+      newCall = terminal.take();
+      timersAfterCompletion = animationTimers.size;
+      mode.toggleToolOutputExpansion();
+      await waitForOutput(terminal, outputMode === "hidden" ? "grep" : "contract final output");
+      expandedNewCall = terminal.take();
+      mode.toggleToolOutputExpansion();
+      await waitForOutput(terminal, toolName === "bash" ? "contract final output" : "grep");
+      collapsedNewCall = terminal.take();
+      if (toolName === "bash") {
+        toolCallId = "contract-new-call-error";
+        await runtime.session.agent.prompt("run failing contract probe");
+        await waitForOutput(terminal, "contract final error");
+        errorNewCall = terminal.take();
+        mode.toggleToolOutputExpansion();
+        await waitForOutput(terminal, "contract final error");
+        expandedErrorNewCall = terminal.take();
+        mode.toggleToolOutputExpansion();
+        await waitForOutput(terminal, "contract final error");
+        collapsedErrorNewCall = terminal.take();
+      }
     } finally {
       Date.now = realNow;
     }
-    await waitForOutput(terminal, toolName === "bash" ? "contract final output" : withExtension && outputMode === "count" ? "1 match" : outputMode === "hidden" ? "grep" : "contract final output");
     unsubscribe();
-    const newCall = terminal.take();
-    mode.toggleToolOutputExpansion();
-    await waitForOutput(terminal, outputMode === "hidden" ? "grep" : "contract final output");
-    const expandedNewCall = terminal.take();
     const callbackKeys = Object.keys(callbackInvocations[0] ?? {}).sort();
     const callbackContract = await probeGeneratedCallbacks(agentCore.Agent, pristineProducers[0], callbackKeys);
 
@@ -798,6 +880,16 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
     const initializedSessionDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
     mode.stop();
     await runtime.dispose();
+    const timersAfterDispose = animationTimers.size;
+    const wrappersAfterDispose = wrapperCount();
+    const restoredHostDescriptors = Object.getOwnPropertyDescriptors(hostPrototype);
+    const descriptorsRestored = Reflect.ownKeys(pristineHostDescriptors).every((key) => {
+      const before = (pristineHostDescriptors as any)[key] as PropertyDescriptor;
+      const after = (restoredHostDescriptors as any)[key] as PropertyDescriptor;
+      return after && before.value === after.value && before.get === after.get && before.set === after.set && before.configurable === after.configurable && before.enumerable === after.enumerable && before.writable === after.writable;
+    });
+    globalThis.setInterval = realSetInterval;
+    globalThis.clearInterval = realClearInterval;
     const disposedProducer = snapshotCallbackProducer(session.agent);
     const pristineProducer = pristineProducers[0];
     const initializedProducer = initializedProducers.at(-1)!;
@@ -813,7 +905,8 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
         disposedDescriptors: Object.getOwnPropertyDescriptors(disposed),
       };
     });
-    const endEvent = observedEvents.find(({ type }) => type === "tool_execution_end");
+    const primaryEvents = observedEvents.filter(({ toolCallId: id }) => id === "contract-new-call");
+    const endEvent = primaryEvents.find(({ type }) => type === "tool_execution_end");
     if (!endEvent) throw new Error(`Unsupported Pi event shape: expected tool_execution_end, received ${serialize(observedEvents.map(({ type }) => type))}`);
     const completeSerializedSessionBytes = await readFile(sessionFile, "utf8");
     const observation = {
@@ -825,9 +918,9 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
       toolCall: {
         arguments: probeObservation.arguments,
         callbackUpdates: probeObservation.updates,
-        updateEvents: observedEvents.filter(({ type }) => type === "tool_execution_update").map(({ partialResult }) => partialResult.content[0].text),
+        updateEvents: primaryEvents.filter(({ type }) => type === "tool_execution_update").map(({ partialResult }) => partialResult.content[0].text),
         result: endEvent.result.content[0].text,
-        eventOrder: observedEvents.map(({ type }) => type.replace("tool_execution_", "")),
+        eventOrder: primaryEvents.map(({ type }) => type.replace("tool_execution_", "")),
       },
       modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
       modelVisibleInvocations: JSON.stringify(modelInvocations),
@@ -854,10 +947,11 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
         },
       },
       sessionSerializationAfterDispose: completeSerializedSessionBytes,
-      tuiOutput: { cold, expandedCold, reload, expandedReload, newCall, expandedNewCall },
+      tuiOutput: { cold, expandedCold, reload, expandedReload, partialNewCall, animatedPartialNewCall, newCall, expandedNewCall, collapsedNewCall, errorNewCall, expandedErrorNewCall, collapsedErrorNewCall },
+      lifecycle: { reloads: 3, stableWrappers, wrappersAfterDispose, descriptorsRestored, timerBaseline, timersWhilePartial, timersAfterCompletion, timersAfterDispose },
       actionsBeforeFirstOutput: actionsAtFirstOutput,
     };
-    return observation;
+    return observation as unknown as RunObservation & { actionsBeforeFirstOutput: string[] };
   } finally {
     if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
@@ -881,15 +975,19 @@ export async function runBashDisplayContract(runtimeRoot: string, commandMode: "
   appendCall("contract-cold-bash", { command, timeout: 17 }, "contract success first line\ncontract success folded second line\ncontract success folded third line", false);
   appendCall("contract-cold-bash-error", { command: "contract failing command", timeout: 19 }, "contract error first line\ncontract error folded second line\ncontract error folded third line", true);
   const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
-  const createTools = (probe: { updates: string[]; arguments?: unknown }) => [...pi.createCodingTools(process.cwd()).filter((tool: any) => tool.name !== "bash"), {
+  const createTools = (probe: ToolProbe) => [...pi.createCodingTools(process.cwd()).filter((tool: any) => tool.name !== "bash"), {
     name: "bash", label: "Third-party bash", description: "Deterministic same-name Bash contract tool",
     parameters: { type: "object", properties: { command: { type: "string" }, timeout: { type: "number" } }, required: ["command"], additionalProperties: false },
     execute: async (_id: string, args: unknown, _signal: unknown, onUpdate: (result: unknown) => void) => {
       probe.arguments = args;
-      probe.updates.push("contract streaming output");
-      onUpdate({ content: [{ type: "text", text: "contract streaming output" }], details: {} });
-      await tick();
-      return { content: [{ type: "text", text: "contract final output" }], details: {} };
+      probe.calls++;
+      if (probe.calls === 1) {
+        probe.updates.push("contract streaming output");
+        onUpdate({ content: [{ type: "text", text: "contract streaming output\ncontract streaming folded second line" }], details: {} });
+        await new Promise<void>((done) => { probe.release = done; });
+        return { content: [{ type: "text", text: "contract final output\ncontract final folded second line" }], details: {} };
+      }
+      return { content: [{ type: "text", text: "contract final error\ncontract error folded second line" }], details: {}, isError: true };
     },
   }];
   const absent = await runBashScenario(runtimeRoot, false, sessionJsonl, commandMode, createTools, "bash");
