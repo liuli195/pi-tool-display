@@ -1,4 +1,7 @@
 import type { ExtensionAPI, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
+import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { renderEditDiffResult } from "./diff-renderer.js";
+import { extractTextOutput, shortenPath } from "./render-utils.js";
 import type { ToolDisplayConfig } from "./types.js";
 import { toRecord } from "./tool-metadata.js";
 import { formatGenericToolCallLine, formatMcpCallLine, formatSearchCallLine, getRuntimeBuiltInToolOverride, getRuntimeCustomToolOverride, getSearchScope, renderCustomToolResult, renderReadDisplayCall, renderReadDisplayResult, renderSearchResult, type RenderTheme } from "./tool-overrides.js";
@@ -42,6 +45,65 @@ export function registerProducerRendererAdapter(adapter: ProducerRendererAdapter
   };
 }
 
+function changedPatch(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  return value.split(/\r?\n/).some((line) => /^[-+](?!---|\+\+\+)/.test(line)) ? value : undefined;
+}
+
+function suppliedDiff(value: unknown): string | undefined {
+  const record = toRecord(value);
+  for (const key of ["diff", "patch"] as const) {
+    const patch = changedPatch(record[key]);
+    if (patch) return patch;
+  }
+  for (const key of ["patches", "edits"] as const) {
+    if (!Array.isArray(record[key])) continue;
+    const patches = record[key].map(suppliedDiff).filter((patch): patch is string => !!patch);
+    if (patches.length) return patches.join("\n");
+  }
+  return undefined;
+}
+
+function replacementDiff(value: unknown): string | undefined {
+  const record = toRecord(value);
+  const replacements = Array.isArray(record.edits) ? record.edits.map(toRecord) : [record];
+  if (!replacements.length || replacements.some((edit) => typeof edit.oldText !== "string" || typeof edit.newText !== "string")) return undefined;
+  const oldStart = typeof record.oldStart === "number" ? record.oldStart : typeof record.startLine === "number" ? record.startLine : 1;
+  const newStart = typeof record.newStart === "number" ? record.newStart : oldStart;
+  return replacements.map((edit) => {
+    const oldLines = (edit.oldText as string).replace(/\r/g, "").split("\n");
+    const newLines = (edit.newText as string).replace(/\r/g, "").split("\n");
+    return `@@ -${oldStart},${oldLines.length} +${newStart},${newLines.length} @@\n${oldLines.map((line) => `-${line}`).join("\n")}\n${newLines.map((line) => `+${line}`).join("\n")}`;
+  }).join("\n");
+}
+
+function editEvidence(result: unknown, args: Readonly<Record<string, unknown>>): string | undefined {
+  const resultRecord = toRecord(result);
+  return suppliedDiff(resultRecord.details) ?? suppliedDiff(resultRecord) ?? suppliedDiff(args) ?? replacementDiff(args);
+}
+
+function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>): DisplayPlan {
+  const path = typeof row.arguments.path === "string" ? row.arguments.path : typeof row.arguments.file_path === "string" ? row.arguments.file_path : "...";
+  const renderCall: ToolRenderer = (args: unknown, theme: RenderTheme, context?: { isPartial?: boolean; argsComplete?: boolean }) => {
+    const title = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", shortenPath(path))}`;
+    const diff = context?.isPartial && context.argsComplete ? replacementDiff(args) ?? suppliedDiff(args) : undefined;
+    if (!diff) return new Text(title, 0, 0);
+    const container = new Container();
+    container.addChild(new Text(title, 0, 0));
+    container.addChild(new Spacer(1));
+    container.addChild(renderEditDiffResult({ diff }, { expanded: true, filePath: path }, config as ToolDisplayConfig, theme, ""));
+    return container;
+  };
+  const renderResult: ToolRenderer = (result: any, options: ToolRenderResultOptions, theme: RenderTheme, context?: { isError?: boolean }) => {
+    const fallback = extractTextOutput(result);
+    if (options.isPartial) return new Text(theme.fg("muted", "↳ editing..."), 0, 0);
+    if (result?.isError || context?.isError) return new Text(theme.fg("error", fallback || "Edit failed."), 0, 0);
+    const diff = editEvidence(result, row.arguments);
+    return renderEditDiffResult(diff ? { diff } : undefined, { expanded: options.expanded, filePath: path }, config as ToolDisplayConfig, theme, fallback);
+  };
+  return { call: renderCall, result: renderResult, shell: "default" };
+}
+
 export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
   return {
     resolve(row, config, native) {
@@ -62,6 +124,7 @@ export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
           renderSearchResult(value, options, config as ToolDisplayConfig, theme, labels[0]!, value?.details, labels[1]);
         return { ...native, call, result };
       }
+      if (row.toolName === "edit" && config.registerToolOverrides.edit) return { ...native, ...editRenderers(row, config) };
       if (row.builtIn && pi) {
         const definition = getRuntimeBuiltInToolOverride(pi, row.toolName);
         if (definition) return {
