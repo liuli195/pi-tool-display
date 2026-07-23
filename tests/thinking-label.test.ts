@@ -4,13 +4,13 @@ import { registerThinkingLabeling } from "../src/thinking-label.ts";
 
 type CapturedHandler = (event: unknown, ctx?: unknown) => Promise<void> | void;
 
-function captureThinkingHandlers(): Map<string, CapturedHandler> {
+function captureThinkingHandlers(labelsEnabled = true): Map<string, CapturedHandler> {
   const handlers = new Map<string, CapturedHandler>();
   registerThinkingLabeling({
     on(eventName: string, handler: CapturedHandler): void {
       handlers.set(eventName, handler);
     },
-  } as never);
+  } as never, () => labelsEnabled);
   return handlers;
 }
 
@@ -47,6 +47,30 @@ test("thinking label formatting leaves unsupported explicit OpenAI APIs unchange
   await handlers.get("message_end")?.(event, {});
 
   assert.equal(event.message.content[0], thinkingBlock);
+});
+
+test("disabled thinking labels preserve compact-thinking headings while context cleanup remains active", async () => {
+  const handlers = captureThinkingHandlers(false);
+  const messageEvent = {
+    message: {
+      role: "assistant",
+      api: "anthropic-messages",
+      content: [{ type: "thinking", thinking: "**Summary title**" }],
+    },
+  };
+
+  await handlers.get("message_update")?.(messageEvent, {});
+  await handlers.get("message_end")?.(messageEvent, {});
+  assert.equal(messageEvent.message.content[0]?.thinking, "**Summary title**");
+
+  const contextEvent = {
+    messages: [{
+      role: "assistant",
+      content: [{ type: "thinking", thinking: "\u001b[31mThinking: \u001b[0m**Historical title**" }],
+    }],
+  };
+  await handlers.get("context")?.(contextEvent, {});
+  assert.equal(contextEvent.messages[0]?.content[0]?.thinking, "**Historical title**");
 });
 
 test("thinking context sanitization removes presentation labels before model context", async () => {
