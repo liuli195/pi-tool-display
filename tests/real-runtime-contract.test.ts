@@ -82,42 +82,45 @@ for (const entry of matrix) {
 
     assert.deepEqual(observation.paths, ["cold", "reload", "new-call"]);
     assert.deepEqual(observation.actionsBeforeFirstOutput, []);
-    assert.match(cold, /grep|contract/);
-    assert.match(cold, /3 matches/);
-    assert.doesNotMatch(cold, /contract fixture first line|contract folded (?:second|third) line/);
-    assert.match(plain(observation.present.tuiOutput.reload), /3 matches/);
-    assert.doesNotMatch(plain(observation.present.tuiOutput.reload), /contract fixture first line/);
-    assert.match(plain(observation.present.tuiOutput.newCall), /1 match/);
-    assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /contract final output/);
+    assert.match(cold, /read/);
+    assert.match(cold, /3 lines/);
+    assert.match(cold, /3 (?:matches|entries|items)/);
+    assert.doesNotMatch(cold, /contract read first line|contract read (?:second|third) line|first\.txt|alpha\.txt/);
+    assert.match(plain(observation.present.tuiOutput.reload), /3 lines/);
+    assert.doesNotMatch(plain(observation.present.tuiOutput.reload), /contract read first line/);
+    assert.match(plain(observation.present.tuiOutput.newCall), /3 lines/);
+    assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /contract read final first line/);
     for (const frame of [observation.present.tuiOutput.expandedCold, observation.present.tuiOutput.expandedReload]) {
-      assert.match(plain(frame), /contract fixture first line/);
-      assert.match(plain(frame), /contract folded third line/);
+      assert.match(plain(frame), /contract read first line/);
+      assert.match(plain(frame), /contract read third line/);
     }
-    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract final output/);
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract read final third line/);
 
     const hidden = await runPureDisplayContract(runtimeRoot, "hidden");
     for (const frame of [hidden.firstCollapsedOutput, hidden.present.tuiOutput.reload, hidden.present.tuiOutput.newCall,
       hidden.present.tuiOutput.expandedCold, hidden.present.tuiOutput.expandedReload, hidden.present.tuiOutput.expandedNewCall]) {
       const text = plain(frame);
-      assert.match(text, /grep/);
-      assert.doesNotMatch(text, /contract fixture first line|contract folded (?:second|third) line|contract final output|matches? returned/);
+      assert.match(text, /read|find|ls/);
+      assert.doesNotMatch(text, /contract read (?:first|second|third) line|contract read final|first\.txt|alpha\.txt|matches? returned|3 lines/);
     }
 
     const preview = await runPureDisplayContract(runtimeRoot, "preview");
     for (const frame of [preview.firstCollapsedOutput, preview.present.tuiOutput.reload]) {
       const text = plain(frame);
-      assert.match(text, /contract fixture first line/);
-      assert.doesNotMatch(text, /contract folded (?:second|third) line/);
+      assert.match(text, /contract read first line/);
+      assert.doesNotMatch(text, /contract read (?:second|third) line/);
     }
-    assert.match(plain(preview.present.tuiOutput.newCall), /contract final output/);
+    assert.match(plain(preview.present.tuiOutput.newCall), /contract read final first line/);
     for (const frame of [preview.present.tuiOutput.expandedCold, preview.present.tuiOutput.expandedReload])
-      assert.match(plain(frame), /contract folded third line/);
-    assert.match(plain(preview.present.tuiOutput.expandedNewCall), /contract final output/);
+      assert.match(plain(frame), /contract read third line/);
+    assert.match(plain(preview.present.tuiOutput.expandedNewCall), /contract read final third line/);
 
     assert.ok(observation.present.loadedExtensionPaths.some((path) => path.endsWith("index.ts")));
     assert.ok(observation.absent.loadedExtensionPaths.every((path) => !path.endsWith("index.ts")));
     for (const run of [observation.absent, observation.present]) {
-      assert.ok(run.activeToolNames.includes("grep"));
+      assert.ok(run.activeToolNames.includes("read") && run.activeToolNames.includes("find") && run.activeToolNames.includes("ls"));
+      assert.ok(run.activeToolNamesAtStartup.includes("read"));
+      assert.ok(!run.activeToolNamesAtStartup.includes("find") && !run.activeToolNamesAtStartup.includes("ls"));
       assert.ok(run.ownership.every((tool) => tool.sourceInfo));
       for (const definition of run.definitions) {
         assert.strictEqual(definition.initialized, definition.pristine);
@@ -130,15 +133,16 @@ for (const entry of matrix) {
         assert.strictEqual(execution.disposed, execution.pristine);
         assert.equal(typeof execution.pristine, "function");
       }
-      assert.deepEqual(run.toolCall.arguments, { pattern: "contract", path: "." });
-      assert.deepEqual(run.toolCall.callbackUpdates, ["contract streaming output"]);
-      assert.deepEqual(run.toolCall.updateEvents, ["contract streaming output"]);
-      assert.equal(run.toolCall.result, "contract final output");
-      assert.deepEqual(run.toolCall.eventOrder, ["start", "update", "end"]);
-      assert.match(run.modelContext, /contract-cold-grep/);
-      assert.match(run.modelVisibleInvocations, /contract-cold-grep/);
-      assert.match(run.modelVisibleInvocations, /grep/);
-      assert.match(run.modelVisibleInvocations, /Deterministic same-name grep contract tool/);
+      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls"]);
+      for (const call of run.toolCalls) {
+        assert.deepEqual(call.callbackUpdates, [`contract ${call.name} streaming output`]);
+        assert.deepEqual(call.updateEvents, [`contract ${call.name} streaming output`]);
+        assert.match(call.result, /new-|contract read final/);
+        assert.deepEqual(call.eventOrder, ["start", "update", "end"]);
+      }
+      assert.match(run.modelContext, /contract-cold-read/);
+      assert.match(run.modelVisibleInvocations, /contract-cold-read/);
+      assert.match(run.modelVisibleInvocations, /Deterministic same-name read contract tool/);
       assert.strictEqual(run.hostCallbacks.producer.initialized, run.hostCallbacks.producer.pristine);
       assert.strictEqual(run.hostCallbacks.producer.disposed, run.hostCallbacks.producer.pristine);
       assert.deepEqual(run.hostCallbacks.producer.initializedDescriptor, run.hostCallbacks.producer.pristineDescriptor);
@@ -159,14 +163,15 @@ for (const entry of matrix) {
       for (const callbacks of run.hostCallbacks.invocations) {
         assert.deepEqual(Object.keys(callbacks).sort(), run.hostCallbacks.keys);
       }
-      assert.match(run.sessionSerializationAfterDispose, /contract-cold-grep/);
-      assert.match(plain(run.tuiOutput.reload), /contract/);
-      assert.match(plain(run.tuiOutput.newCall), /grep/);
+      assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
+      assert.match(plain(run.tuiOutput.reload), /read/);
+      assert.match(plain(run.tuiOutput.newCall), /read|find|ls/);
     }
 
     assert.deepEqual(observation.present.activeToolNames, observation.absent.activeToolNames);
+    assert.deepEqual(observation.present.activeToolNamesAtStartup, observation.absent.activeToolNamesAtStartup);
     assert.deepEqual(observation.present.ownership, observation.absent.ownership);
-    assert.deepEqual(observation.present.toolCall, observation.absent.toolCall);
+    assert.deepEqual(observation.present.toolCalls, observation.absent.toolCalls);
     assert.equal(observation.present.modelContext, observation.absent.modelContext);
     assert.equal(observation.present.modelVisibleInvocations, observation.absent.modelVisibleInvocations);
     assert.deepEqual(observation.present.hostCallbacks.keys, observation.absent.hostCallbacks.keys);
