@@ -11,7 +11,7 @@ interface RunObservation {
   executions: Array<{ name: string; pristine: Function; initialized: Function; disposed: Function }>;
   toolCall: { arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] };
   modelContext: string;
-  modelInvocationInputs: string;
+  modelVisibleInvocations: string;
   sessionSerializationAfterDispose: string;
   tuiOutput: { cold: string; expandedCold: string; reload: string; newCall: string };
 }
@@ -78,6 +78,17 @@ function installDeterministicStream(agent: any, stream: (...args: unknown[]) => 
 
 const snapshotUndefined = { $type: "undefined" } as const;
 
+function ownDataEntries(value: object, path: string): Array<[string, unknown]> {
+  const entries: Array<[string, unknown]> = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === "symbol") throw new Error(`Unsupported symbol key at ${path}`);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if (!("value" in descriptor)) throw new Error(`Unsupported accessor at ${path}.${key}`);
+    entries.push([key, descriptor.value]);
+  }
+  return entries;
+}
+
 function snapshotValue(value: unknown, path: string, seen: Set<object>): unknown {
   if (value === undefined) return snapshotUndefined;
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
@@ -93,17 +104,22 @@ function snapshotValue(value: unknown, path: string, seen: Set<object>): unknown
       return { $type: "AbortSignal", aborted: value.aborted, reason: snapshotValue(value.reason, `${path}.reason`, seen) };
     }
     if (Array.isArray(value)) {
-      if (Object.keys(value).length !== value.length) throw new Error(`Unsupported sparse or decorated array at ${path}`);
-      return value.map((item, index) => snapshotValue(item, `${path}[${index}]`, seen));
+      const keys = Reflect.ownKeys(value);
+      if (keys.some((key) => typeof key !== "string" || (key !== "length" && !/^\d+$/.test(key)))) {
+        throw new Error(`Unsupported decorated array at ${path}`);
+      }
+      if (keys.length !== value.length + 1) throw new Error(`Unsupported sparse or decorated array at ${path}`);
+      return Array.from({ length: value.length }, (_, index) => {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) throw new Error(`Unsupported array descriptor at ${path}[${index}]`);
+        return snapshotValue(descriptor.value, `${path}[${index}]`, seen);
+      });
     }
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) throw new Error(`Unsupported object shape at ${path}`);
-    if (Object.getOwnPropertySymbols(value).length) throw new Error(`Unsupported symbol keys at ${path}`);
     const result: Record<string, unknown> = {};
-    for (const key of Object.keys(value).sort()) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-      if (descriptor.get || descriptor.set) throw new Error(`Unsupported accessor at ${path}.${key}`);
-      result[key] = snapshotValue(descriptor.value, `${path}.${key}`, seen);
+    for (const [key, item] of ownDataEntries(value, path).sort(([a], [b]) => a.localeCompare(b))) {
+      result[key] = snapshotValue(item, `${path}.${key}`, seen);
     }
     return result;
   } finally {
@@ -111,42 +127,46 @@ function snapshotValue(value: unknown, path: string, seen: Set<object>): unknown
   }
 }
 
-export function faithfulInvocationSnapshot(args: unknown[]): string {
-  if (args.length !== 3) throw new Error(`Unsupported model invocation shape: expected model, context, options; received ${args.length} arguments`);
-  const context = args[1] as any;
-  const tools = context?.tools?.map((tool: any, index: number) => {
-    if (!Object.hasOwn(tool, "execute") || typeof tool.execute !== "function") {
-      throw new Error(`Unsupported model tool shape at context.tools[${index}]: execute must be an own function`);
-    }
-    if (Object.hasOwn(tool, "prepareArguments") && tool.prepareArguments !== undefined && typeof tool.prepareArguments !== "function") {
-      throw new Error(`Unsupported model tool shape at context.tools[${index}]: prepareArguments must be undefined or an own function`);
-    }
-    // These are host-only behavior, never provider-visible; assert their exact shapes before omitting nondeterministic function identities.
-    const { execute: _execute, prepareArguments: _prepareArguments, ...modelVisibleTool } = tool;
-    return modelVisibleTool;
-  });
-  const modelVisibleContext = { ...context, tools };
-  const options = args[2] as any;
-  let faithfulOptions = options;
-  const callbackOptionKeys = [
-    "convertToLlm", "transformContext", "getApiKey", "shouldStopAfterTurn", "prepareNextTurn",
-    "getSteeringMessages", "getFollowUpMessages", "beforeToolCall", "afterToolCall", "onPayload", "onResponse",
-  ] as const;
-  for (const key of callbackOptionKeys) {
-    if (!options || !Object.hasOwn(options, key)) continue;
-    const callback = options[key];
-    if (callback !== undefined && typeof callback !== "function") throw new Error(`Unsupported ${key} option shape`);
-    faithfulOptions = {
-      ...faithfulOptions,
-      [key]: callback === undefined ? undefined : {
-        $type: "function",
-        name: callback.name,
-        length: callback.length,
-        source: Function.prototype.toString.call(callback),
-      },
-    };
+const hostCallbackOptionKeys = new Set([
+  "convertToLlm", "transformContext", "getApiKey", "shouldStopAfterTurn", "prepareNextTurn",
+  "getSteeringMessages", "getFollowUpMessages", "beforeToolCall", "afterToolCall", "onPayload", "onResponse",
+]);
+
+function projectObject(value: unknown, path: string, exclude: ReadonlySet<string>, replacements: ReadonlyMap<string, unknown> = new Map()): Record<string, unknown> {
+  if (!value || typeof value !== "object" || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) {
+    throw new Error(`Unsupported object shape at ${path}`);
   }
-  return JSON.stringify(snapshotValue({ model: args[0], context: modelVisibleContext, options: faithfulOptions }, "invocation", new Set()));
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of ownDataEntries(value, path)) {
+    if (exclude.has(key)) continue;
+    result[key] = replacements.has(key) ? replacements.get(key) : item;
+  }
+  return result;
+}
+
+export function modelVisibleInvocationSnapshot(args: unknown[]): string {
+  if (args.length !== 3) throw new Error(`Unsupported model invocation shape: expected model, context, options; received ${args.length} arguments`);
+  const contextEntries = ownDataEntries(args[1] as object, "context");
+  const toolsEntry = contextEntries.find(([key]) => key === "tools");
+  if (toolsEntry && !Array.isArray(toolsEntry[1])) throw new Error("Unsupported model context tools shape");
+  const tools = (toolsEntry?.[1] as unknown[] | undefined)?.map((tool, index) => {
+    const path = `context.tools[${index}]`;
+    const entries = ownDataEntries(tool as object, path);
+    const execute = entries.find(([key]) => key === "execute");
+    if (!execute || typeof execute[1] !== "function") throw new Error(`Unsupported model tool shape at ${path}: execute must be an own function`);
+    const prepare = entries.find(([key]) => key === "prepareArguments");
+    if (prepare && prepare[1] !== undefined && typeof prepare[1] !== "function") {
+      throw new Error(`Unsupported model tool shape at ${path}: prepareArguments must be undefined or an own function`);
+    }
+    return projectObject(tool, path, new Set(["execute", "prepareArguments"]));
+  });
+  const context = projectObject(args[1], "context", new Set(), new Map([["tools", tools]]));
+  const optionsEntries = ownDataEntries(args[2] as object, "options");
+  for (const [key, value] of optionsEntries) {
+    if (hostCallbackOptionKeys.has(key) && value !== undefined && typeof value !== "function") throw new Error(`Unsupported ${key} option shape`);
+  }
+  const options = projectObject(args[2], "options", hostCallbackOptionKeys);
+  return JSON.stringify(snapshotValue({ model: args[0], context, options }, "invocation", new Set()));
 }
 
 function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unknown[]): string {
@@ -160,7 +180,7 @@ function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unkno
       throw new Error(`Unsupported Pi ${seam} tool schema shape`);
     }
   }
-  return faithfulInvocationSnapshot(args);
+  return modelVisibleInvocationSnapshot(args);
 }
 
 async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, createTools: (probe: { updates: string[]; arguments?: unknown }) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
@@ -301,7 +321,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
         eventOrder: observedEvents.map(({ type }) => type.replace("tool_execution_", "")),
       },
       modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
-      modelInvocationInputs: JSON.stringify(modelInvocations),
+      modelVisibleInvocations: JSON.stringify(modelInvocations),
       sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),
       tuiOutput: { cold, expandedCold, reload, newCall },
       actionsBeforeFirstOutput: actionsAtFirstOutput,

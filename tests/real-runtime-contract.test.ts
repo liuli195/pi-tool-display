@@ -3,25 +3,35 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { dirname, resolve } from "node:path";
 
-import { faithfulInvocationSnapshot, runPureDisplayContract } from "./support/real-runtime-contract.js";
+import { modelVisibleInvocationSnapshot, runPureDisplayContract } from "./support/real-runtime-contract.js";
 
-test("model invocation snapshot preserves the complete tuple and rejects lossy values", () => {
+test("model-visible invocation snapshot is complete and fails closed for host-only or lossy shapes", () => {
   const signal = new AbortController().signal;
-  assert.equal(faithfulInvocationSnapshot([
+  assert.equal(modelVisibleInvocationSnapshot([
     { id: "model", provider: "contract", optional: undefined },
     { systemPrompt: "prompt", messages: [], tools: [] },
     { signal, temperature: 0, headers: { z: "last", a: "first" } },
   ]), '{"context":{"messages":[],"systemPrompt":"prompt","tools":[]},"model":{"id":"model","optional":{"$type":"undefined"},"provider":"contract"},"options":{"headers":{"a":"first","z":"last"},"signal":{"$type":"AbortSignal","aborted":false,"reason":{"$type":"undefined"}},"temperature":0}}');
-  assert.equal(faithfulInvocationSnapshot([
+  assert.equal(modelVisibleInvocationSnapshot([
     {}, { tools: [{ name: "probe", execute() {}, prepareArguments: undefined }] }, {},
   ]), '{"context":{"tools":[{"name":"probe"}]},"model":{},"options":{}}');
-  assert.throws(() => faithfulInvocationSnapshot([{}, { tools: [{ execute() {}, prepareArguments: "lossy" }] }, {}]), /prepareArguments must be undefined or an own function/);
-  assert.equal(faithfulInvocationSnapshot([{}, {}, { afterToolCall: function finalize(result: unknown) { return result; } }]),
-    '{"context":{"tools":{"$type":"undefined"}},"model":{},"options":{"afterToolCall":{"$type":"function","length":1,"name":"finalize","source":"function finalize(result){return result}"}}}');
-  assert.throws(() => faithfulInvocationSnapshot([{}, {}, { afterToolCall: "lossy" }]), /Unsupported afterToolCall option shape/);
-  assert.match(faithfulInvocationSnapshot([{}, {}, { beforeToolCall: function validate() {} }]), /"beforeToolCall":\{"\$type":"function","length":0,"name":"validate"/);
-  assert.throws(() => faithfulInvocationSnapshot([{}, {}, { callback() {} }]), /nonserializable function/);
-  assert.throws(() => faithfulInvocationSnapshot([{}, {}, new Map()]), /Unsupported object shape/);
+  assert.throws(() => modelVisibleInvocationSnapshot([{}, { tools: [{ execute() {}, prepareArguments: "lossy" }] }, {}]), /prepareArguments must be undefined or an own function/);
+  assert.equal(modelVisibleInvocationSnapshot([{}, {}, { afterToolCall: function finalize(result: unknown) { return result; } }]),
+    '{"context":{},"model":{},"options":{}}');
+  assert.throws(() => modelVisibleInvocationSnapshot([{}, {}, { afterToolCall: "lossy" }]), /Unsupported afterToolCall option shape/);
+  assert.throws(() => modelVisibleInvocationSnapshot([{}, {}, { callback() {} }]), /nonserializable function/);
+  assert.throws(() => modelVisibleInvocationSnapshot([{}, {}, new Map()]), /Unsupported object shape/);
+
+  const accessor = Object.defineProperty({}, "value", { enumerable: true, get: () => 1 });
+  assert.throws(() => modelVisibleInvocationSnapshot([accessor, {}, {}]), /Unsupported accessor/);
+  const hidden = Object.defineProperty({}, "hidden", { value: 1 });
+  assert.match(modelVisibleInvocationSnapshot([hidden, {}, {}]), /"hidden":1/);
+  assert.throws(() => modelVisibleInvocationSnapshot([{ [Symbol("secret")]: 1 }, {}, {}]), /Unsupported symbol key/);
+  const decorated: unknown[] = [];
+  Object.defineProperty(decorated, "decoration", { value: true, enumerable: true });
+  assert.throws(() => modelVisibleInvocationSnapshot([decorated, {}, {}]), /Unsupported decorated array/);
+  const callbackAccessor = Object.defineProperty({}, "afterToolCall", { enumerable: true, get: () => () => {} });
+  assert.throws(() => modelVisibleInvocationSnapshot([{}, {}, callbackAccessor]), /Unsupported accessor/);
 });
 
 interface RuntimeMatrixEntry { name: string; version?: string; env: string; required: boolean }
@@ -83,9 +93,9 @@ for (const entry of matrix) {
       assert.equal(run.toolCall.result, "contract final output");
       assert.deepEqual(run.toolCall.eventOrder, ["start", "update", "end"]);
       assert.match(run.modelContext, /contract-cold-read/);
-      assert.match(run.modelInvocationInputs, /contract-cold-read/);
-      assert.match(run.modelInvocationInputs, /contract_probe/);
-      assert.match(run.modelInvocationInputs, /Deterministic contract tool/);
+      assert.match(run.modelVisibleInvocations, /contract-cold-read/);
+      assert.match(run.modelVisibleInvocations, /contract_probe/);
+      assert.match(run.modelVisibleInvocations, /Deterministic contract tool/);
       assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
       assert.match(plain(run.tuiOutput.reload), /contract\.txt/);
       assert.match(plain(run.tuiOutput.newCall), /contract_probe/);
@@ -95,7 +105,7 @@ for (const entry of matrix) {
     assert.deepEqual(observation.present.ownership, observation.absent.ownership);
     assert.deepEqual(observation.present.toolCall, observation.absent.toolCall);
     assert.equal(observation.present.modelContext, observation.absent.modelContext);
-    assert.equal(observation.present.modelInvocationInputs, observation.absent.modelInvocationInputs);
+    assert.equal(observation.present.modelVisibleInvocations, observation.absent.modelVisibleInvocations);
     assert.equal(observation.present.sessionSerializationAfterDispose, observation.absent.sessionSerializationAfterDispose);
   });
 }
