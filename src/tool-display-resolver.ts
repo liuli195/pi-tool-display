@@ -14,8 +14,18 @@ export type ToolDisplayDiagnosticSink = (diagnostic: ToolDisplayDiagnostic) => v
 function failOpen(custom: ToolRenderer | undefined, native: ToolRenderer | undefined, diagnose: (error: unknown) => void): ToolRenderer | undefined {
   if (!custom || custom === native || !native) return custom ?? native;
   return function (this: unknown, ...args: any[]) {
-    try { return custom.apply(this, args); }
-    catch (error) { diagnose(error); return native.apply(this, args); }
+    const owner = this;
+    let rendered: any;
+    try { rendered = custom.apply(owner, args); }
+    catch (error) { diagnose(error); return native.apply(owner, args); }
+    if (!rendered || typeof rendered.render !== "function") return rendered;
+    return {
+      render(width: number) {
+        try { return rendered.render(width); }
+        catch (error) { diagnose(error); return native.apply(owner, args)?.render(width); }
+      },
+      invalidate() { rendered.invalidate?.(); },
+    };
   };
 }
 

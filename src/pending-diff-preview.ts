@@ -219,15 +219,13 @@ function getWriteContent(input: unknown): string | undefined {
 function getEditReplacements(input: unknown): EditReplacement[] {
   const record = toEditInput(input);
   if (Array.isArray(record.edits)) {
-    return record.edits.flatMap((entry) => {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-        return [];
-      }
-      const edit = entry as { oldText?: unknown; newText?: unknown };
-      return typeof edit.oldText === "string" && typeof edit.newText === "string"
-        ? [{ oldText: edit.oldText, newText: edit.newText }]
-        : [];
-    });
+    if (record.edits.some((entry) => !entry || typeof entry !== "object" || Array.isArray(entry)
+      || typeof (entry as { oldText?: unknown }).oldText !== "string"
+      || typeof (entry as { newText?: unknown }).newText !== "string")) return [];
+    return record.edits.map((entry) => ({
+      oldText: (entry as { oldText: string }).oldText,
+      newText: (entry as { newText: string }).newText,
+    }));
   }
 
   return typeof record.oldText === "string" && typeof record.newText === "string"

@@ -111,8 +111,15 @@ for (const entry of matrix) {
       assert.match(plain(frame), /contract read third line/);
     }
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract read final third line/);
+    for (const frame of [observation.firstCollapsedOutput, observation.present.tuiOutput.reload]) {
+      const text = plain(frame);
+      assert.match(text, /edit.*fixture\.txt/);
+      assert.doesNotMatch(text, /12#(?:AA|BB):/);
+    }
     assert.match(plain(observation.present.tuiOutput.expandedCold), /12#AA:old cold/);
     assert.match(plain(observation.present.tuiOutput.expandedReload), /12#BB:new cold/);
+    assert.match(plain(observation.present.tuiOutput.newCall), /edit.*fixture\.txt/);
+    assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /7#(?:CC|DD):/);
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#CC:old line/);
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#DD:new line/);
 
@@ -159,6 +166,8 @@ for (const entry of matrix) {
         assert.notEqual(source?.source, "sdk", `${name} must come through Pi's extension loader`);
         assert.match(source?.path ?? "", name === "generic_fixture" ? /generic-fixture\.js$/ : /pi-mcp-adapter[\\/]index\.ts$/);
       }
+      assert.ok(run.definitions.some(({ name }) => name === "edit"));
+      assert.ok(run.executions.some(({ name }) => name === "edit"));
       for (const definition of run.definitions) {
         assert.strictEqual(definition.initialized, definition.pristine);
         assert.strictEqual(definition.disposed, definition.pristine);

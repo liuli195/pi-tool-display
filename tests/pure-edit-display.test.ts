@@ -76,31 +76,33 @@ test("edit evidence is cycle-safe, rejects mixed patches, and preserves each edi
 
 test("renderer exceptions fail open to native", () => {
   const fallback = { render: () => ["native fallback"] };
-  const selected = resolver({ diffLayout: "invalid" as never }).resolve(
+  const throwingTheme = { ...theme, fg: () => { throw new Error("renderer failed"); } };
+  const selectedWithFallback = resolver().resolve(
     { toolName: "edit", arguments: { path: "a", oldText: "a", newText: "b" }, builtIn: true },
     { call: () => fallback, result: () => fallback },
   );
-  assert.doesNotThrow(() => selected.result!({ details: {} }, { expanded: true }, theme));
+  assert.equal(render(selectedWithFallback.result!({ details: {} }, { expanded: true }, throwingTheme)), "native fallback");
 });
 
-test("pending edit evidence performs zero node:fs and node:fs/promises reads", async () => {
+test("pending edit evidence performs zero node:fs and node:fs/promises workspace reads", async () => {
   const require = createRequire(import.meta.url);
   const fs = require("node:fs");
   const promises = require("node:fs/promises");
-  const originalSync = fs.readFileSync;
-  const originalAsync = promises.readFile;
+  const originals = new Map<any, Map<string, unknown>>();
   let reads = 0;
-  fs.readFileSync = () => { reads++; throw new Error("workspace read"); };
-  promises.readFile = async () => { reads++; throw new Error("workspace read"); };
+  for (const [owner, keys] of [[fs, ["readFileSync", "existsSync", "statSync", "realpathSync"]], [promises, ["readFile", "access", "stat", "realpath"]]] as const) {
+    originals.set(owner, new Map(keys.map((key) => [key, owner[key]])));
+    for (const key of keys) owner[key] = () => { reads++; throw new Error("workspace read"); };
+  }
   syncBuiltinESMExports();
   try {
     const { buildPendingEditPreviewData } = await import(`../src/pending-diff-preview.ts?no-edit-read=${Date.now()}`);
     const preview = buildPendingEditPreviewData({ path: "a.ts", oldText: "old", newText: "new" }, process.cwd());
     assert.equal(reads, 0);
     assert.equal(preview?.previousContent, "old");
+    assert.equal(buildPendingEditPreviewData({ path: "a.ts", edits: [{ oldText: "old", newText: "new" }, { nope: true }] }, process.cwd()), undefined);
   } finally {
-    fs.readFileSync = originalSync;
-    promises.readFile = originalAsync;
+    for (const [owner, values] of originals) for (const [key, value] of values) owner[key] = value;
     syncBuiltinESMExports();
   }
 });
