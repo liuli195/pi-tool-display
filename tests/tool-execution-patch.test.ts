@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ToolExecutionComponent, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { disposeAll } from "../src/disposable.ts";
 import { registerToolExecutionPatch } from "../src/tool-execution-patch.ts";
+import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
@@ -91,6 +93,71 @@ test("unconfigured third-party and built-in tools retain their original renderer
     assert.equal(builtIn.getResultRenderer(), originalResult);
   } finally {
     handlers.session_shutdown?.({ reason: "reload" });
+  }
+});
+
+test("historical components resolve current built-in renderers after reload without replacing third-party owners", async () => {
+  const oldBash = component({
+    name: "bash",
+    renderCall: () => ({ render: () => ["old bash call"] }),
+    renderResult: () => ({ render: () => ["old bash result"] }),
+  }, { name: "bash" });
+  const oldEdit = component({
+    name: "edit",
+    renderResult: () => ({ render: () => ["old edit result"] }),
+  }, { name: "edit" });
+  const first = apiStub();
+  registerToolExecutionPatch(first.api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+  first.handlers.session_shutdown?.({ reason: "reload" });
+
+  const handlers: Record<string, (event?: unknown) => unknown> = {};
+  const registered: Record<string, unknown>[] = [];
+  const api = {
+    on: (event: string, handler: (event?: unknown) => unknown) => { handlers[event] = handler; },
+    getActiveTools: () => ["bash", "edit"],
+    getAllTools: () => [],
+    registerTool: (tool: Record<string, unknown>) => { registered.push(tool); },
+  } as unknown as ExtensionAPI;
+  const currentConfig = {
+    ...DEFAULT_TOOL_DISPLAY_CONFIG,
+    bashCommandMode: "summary" as const,
+    bashOutputMode: "summary" as const,
+    diffViewMode: "unified" as const,
+  };
+  registerToolDisplayOverrides(api, () => currentConfig);
+  registerToolExecutionPatch(api, () => currentConfig);
+  await handlers.session_start?.();
+
+  try {
+    assert.deepEqual(registered.map((tool) => tool.name).sort(), ["bash", "edit"]);
+    assert.equal(render(oldBash.getCallRenderer()({ command: "printf one" }, theme, {})), "$ printf one");
+    assert.equal(render(oldBash.getResultRenderer()(result, options, theme, { args: { command: "printf one" } })), "↳ 2 lines returned • Ctrl+O to expand");
+    assert.match(render(oldBash.getResultRenderer()(result, { ...options, expanded: true }, theme, { args: { command: "printf one" } })), /^one\s*\ntwo$/);
+    assert.equal(render(oldBash.getResultRenderer()(result, options, theme, { args: { command: "printf one" } })), "↳ 2 lines returned • Ctrl+O to expand");
+    assert.notEqual(render(oldEdit.getResultRenderer()(result, options, theme, { args: { path: "file.ts", edits: [] } })), "old edit result");
+  } finally {
+    handlers.session_shutdown?.({ reason: "reload" });
+    disposeAll();
+  }
+
+  const thirdParty = component({
+    name: "bash",
+    renderCall: () => ({ render: () => ["third-party bash"] }),
+  }, { name: "bash" });
+  const external = apiStub();
+  const externalApi = {
+    ...external.api,
+    getActiveTools: () => ["bash"],
+    getAllTools: () => [{ name: "bash", sourceInfo: { source: "local", path: "third-party.ts" } }],
+    registerTool: () => assert.fail("must not register over a third-party owner"),
+  } as unknown as ExtensionAPI;
+  registerToolDisplayOverrides(externalApi, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+  registerToolExecutionPatch(externalApi, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+  await external.handlers.session_start?.();
+  try {
+    assert.equal(render(thirdParty.getCallRenderer()({}, theme)), "third-party bash");
+  } finally {
+    external.handlers.session_shutdown?.({ reason: "reload" });
   }
 });
 

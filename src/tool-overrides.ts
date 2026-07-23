@@ -134,6 +134,7 @@ interface BashToolOverrideOptions {
 }
 
 const builtInToolCache = new Map<string, BuiltInTools>();
+const runtimeBuiltInToolOverrides = new Map<string, RuntimeToolDefinition>();
 const RTK_COMPACTION_LABEL = "compacted by RTK";
 export const WRITE_EXECUTION_META_LIMIT = 100;
 const WRITE_EXECUTION_META_STATE_KEY = "__piToolDisplayWriteExecutionMeta";
@@ -192,7 +193,18 @@ const decoratedToolDescriptors = new WeakMap<RuntimeToolDefinition, ToolProperty
 const decoratedTools = new Set<RuntimeToolDefinition>();
 
 function registerRuntimeTool(pi: ExtensionAPI, tool: RuntimeToolDefinition): void {
+  const name = tool.name;
+  if (name) {
+    runtimeBuiltInToolOverrides.set(name, tool);
+    registerCleanup(() => {
+      if (runtimeBuiltInToolOverrides.get(name) === tool) runtimeBuiltInToolOverrides.delete(name);
+    });
+  }
   pi.registerTool(tool as unknown as ToolDefinition);
+}
+
+export function getRuntimeBuiltInToolOverride(toolName: string): RuntimeToolDefinition | undefined {
+  return runtimeBuiltInToolOverrides.get(toolName);
 }
 
 function captureToolPropertyDescriptors(

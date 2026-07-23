@@ -8,6 +8,7 @@ import { toRecord } from "./tool-metadata.js";
 import {
   formatGenericToolCallLine,
   formatMcpCallLine,
+  getRuntimeBuiltInToolOverride,
   getRuntimeCustomToolOverride,
   renderCustomToolResult,
   type RenderTheme,
@@ -58,14 +59,23 @@ export function registerToolExecutionPatch(
   const originalResult = prototype.getResultRenderer;
 
   const getOverride = (instance: ToolExecutionLike) => {
-    if (instance.builtInToolDefinition) return undefined;
     const name = instance.toolDefinition?.name;
     if (typeof name !== "string") return undefined;
+    if (instance.builtInToolDefinition) return undefined;
     const override = getRuntimeCustomToolOverride(name, getConfig());
     return override?.enabled ? { name, override } : undefined;
   };
 
+  const getBuiltInRenderer = (instance: ToolExecutionLike, field: "renderCall" | "renderResult") => {
+    const name = instance.toolDefinition?.name;
+    if (typeof name !== "string") return undefined;
+    const renderer = getRuntimeBuiltInToolOverride(name)?.[field];
+    return typeof renderer === "function" ? renderer as Renderer : undefined;
+  };
+
   const patchedCall: Resolver = function () {
+    const currentBuiltIn = getBuiltInRenderer(this, "renderCall");
+    if (currentBuiltIn) return currentBuiltIn;
     const matched = getOverride(this);
     if (!matched) return originalCall.call(this);
 
@@ -83,6 +93,8 @@ export function registerToolExecutionPatch(
   };
 
   const patchedResult: Resolver = function () {
+    const currentBuiltIn = getBuiltInRenderer(this, "renderResult");
+    if (currentBuiltIn) return currentBuiltIn;
     const matched = getOverride(this);
     if (!matched) return originalResult.call(this);
 
