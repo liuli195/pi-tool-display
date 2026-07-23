@@ -12,8 +12,29 @@ export interface ToolRowDescriptor {
 }
 export interface NativeRendererSlots { readonly call?: ToolRenderer; readonly result?: ToolRenderer; readonly shell?: unknown }
 export interface DisplayPlan extends NativeRendererSlots {}
+export interface ProducerRendererAdapter {
+  readonly id: string;
+  readonly toolName: string;
+  readonly kind: "generic" | "mcp";
+  readonly outputMode?: "hidden" | "summary" | "preview";
+  readonly overrideCallRenderer?: boolean;
+  readonly renderCall?: ToolRenderer;
+  readonly renderResult?: ToolRenderer;
+}
 export interface RendererCatalog {
   resolve(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>, native: NativeRendererSlots): DisplayPlan | undefined;
+}
+
+const producerAdapters = new Map<string, Set<ProducerRendererAdapter>>();
+
+export function registerProducerRendererAdapter(adapter: ProducerRendererAdapter): () => void {
+  const adapters = producerAdapters.get(adapter.toolName) ?? new Set<ProducerRendererAdapter>();
+  adapters.add(adapter);
+  producerAdapters.set(adapter.toolName, adapters);
+  return () => {
+    adapters.delete(adapter);
+    if (!adapters.size) producerAdapters.delete(adapter.toolName);
+  };
 }
 
 export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
@@ -45,13 +66,18 @@ export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
         };
       }
       if (row.builtIn) return undefined;
-      const custom = getRuntimeCustomToolOverride(row.toolName, config as ToolDisplayConfig);
-      if (!custom?.enabled) return undefined;
-      const call = native.call && !custom.overrideCallRenderer ? native.call : (args: unknown, theme: RenderTheme) => custom.kind === "mcp"
+      const configured = getRuntimeCustomToolOverride(row.toolName, config as ToolDisplayConfig);
+      const producers = producerAdapters.get(row.toolName);
+      if (!configured?.enabled && producers && producers.size > 1) throw new Error(`Renderer Adapter conflict for ${row.toolName}`);
+      const custom = configured?.enabled ? configured : producers?.values().next().value;
+      if (!custom) return undefined;
+      const replacementCall = custom.renderCall ?? ((args: unknown, theme: RenderTheme) => custom.kind === "mcp"
         ? formatMcpCallLine(row.toolName, row.label ?? `MCP ${row.toolName}`, toRecord(args), theme)
-        : formatGenericToolCallLine(row.toolName, args, theme);
-      return { ...native, call, result: (result: any, options: ToolRenderResultOptions, theme: RenderTheme) =>
-        renderCustomToolResult(result, options, config as ToolDisplayConfig, custom.outputMode, theme) };
+        : formatGenericToolCallLine(row.toolName, args, theme));
+      const call = native.call && !custom.overrideCallRenderer ? native.call : replacementCall;
+      const outputMode = custom.outputMode ?? config.mcpOutputMode;
+      return { ...native, call, result: custom.renderResult ?? ((result: any, options: ToolRenderResultOptions, theme: RenderTheme) =>
+        renderCustomToolResult(result, options, config as ToolDisplayConfig, outputMode, theme)) };
     },
   };
 }

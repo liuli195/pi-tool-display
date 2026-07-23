@@ -5,18 +5,21 @@ export interface ToolDisplayResolver {
   resolve(row: ToolRowDescriptor, native: NativeRendererSlots): DisplayPlan;
 }
 
-function failOpen(custom: ToolRenderer | undefined, native: ToolRenderer | undefined): ToolRenderer | undefined {
+function failOpen(custom: ToolRenderer | undefined, native: ToolRenderer | undefined, diagnose: (error: unknown) => void): ToolRenderer | undefined {
   if (!custom || custom === native || !native) return custom ?? native;
   return function (this: unknown, ...args: any[]) {
     try { return custom.apply(this, args); }
-    catch { return native.apply(this, args); }
+    catch (error) { diagnose(error); return native.apply(this, args); }
   };
 }
 
 export function createToolDisplayResolver(
   getConfig: () => Readonly<ToolDisplayConfig>,
   catalog: RendererCatalog,
+  onDiagnostic: (error: unknown) => void = () => {},
 ): ToolDisplayResolver {
+  let diagnosed = false;
+  const diagnose = (error: unknown) => { if (!diagnosed) { diagnosed = true; onDiagnostic(error); } };
   return {
     resolve(row, native) {
       try {
@@ -28,8 +31,9 @@ export function createToolDisplayResolver(
         });
         const selected = catalog.resolve(Object.freeze({ ...row, arguments: Object.freeze({ ...row.arguments }) }), snapshot, native);
         if (!selected) return native;
-        return { ...selected, call: failOpen(selected.call, native.call), result: failOpen(selected.result, native.result) };
-      } catch {
+        return { ...selected, call: failOpen(selected.call, native.call, diagnose), result: failOpen(selected.result, native.result, diagnose) };
+      } catch (error) {
+        diagnose(error);
         return native;
       }
     },
