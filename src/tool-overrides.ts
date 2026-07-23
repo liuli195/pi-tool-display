@@ -941,6 +941,44 @@ function renderBashErrorResult(
   return container;
 }
 
+export function renderBashResult(
+  result: ToolRenderInput,
+  options: ToolRenderResultOptions,
+  config: ToolDisplayConfig,
+  theme: RenderTheme,
+  context?: { args?: unknown; isError?: boolean },
+): Component {
+  const details = result.details as BashToolDetails | undefined;
+  const rawOutput = extractTextOutput(result);
+  if (options.isPartial) return renderBashLivePreview(rawOutput, options, config, theme, details);
+  if (isToolError(result, context)) return renderBashErrorResult(rawOutput, options, config, theme, details);
+
+  const lines = prepareOutputLines(rawOutput, options);
+  if (lines.length === 0) {
+    let text = formatBashNoOutputLine(getStringField(context?.args, "command"), theme);
+    if (config.showTruncationHints) text += formatBashTruncationHints(details, theme);
+    return textResult(text);
+  }
+  if (config.bashOutputMode === "summary") {
+    if (options.expanded) return renderBashPreviewWithHints(lines, getExpandedPreviewLineLimit(lines, config), config, theme, options, details);
+    let summary = formatBashSummary(lines, details, theme, config.showTruncationHints) + formatExpandHint(theme);
+    if (config.showTruncationHints) summary += formatBashTruncationHints(details, theme);
+    return textResult(summary);
+  }
+  if (config.bashOutputMode === "preview") {
+    return renderBashPreviewWithHints(lines, options.expanded ? getExpandedPreviewLineLimit(lines, config) : config.previewLines, config, theme, options, details);
+  }
+  if (!options.expanded && config.bashCollapsedLines === 0) {
+    let hidden = theme.fg("muted", "↳ output hidden");
+    if (config.showTruncationHints) hidden += formatBashTruncationHints(details, theme);
+    return textResult(hidden);
+  }
+  let text = buildPreviewText(lines, options.expanded ? lines.length : config.bashCollapsedLines, theme, options.expanded);
+  if (config.showTruncationHints) text += formatBashTruncationHints(details, theme);
+  return textResult(text);
+}
+
+
 export function renderSearchResult(
   result: ToolRenderInput,
   options: ToolRenderResultOptions,
@@ -1475,82 +1513,6 @@ export function registerToolDisplayOverrides(
       return;
     }
 
-  registerIfOwned(activeTools, "bash", () => {
-    registerRuntimeTool(pi, {
-      name: "bash",
-    label: "bash",
-    ...createBuiltinToolBase("bash"),
-    renderCall(args, theme, context) {
-      return renderBashCall(args, theme, context as never, getConfig());
-    },
-    renderResult(result, options, theme, context) {
-      const config = getConfig();
-      const details = result.details as BashToolDetails | undefined;
-      const rawOutput = extractTextOutput(result);
-
-      if (options.isPartial) {
-        return renderBashLivePreview(rawOutput, options, config, theme, details);
-      }
-
-      if (isToolError(result, context)) {
-        return renderBashErrorResult(rawOutput, options, config, theme, details);
-      }
-
-      const lines = prepareOutputLines(rawOutput, options);
-
-      if (lines.length === 0) {
-        let text = formatBashNoOutputLine(getStringField(context?.args, "command"), theme);
-        if (config.showTruncationHints) {
-          text += formatBashTruncationHints(details, theme);
-        }
-        return textResult(text);
-      }
-
-      if (config.bashOutputMode === "summary") {
-        if (options.expanded) {
-          const maxLines = getExpandedPreviewLineLimit(lines, config);
-          return renderBashPreviewWithHints(lines, maxLines, config, theme, options, details);
-        }
-
-        let summary = formatBashSummary(
-          lines,
-          details,
-          theme,
-          config.showTruncationHints,
-        );
-        summary += formatExpandHint(theme);
-        if (config.showTruncationHints) {
-          summary += formatBashTruncationHints(details, theme);
-        }
-        return textResult(summary);
-      }
-
-      if (config.bashOutputMode === "preview") {
-        const maxLines = options.expanded
-          ? getExpandedPreviewLineLimit(lines, config)
-          : config.previewLines;
-        return renderBashPreviewWithHints(lines, maxLines, config, theme, options, details);
-      }
-
-      if (!options.expanded && config.bashCollapsedLines === 0) {
-        let hidden = theme.fg("muted", "↳ output hidden");
-        if (config.showTruncationHints) {
-          hidden += formatBashTruncationHints(details, theme);
-        }
-        return textResult(hidden);
-      }
-
-      const maxLines = options.expanded
-        ? lines.length
-        : config.bashCollapsedLines;
-      let text = buildPreviewText(lines, maxLines, theme, options.expanded);
-      if (config.showTruncationHints) {
-        text += formatBashTruncationHints(details, theme);
-      }
-      return textResult(text);
-    },
-    });
-  });
 
   };
 

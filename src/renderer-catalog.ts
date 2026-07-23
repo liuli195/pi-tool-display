@@ -3,9 +3,10 @@ import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { renderEditDiffResult } from "./diff-renderer.js";
 import { extractTextOutput, shortenPath } from "./render-utils.js";
 import type { ToolDisplayConfig } from "./types.js";
+import { renderBashCall } from "./bash-display.js";
 import { toRecord } from "./tool-metadata.js";
 import { countWriteContentLines, getWriteContentSizeBytes } from "./write-display-utils.js";
-import { formatGenericToolCallLine, formatMcpCallLine, formatSearchCallLine, getRuntimeBuiltInToolOverride, getRuntimeCustomToolOverride, getSearchScope, renderCustomToolResult, renderReadDisplayCall, renderReadDisplayResult, renderSearchResult, type RenderTheme } from "./tool-overrides.js";
+import { formatGenericToolCallLine, formatMcpCallLine, formatSearchCallLine, getRuntimeBuiltInToolOverride, getRuntimeCustomToolOverride, getSearchScope, renderBashResult, renderCustomToolResult, renderReadDisplayCall, renderReadDisplayResult, renderSearchResult, type RenderTheme } from "./tool-overrides.js";
 
 export type ToolRenderer = (...args: any[]) => any;
 export interface ToolRowDescriptor {
@@ -169,6 +170,12 @@ export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
       }
       if (row.toolName === "edit" && config.registerToolOverrides.edit) return { ...native, ...editRenderers(row, config, native) };
       if (row.toolName === "write" && config.registerToolOverrides.write) return { ...native, ...writeRenderers(row, config, native) };
+      if (row.toolName === "bash" && config.registerToolOverrides.bash) return {
+        ...native,
+        call: (args: unknown, theme: RenderTheme, context: unknown) => renderBashCall(args as never, theme, context as never, config as ToolDisplayConfig),
+        result: (result: any, options: ToolRenderResultOptions, theme: RenderTheme, context: any) =>
+          renderBashResult(result, options, config as ToolDisplayConfig, theme, context),
+      };
       if (row.builtIn && pi) {
         const definition = getRuntimeBuiltInToolOverride(pi, row.toolName);
         if (definition) return {
