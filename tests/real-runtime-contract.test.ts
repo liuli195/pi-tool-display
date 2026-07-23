@@ -47,6 +47,11 @@ test("real capture path rejects context and tool accessors without invoking them
   });
   assert.throws(() => captureModelInvocation("streamFunction", [{}, { systemPrompt: "prompt", messages: [], tools: [tool] }, {}]), /Unsupported accessor/);
   assert.equal(reads, 0);
+
+  const tools = [tool];
+  Object.defineProperty(tools, "0", { enumerable: true, get: () => { reads++; return tool; } });
+  assert.throws(() => captureModelInvocation("streamFunction", [{}, { systemPrompt: "prompt", messages: [], tools }, {}]), /Unsupported accessor/);
+  assert.equal(reads, 0);
 });
 
 interface RuntimeMatrixEntry { name: string; version?: string; env: string; required: boolean }
@@ -111,10 +116,26 @@ for (const entry of matrix) {
       assert.match(run.modelVisibleInvocations, /contract-cold-read/);
       assert.match(run.modelVisibleInvocations, /contract_probe/);
       assert.match(run.modelVisibleInvocations, /Deterministic contract tool/);
-      assert.deepEqual(run.hostCallbacks.keys, Object.keys(run.hostCallbacks.baseline).sort());
+      const postConstructionKeys = Object.entries(run.hostCallbacks.postConstructionDescriptors)
+        .filter(([, descriptor]) => "value" in descriptor && typeof descriptor.value === "function")
+        .map(([key]) => key).sort();
+      const callbacksIntroducedAfterConstruction: Record<string, readonly string[]> = {
+        "0.74.0": ["getFollowUpMessages", "getSteeringMessages"],
+        "0.80.3": ["getFollowUpMessages", "getSteeringMessages", "prepareNextTurn"],
+        "0.81.1": ["getFollowUpMessages", "getSteeringMessages", "prepareNextTurn"],
+      };
+      const permittedIntroductions = callbacksIntroducedAfterConstruction[packageVersion];
+      assert.ok(permittedIntroductions, `Pi ${packageVersion} needs an explicit callback-introduction invariant`);
+      assert.deepEqual(run.hostCallbacks.keys, [...postConstructionKeys, ...permittedIntroductions].sort());
       for (const callbacks of run.hostCallbacks.invocations) {
         assert.deepEqual(Object.keys(callbacks).sort(), run.hostCallbacks.keys);
-        for (const key of run.hostCallbacks.keys) assert.strictEqual(callbacks[key], run.hostCallbacks.baseline[key]);
+        // Queue/next-turn callbacks are fresh closures created inside Agent.getConfig() for each run.
+        // Extensions cannot reach their source references, so only their versioned presence is asserted.
+        for (const key of postConstructionKeys) {
+          const descriptor = run.hostCallbacks.postConstructionDescriptors[key];
+          assert.ok(descriptor && "value" in descriptor && typeof descriptor.value === "function");
+          assert.strictEqual(callbacks[key], descriptor.value);
+        }
       }
       assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
       assert.match(plain(run.tuiOutput.reload), /contract\.txt/);

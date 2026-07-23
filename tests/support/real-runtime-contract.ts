@@ -12,7 +12,7 @@ interface RunObservation {
   toolCall: { arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] };
   modelContext: string;
   modelVisibleInvocations: string;
-  hostCallbacks: { keys: string[]; baseline: Record<string, Function>; invocations: Array<Record<string, Function>> };
+  hostCallbacks: { keys: string[]; postConstructionDescriptors: PropertyDescriptorMap; invocations: Array<Record<string, Function>> };
   sessionSerializationAfterDispose: string;
   tuiOutput: { cold: string; expandedCold: string; reload: string; newCall: string };
 }
@@ -176,6 +176,17 @@ export function modelVisibleInvocationSnapshot(args: unknown[]): string {
   return JSON.stringify(snapshotValue({ model, context, options }, "invocation", new Set()));
 }
 
+function arrayDataValues(value: unknown[], path: string): unknown[] {
+  const entries = ownDataEntries(value, path);
+  const length = entries.find(([key]) => key === "length")?.[1];
+  if (typeof length !== "number" || entries.length !== length + 1) throw new Error(`Unsupported sparse or decorated array at ${path}`);
+  return Array.from({ length }, (_, index) => {
+    const entry = entries.find(([key]) => key === String(index));
+    if (!entry) throw new Error(`Unsupported sparse or decorated array at ${path}`);
+    return entry[1];
+  });
+}
+
 export function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unknown[]): string {
   const { contextEntries } = invocationParts(args);
   const field = (key: string) => contextEntries.find(([name]) => name === key)?.[1];
@@ -183,7 +194,7 @@ export function captureModelInvocation(seam: "streamFunction" | "streamFn", args
   if (typeof field("systemPrompt") !== "string" || !Array.isArray(field("messages")) || !Array.isArray(tools)) {
     throw new Error(`Unsupported Pi ${seam} context shape: expected systemPrompt, messages, and tools`);
   }
-  for (const [index, tool] of tools.entries()) {
+  for (const [index, tool] of arrayDataValues(tools, "context.tools").entries()) {
     const entries = ownDataEntries(tool as object, `context.tools[${index}]`);
     const value = (key: string) => entries.find(([name]) => name === key)?.[1];
     if (typeof value("name") !== "string" || typeof value("description") !== "string" || !value("parameters") || typeof value("parameters") !== "object") {
@@ -223,6 +234,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     };
 
     const entry = resolve(import.meta.dirname, "..", "..", "index.ts");
+    let postConstructionCallbackDescriptors: PropertyDescriptorMap = {};
     const createRuntime = async ({ cwd, agentDir: nextAgentDir, sessionManager: nextManager, sessionStartEvent }: any) => {
       const services = await pi.createAgentSessionServices({
         cwd, agentDir: nextAgentDir,
@@ -235,6 +247,12 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
         services, sessionManager: nextManager, sessionStartEvent,
         customTools,
       });
+      postConstructionCallbackDescriptors = Object.fromEntries(Reflect.ownKeys(created.session.agent).flatMap((key) => {
+        if (typeof key !== "string" || !hostCallbackOptionKeys.has(key)) return [];
+        const descriptor = Object.getOwnPropertyDescriptor(created.session.agent, key)!;
+        if (!("value" in descriptor)) throw new Error(`Unsupported post-construction Agent callback descriptor: ${key}`);
+        return [[key, descriptor]];
+      }));
       return { ...created, services, diagnostics: services.diagnostics };
     };
     const runtime = await pi.createAgentSessionRuntime(createRuntime, { cwd: process.cwd(), agentDir, sessionManager });
@@ -282,8 +300,6 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     const ai = await importRuntimePackage(root, "pi-ai");
     const modelInvocations: string[] = [];
     const callbackInvocations: Array<Record<string, Function>> = [];
-    const agentCallbacks = Object.fromEntries(ownDataEntries(runtime.session.agent, "agent")
-      .filter(([key, value]) => hostCallbackOptionKeys.has(key) && typeof value === "function")) as Record<string, Function>;
     let response = 0;
     installDeterministicStream(runtime.session.agent, () => {
       const stream = new ai.AssistantMessageEventStream();
@@ -345,7 +361,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       modelVisibleInvocations: JSON.stringify(modelInvocations),
       hostCallbacks: {
         keys: Object.keys(callbackInvocations[0] ?? {}).sort(),
-        baseline: agentCallbacks,
+        postConstructionDescriptors: postConstructionCallbackDescriptors,
         invocations: callbackInvocations,
       },
       sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),
