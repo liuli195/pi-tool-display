@@ -46,6 +46,7 @@ function createApiStub(
     registerCommand: (name: string, cmd: unknown) => void;
     on: (event: string, handler: (...args: unknown[]) => unknown) => void;
     getAllTools: () => unknown[];
+    getActiveTools: () => string[];
     getCommands: () => Array<{ name: string }>;
   }> = {},
 ): {
@@ -75,7 +76,7 @@ function createApiStub(
       return overrides.getAllTools?.() ?? [];
     },
     getActiveTools(): string[] {
-      return ["read", "grep", "find", "ls", "bash", "edit", "write"];
+      return overrides.getActiveTools?.() ?? ["read", "grep", "find", "ls", "bash", "edit", "write"];
     },
     getCommands(): Array<{ name: string }> {
       return overrides.getCommands?.() ?? [];
@@ -176,6 +177,30 @@ test("2: re-registered tools have renderCall and renderResult functions after re
     assert.equal(typeof tool.renderCall, "function", `${tool.name} from reload has renderCall`);
     assert.equal(typeof tool.renderResult, "function", `${tool.name} from reload has renderResult`);
   }
+});
+
+test("2: reload shuts down the old runtime before the new runtime registers current owners", async () => {
+  const first = createApiStub();
+  toolDisplayExtension(first.api);
+  for (const { event, handler } of first.capturedHandlers) {
+    if (event === "session_start") await handler({ reason: "startup" }, {});
+  }
+  assert.equal(first.capturedTools.length, 7);
+
+  for (const { event, handler } of first.capturedHandlers) {
+    if (event === "session_shutdown") await handler({ reason: "reload" }, {});
+  }
+
+  const second = createApiStub({
+    getActiveTools: () => ["read", "bash", "edit"],
+    getAllTools: () => [{ name: "read", sourceInfo: { source: "local", path: "pi-hashline-edit-pro" } }],
+  });
+  toolDisplayExtension(second.api);
+  for (const { event, handler } of second.capturedHandlers) {
+    if (event === "session_start") await handler({ reason: "reload" }, {});
+  }
+
+  assert.deepEqual(second.capturedTools.map((tool) => tool.name).sort(), ["bash", "edit"]);
 });
 
 test("2: built-in tool overrides wait for lifecycle ownership discovery", async () => {

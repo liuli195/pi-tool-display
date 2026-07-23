@@ -1586,18 +1586,22 @@ export function registerToolDisplayOverrides(
   const registeredBuiltInToolOverrides = new Set<BuiltInToolOverrideName>();
 
   const isExternallyOwnedBuiltInTool = (toolName: BuiltInToolOverrideName): boolean => {
-    const allTools = tryGetAllTools(pi, "Built-in tool override ownership discovery unavailable during extension load; registering renderer for pre-bind history rendering.");
+    const allTools = tryGetAllTools(pi, "Built-in tool override ownership discovery unavailable; treating the active tool as ownerless.");
     if (!allTools) {
       return false;
     }
 
     const currentOwner = allTools.find((tool) => getTextField(tool, "name") === toolName);
+    if (!currentOwner) {
+      return false;
+    }
+
     const sourceInfo = toRecord(toRecord(currentOwner).sourceInfo);
     const source = getTextField(sourceInfo, "source");
-    if (currentOwner && source && source !== "builtin") {
+    if (source !== "builtin") {
       logToolDisplayDebug("Skipped built-in tool display override because another tool owner is active.", {
         toolName,
-        source,
+        source: source ?? "unknown",
         path: getTextField(sourceInfo, "path") ?? "unknown",
       });
       return true;
