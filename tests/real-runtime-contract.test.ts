@@ -155,6 +155,17 @@ for (const entry of matrix) {
     assert.ok(callbackBehavior.every((probe: any) => !("sideEffects" in probe) && !("results" in probe)));
     assert.deepEqual(observation.present.hostCallbacks.unsupported, observation.absent.hostCallbacks.unsupported);
     assert.ok(observation.present.hostCallbacks.unsupported.every(({ reason }) => reason.includes("pristine Agent config-producer descriptor seam")));
+    assert.equal(typeof observation.absent.thinkingEventsObservedByOtherExtension, "string");
+    assert.equal(typeof observation.absent.modelVisibleThinkingContext, "string");
+    assert.equal(typeof observation.absent.completeSerializedSessionBytes, "string");
+    for (const bytes of [
+      observation.absent.thinkingEventsObservedByOtherExtension,
+      observation.absent.modelVisibleThinkingContext,
+      observation.absent.completeSerializedSessionBytes,
+    ]) assert.ok(bytes.includes("Thinking: provider-authored bytes"));
+    assert.equal(observation.present.thinkingEventsObservedByOtherExtension, observation.absent.thinkingEventsObservedByOtherExtension);
+    assert.equal(observation.present.modelVisibleThinkingContext, observation.absent.modelVisibleThinkingContext);
+    assert.equal(observation.present.completeSerializedSessionBytes, observation.absent.completeSerializedSessionBytes);
     assert.equal(observation.present.sessionSerializationAfterDispose, observation.absent.sessionSerializationAfterDispose);
   });
 }

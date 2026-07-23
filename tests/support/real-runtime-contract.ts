@@ -12,6 +12,9 @@ interface RunObservation {
   toolCall: { arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] };
   modelContext: string;
   modelVisibleInvocations: string;
+  thinkingEventsObservedByOtherExtension: string;
+  modelVisibleThinkingContext: string;
+  completeSerializedSessionBytes: string;
   hostCallbacks: {
     keys: string[];
     invocationTypes: Record<string, string>;
@@ -295,6 +298,11 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     process.env.PI_CODING_AGENT_DIR = agentDir;
     await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
     await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({ readOutputMode: "preview", previewLines: 1 }));
+    const observerPath = join(agentDir, "thinking-observer.js");
+    await writeFile(observerPath, `export default function (pi) {
+  for (const type of ["message_update", "message_end", "context"])
+    pi.on(type, event => globalThis.__piToolDisplayThinkingEvents.push(JSON.stringify({ type, event })));
+}\n`);
     const sessionFile = join(agentDir, "contract.jsonl");
     await writeFile(sessionFile, sessionJsonl);
     const probeObservation: { updates: string[]; arguments?: unknown } = { updates: [] };
@@ -318,7 +326,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       const services = await pi.createAgentSessionServices({
         cwd, agentDir: nextAgentDir,
         resourceLoaderOptions: {
-          additionalExtensionPaths: withExtension ? [entry] : [],
+          additionalExtensionPaths: withExtension ? [entry, observerPath] : [observerPath],
           noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
         },
       });
@@ -405,6 +413,16 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     const callbackContract = await probeGeneratedCallbacks(agentCore.Agent, pristineProducers[0], callbackKeys);
 
     const session = runtime.session;
+    const thinkingMessage = {
+      role: "assistant", api: "anthropic-messages", provider: "contract", model: "contract",
+      content: [{ type: "thinking", thinking: "Thinking: provider-authored bytes" }],
+      stopReason: "stop", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }, timestamp: 2,
+    };
+    (globalThis as any).__piToolDisplayThinkingEvents = [];
+    await (session as any)._extensionRunner.emit({ type: "message_update", message: structuredClone(thinkingMessage), assistantMessageEvent: { type: "thinking_delta", delta: "provider-authored bytes" } });
+    await (session as any)._extensionRunner.emit({ type: "message_end", message: structuredClone(thinkingMessage) });
+    const modelVisibleThinkingContext = serialize(await (session as any)._extensionRunner.emitContext([structuredClone(thinkingMessage)]));
+    const thinkingEventsObservedByOtherExtension = serialize((globalThis as any).__piToolDisplayThinkingEvents);
     const tools = session.getAllTools();
     const initializedSessionDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
     mode.stop();
@@ -426,6 +444,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     });
     const endEvent = observedEvents.find(({ type }) => type === "tool_execution_end");
     if (!endEvent) throw new Error(`Unsupported Pi event shape: expected tool_execution_end, received ${serialize(observedEvents.map(({ type }) => type))}`);
+    const completeSerializedSessionBytes = await readFile(sessionFile, "utf8");
     const observation = {
       activeToolNames: session.getActiveToolNames(),
       loadedExtensionPaths: session.resourceLoader.getExtensions().extensions.map((extension: any) => extension.resolvedPath),
@@ -441,6 +460,9 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       },
       modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
       modelVisibleInvocations: JSON.stringify(modelInvocations),
+      thinkingEventsObservedByOtherExtension,
+      modelVisibleThinkingContext,
+      completeSerializedSessionBytes,
       hostCallbacks: {
         keys: callbackKeys,
         invocationTypes: Object.fromEntries(Object.entries(callbackInvocations[0] ?? {}).map(([key, value]) => [key, typeof value])),
@@ -460,7 +482,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
           initializedSnapshots: Object.freeze([...initializedProducers]),
         },
       },
-      sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),
+      sessionSerializationAfterDispose: completeSerializedSessionBytes,
       tuiOutput: { cold, expandedCold, reload, newCall },
       actionsBeforeFirstOutput: actionsAtFirstOutput,
     };
@@ -478,14 +500,21 @@ export async function runPureDisplayContract(runtimeRoot: string): Promise<PureD
   const seed = pi.SessionManager.inMemory(process.cwd(), { id: "contract-session" });
   seed.appendMessage({
     role: "assistant",
-    content: [{ type: "toolCall", id: "contract-cold-read", name: "read", arguments: { path: "contract.txt" } }],
-    api: "contract", provider: "contract", model: "contract", stopReason: "toolUse",
+    content: [{ type: "thinking", thinking: "Thinking: provider-authored bytes" }],
+    api: "anthropic-messages", provider: "contract", model: "contract", stopReason: "stop",
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
     timestamp: 0,
   });
   seed.appendMessage({
+    role: "assistant",
+    content: [{ type: "toolCall", id: "contract-cold-read", name: "read", arguments: { path: "contract.txt" } }],
+    api: "contract", provider: "contract", model: "contract", stopReason: "toolUse",
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    timestamp: 1,
+  });
+  seed.appendMessage({
     role: "toolResult", toolCallId: "contract-cold-read", toolName: "read",
-    content: [{ type: "text", text: "contract fixture first line\ncontract folded second line\ncontract folded third line" }], isError: false, timestamp: 1,
+    content: [{ type: "text", text: "contract fixture first line\ncontract folded second line\ncontract folded third line" }], isError: false, timestamp: 2,
   });
   seed.appendThinkingLevelChange("medium");
   const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
