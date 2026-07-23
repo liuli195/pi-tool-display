@@ -298,7 +298,18 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
   try {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
-    await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({ searchOutputMode: outputMode, readOutputMode: outputMode === "count" ? "summary" : outputMode, previewLines: 1, showTruncationHints: true }));
+    await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({
+      searchOutputMode: outputMode,
+      readOutputMode: outputMode === "count" ? "summary" : outputMode,
+      previewLines: 1,
+      showTruncationHints: true,
+      customToolOverrides: Object.fromEntries(["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"].map(name => [name, {
+        enabled: true,
+        kind: name === "generic_fixture" ? "generic" : "mcp",
+        outputMode: outputMode === "count" ? "summary" : outputMode,
+        overrideCallRenderer: false,
+      }])),
+    }));
     const observerPath = join(agentDir, "thinking-observer.js");
     await writeFile(observerPath, `export default function (pi) {
   for (const type of ["message_update", "message_end", "context"])
@@ -306,7 +317,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
 }\n`);
     const sessionFile = join(agentDir, "contract.jsonl");
     await writeFile(sessionFile, sessionJsonl);
-    const probes: Record<string, { updates: string[]; arguments?: unknown }> = Object.fromEntries(["read", "find", "ls"].map((name) => [name, { updates: [] }]));
+    const probes: Record<string, { updates: string[]; arguments?: unknown }> = Object.fromEntries(["read", "find", "ls", "generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"].map((name) => [name, { updates: [] }]));
     const customTools = createTools(probes);
     const pristineDefinitions = new Map(customTools.map((tool: any) => [tool.name, tool]));
     const sessionManager = pi.SessionManager.open(sessionFile);
@@ -390,6 +401,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       { id: "contract-new-read", name: "read", arguments: { path: "fixture.txt" } },
       { id: "contract-new-find", name: "find", arguments: { pattern: "*.txt", path: "." } },
       { id: "contract-new-ls", name: "ls", arguments: { path: "." } },
+      ...["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"].map((name, index) => ({ id: `contract-new-custom-${index}`, name, arguments: { fixture: name } })),
     ];
     const observedEvents: any[] = [];
     const unsubscribe = runtime.session.subscribe((event: any) => {
@@ -538,6 +550,18 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
     role: "toolResult", toolCallId: row.id, toolName: row.name,
     content: [{ type: "text", text: row.text }], details: row.details, isError: false, timestamp: 2,
   });
+  for (const [index, name] of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"].entries()) {
+    seed.appendMessage({
+      role: "assistant",
+      content: [{ type: "toolCall", id: `contract-cold-${index}`, name, arguments: { fixture: name } }],
+      api: "contract", provider: "contract", model: "contract", stopReason: "toolUse",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 3 + index * 2,
+    });
+    seed.appendMessage({
+      role: "toolResult", toolCallId: `contract-cold-${index}`, toolName: name,
+      content: [{ type: "text", text: `${name} first line\n${name} folded second line\n${name} folded third line` }], isError: false, timestamp: 4 + index * 2,
+    });
+  }
   seed.appendThinkingLevelChange("medium");
   const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
   const createTools = (probes: Record<string, { updates: string[]; arguments?: unknown }>) => {
@@ -545,10 +569,13 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
       read: "contract read final first line\ncontract read final second line\ncontract read final third line",
       find: "new-first.txt\nnew-second.txt\nnew-third.txt",
       ls: "new-alpha.txt\nnew-beta.txt\nnew-gamma.txt",
+      generic_fixture: "generic_fixture final output",
+      mcp_proxy_fixture: "mcp_proxy_fixture final output",
+      mcp_direct_fixture: "mcp_direct_fixture final output",
     };
-    return [...pi.createCodingTools(process.cwd()).filter((tool: any) => !["read", "find", "ls"].includes(tool.name)), ...Object.keys(outputs).map((name) => ({
-      name, label: `Third-party ${name}`, description: `Deterministic same-name ${name} contract tool`,
-      sourceInfo: { source: "local", path: `contract-third-party-${name}.ts` },
+    const fixture = (name: string) => ({
+      name, label: name, description: `Deterministic ${name} contract tool`,
+      sourceInfo: name.endsWith("fixture") ? { owner: `contract-${name}`, source: "contract-direct" } : { source: "local", path: `contract-third-party-${name}.ts` },
       parameters: { type: "object", properties: {}, additionalProperties: true },
       execute: async (_id: string, args: unknown, _signal: unknown, onUpdate: (result: unknown) => void) => {
         probes[name].arguments = args;
@@ -557,7 +584,8 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
         onUpdate({ content: [{ type: "text", text: update }], details: {} });
         return { content: [{ type: "text", text: outputs[name] }], details: name === "read" ? { truncation: { truncated: true, originalLines: 9 } } : {} };
       },
-    }))];
+    });
+    return [...pi.createCodingTools(process.cwd()).filter((tool: any) => !Object.hasOwn(outputs, tool.name)), ...Object.keys(outputs).map(fixture)];
   };
   const absent = await run(runtimeRoot, false, sessionJsonl, mode, createTools);
   const present = await run(runtimeRoot, true, sessionJsonl, mode, createTools);

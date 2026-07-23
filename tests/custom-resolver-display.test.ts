@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRendererCatalog, registerProducerRendererAdapter } from "../src/renderer-catalog.ts";
-import { installPiHostAdapter } from "../src/pi-host-adapter.ts";
 import { createPiToolDisplayResolver } from "../src/tool-display-runtime.ts";
 import { createToolDisplayResolver } from "../src/tool-display-resolver.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type CustomToolOutputMode } from "../src/types.ts";
@@ -24,26 +23,6 @@ test("configured generic modes preserve native calls unless replacement is expli
     assert.match(render(plan.result!(result, { expanded: false, isPartial: false }, theme)), new RegExp(expected));
   }
   assert.notStrictEqual(resolver("summary", true).resolve({ toolName: "third", arguments: {} }, { call: nativeCall }).call, nativeCall);
-});
-
-test("Host Adapter applies generic and MCP policy to cold history, real reload history, and new rows", () => {
-  for (const kind of ["generic", "mcp"] as const) for (const [mode, expected] of [["hidden", ""], ["summary", "3 lines returned"], ["preview", "one"]] as const) {
-    const host = { getCallRenderer: nativeCall, getResultRenderer: nativeResult };
-    const config = () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, previewLines: 1, customToolOverrides: { proxy: { enabled: true, kind, outputMode: mode, overrideCallRenderer: false } } });
-    const row = { toolName: "proxy", args: {}, toolDefinition: { name: "proxy", label: "Proxy" } };
-    const assertFrame = () => {
-      assert.equal(render(host.getCallRenderer.call(row)), "native call");
-      assert.match(render(host.getResultRenderer.call(row)(result, { expanded: false, isPartial: false }, theme)), new RegExp(expected));
-    };
-
-    const cold = installPiHostAdapter(host, createPiToolDisplayResolver({} as any, config), "0.80.3");
-    assertFrame();
-    cold.dispose();
-    const reloaded = installPiHostAdapter(host, createPiToolDisplayResolver({} as any, config), "0.80.3");
-    assertFrame();
-    assertFrame(); // a new call uses the same live runtime as restored history
-    reloaded.dispose();
-  }
 });
 
 test("producer MCP adapters select presentation without configuring or replacing execution", () => {
@@ -77,29 +56,28 @@ test("runtime diagnostics identify conflicts and renderer failures once each per
   const first = registerProducerRendererAdapter({ id: "first", toolName: "conflict", kind: "generic" });
   const second = registerProducerRendererAdapter({ id: "second", toolName: "conflict", kind: "mcp" });
   try {
-    const diagnostics: any[] = [];
-    const runtime = createPiToolDisplayResolver({} as any, () => DEFAULT_TOOL_DISPLAY_CONFIG, diagnostic => diagnostics.push(diagnostic));
+    const diagnostics: Array<{ message: string; error: unknown }> = [];
+    const runtime = createPiToolDisplayResolver({} as any, () => DEFAULT_TOOL_DISPLAY_CONFIG, (message, error) => diagnostics.push({ message, error }));
     const native = { call: nativeCall, result: nativeResult };
     runtime.resolve({ toolName: "conflict", arguments: {} }, native);
     runtime.resolve({ toolName: "conflict", arguments: {} }, native);
-    assert.deepEqual(diagnostics.map(({ kind, adapters }) => ({ kind, adapters })), [{
-      kind: "adapter-conflict",
-      adapters: [{ id: "first", kind: "generic" }, { id: "second", kind: "mcp" }],
-    }]);
-    createPiToolDisplayResolver({} as any, () => DEFAULT_TOOL_DISPLAY_CONFIG, diagnostic => diagnostics.push(diagnostic))
+    assert.deepEqual(diagnostics.map(({ message }) => message), [
+      "tool-display adapter-conflict tool=conflict adapters=first:generic,second:mcp",
+    ]);
+    createPiToolDisplayResolver({} as any, () => DEFAULT_TOOL_DISPLAY_CONFIG, (message, error) => diagnostics.push({ message, error }))
       .resolve({ toolName: "conflict", arguments: {} }, native);
     assert.equal(diagnostics.length, 2, "a real reload starts a new diagnostic epoch");
 
-    const failures: any[] = [];
-    const broken = createToolDisplayResolver(() => DEFAULT_TOOL_DISPLAY_CONFIG, {
-      resolve: (_row, _config, slots) => ({ ...slots, call: () => { throw new Error("call broke"); }, result: () => { throw new Error("result broke"); } }),
-    }, diagnostic => failures.push(diagnostic));
-    const plan = broken.resolve({ toolName: "broken", arguments: {} }, native);
-    plan.call!(); plan.call!(); plan.result!(); plan.result!();
-    assert.deepEqual(failures.map(({ kind, toolName, slot }) => ({ kind, toolName, slot })), [
-      { kind: "renderer-failure", toolName: "broken", slot: "call" },
-      { kind: "renderer-failure", toolName: "broken", slot: "result" },
-    ]);
+    const failures: Array<{ message: string; error: unknown }> = [];
+    const broken = createPiToolDisplayResolver({} as any, () => ({
+      ...DEFAULT_TOOL_DISPLAY_CONFIG,
+      customToolOverrides: { broken: { enabled: true, kind: "generic", outputMode: "summary", overrideCallRenderer: false } },
+    }), (message, error) => failures.push({ message, error }));
+    const renderer = broken.resolve({ toolName: "broken", arguments: {} }, native).result!;
+    const brokenTheme = { ...theme, fg: () => { throw new Error("theme broke"); } };
+    renderer(result, { expanded: false }, brokenTheme);
+    renderer(result, { expanded: false }, brokenTheme);
+    assert.deepEqual(failures.map(({ message }) => message), ["tool-display renderer-failure tool=broken slot=result"]);
   } finally { second(); first(); }
 });
 

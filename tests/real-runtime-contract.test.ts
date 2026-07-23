@@ -90,6 +90,13 @@ for (const entry of matrix) {
     assert.doesNotMatch(plain(observation.present.tuiOutput.reload), /contract read first line/);
     assert.match(plain(observation.present.tuiOutput.newCall), /3 lines/);
     assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /contract read final first line/);
+    for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) {
+      assert.match(cold, new RegExp(name));
+      assert.match(plain(observation.present.tuiOutput.reload), new RegExp(name));
+      assert.match(plain(observation.present.tuiOutput.newCall), new RegExp(name));
+      assert.doesNotMatch(cold, new RegExp(`${name} first line`));
+      assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), new RegExp(`${name} final output`));
+    }
     for (const frame of [observation.present.tuiOutput.expandedCold, observation.present.tuiOutput.expandedReload]) {
       assert.match(plain(frame), /contract read first line/);
       assert.match(plain(frame), /contract read third line/);
@@ -97,6 +104,12 @@ for (const entry of matrix) {
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract read final third line/);
 
     const hidden = await runPureDisplayContract(runtimeRoot, "hidden");
+    for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) {
+      for (const frame of [hidden.firstCollapsedOutput, hidden.present.tuiOutput.reload, hidden.present.tuiOutput.newCall]) {
+        assert.match(plain(frame), new RegExp(name));
+        assert.doesNotMatch(plain(frame), new RegExp(`${name} (?:first|final) output|${name} first line`));
+      }
+    }
     for (const frame of [hidden.firstCollapsedOutput, hidden.present.tuiOutput.reload, hidden.present.tuiOutput.newCall,
       hidden.present.tuiOutput.expandedCold, hidden.present.tuiOutput.expandedReload, hidden.present.tuiOutput.expandedNewCall]) {
       const text = plain(frame);
@@ -105,6 +118,10 @@ for (const entry of matrix) {
     }
 
     const preview = await runPureDisplayContract(runtimeRoot, "preview");
+    for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) {
+      for (const frame of [preview.firstCollapsedOutput, preview.present.tuiOutput.reload]) assert.match(plain(frame), new RegExp(`${name} first line`));
+      assert.match(plain(preview.present.tuiOutput.newCall), new RegExp(`${name} final output`));
+    }
     for (const frame of [preview.firstCollapsedOutput, preview.present.tuiOutput.reload]) {
       const text = plain(frame);
       assert.match(text, /contract read first line/);
@@ -121,7 +138,13 @@ for (const entry of matrix) {
       assert.ok(run.activeToolNames.includes("read") && run.activeToolNames.includes("find") && run.activeToolNames.includes("ls"));
       assert.ok(run.activeToolNamesAtStartup.includes("read"));
       assert.ok(!run.activeToolNamesAtStartup.includes("find") && !run.activeToolNamesAtStartup.includes("ls"));
+      for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) assert.ok(run.activeToolNames.includes(name));
       assert.ok(run.ownership.every((tool) => tool.sourceInfo));
+      for (const name of ["generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]) {
+        assert.deepEqual(run.ownership.find(tool => tool.name === name)?.sourceInfo, {
+          path: `<sdk:${name}>`, source: "sdk", scope: "temporary", origin: "top-level", baseDir: undefined,
+        });
+      }
       for (const definition of run.definitions) {
         assert.strictEqual(definition.initialized, definition.pristine);
         assert.strictEqual(definition.disposed, definition.pristine);
@@ -133,11 +156,11 @@ for (const entry of matrix) {
         assert.strictEqual(execution.disposed, execution.pristine);
         assert.equal(typeof execution.pristine, "function");
       }
-      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls"]);
+      assert.deepEqual(run.toolCalls.map(({ name }) => name), ["read", "find", "ls", "generic_fixture", "mcp_proxy_fixture", "mcp_direct_fixture"]);
       for (const call of run.toolCalls) {
         assert.deepEqual(call.callbackUpdates, [`contract ${call.name} streaming output`]);
         assert.deepEqual(call.updateEvents, [`contract ${call.name} streaming output`]);
-        assert.match(call.result, /new-|contract read final/);
+        assert.match(call.result, /new-|contract read final|fixture final output/);
         assert.deepEqual(call.eventOrder, ["start", "update", "end"]);
       }
       assert.match(run.modelContext, /contract-cold-read/);
