@@ -18,11 +18,11 @@ test("normalizeToolDisplayConfig normalizes custom tool override shorthand, defa
     "   ": true,
   }});
   assert.deepEqual(config.customToolOverrides, {
-    ide_find_symbol: { enabled: true, kind: "generic", outputMode: "summary" },
-    agent_gateway: { enabled: true, kind: "generic", outputMode: "preview" },
-    mcp_gateway: { enabled: true, kind: "mcp", outputMode: "hidden" },
-    disabled_tool: { enabled: false, kind: "generic", outputMode: "summary" },
-    invalid_kind: { enabled: true, kind: "generic", outputMode: "summary" },
+    ide_find_symbol: { enabled: true, kind: "generic", outputMode: "summary", overrideCallRenderer: false },
+    agent_gateway: { enabled: true, kind: "generic", outputMode: "preview", overrideCallRenderer: false },
+    mcp_gateway: { enabled: true, kind: "mcp", outputMode: "hidden", overrideCallRenderer: false },
+    disabled_tool: { enabled: false, kind: "generic", outputMode: "summary", overrideCallRenderer: false },
+    invalid_kind: { enabled: true, kind: "generic", outputMode: "summary", overrideCallRenderer: false },
   });
 });
 
@@ -35,11 +35,11 @@ test("normalizeToolDisplayConfig preserves supported custom output modes and dro
   const config = normalizeToolDisplayConfig({ customToolOverrides: {
     hidden_tool: { enabled: true, outputMode: "hidden", label: "Ignored Label" },
     summary_tool: { enabled: true, outputMode: "summary", pathFields: ["file_path"] },
-    preview_tool: { enabled: true, outputMode: "preview", renderShell: "self" },
+    preview_tool: { enabled: true, outputMode: "preview", renderShell: "self", overrideCallRenderer: true },
   }});
   assert.deepEqual(config.customToolOverrides, {
-    hidden_tool: { enabled: true, kind: "generic", outputMode: "hidden" },
-    summary_tool: { enabled: true, kind: "generic", outputMode: "summary" },
-    preview_tool: { enabled: true, kind: "generic", outputMode: "preview" },
+    hidden_tool: { enabled: true, kind: "generic", outputMode: "hidden", overrideCallRenderer: false },
+    summary_tool: { enabled: true, kind: "generic", outputMode: "summary", overrideCallRenderer: false },
+    preview_tool: { enabled: true, kind: "generic", outputMode: "preview", overrideCallRenderer: true },
   });
 });

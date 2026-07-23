@@ -1607,11 +1607,13 @@ export function registerToolDisplayOverrides(
   };
 
   const registerIfOwned = (
+    activeTools: ReadonlySet<string>,
     toolName: BuiltInToolOverrideName,
     register: () => void,
   ): void => {
     if (
       registeredBuiltInToolOverrides.has(toolName) ||
+      !activeTools.has(toolName) ||
       !getConfig().registerToolOverrides[toolName] ||
       isExternallyOwnedBuiltInTool(toolName)
     ) {
@@ -1654,7 +1656,16 @@ export function registerToolDisplayOverrides(
     return { scope: getSearchScope(args), limitSuffix: args.limit !== undefined ? ` (limit ${args.limit})` : "" };
   };
 
-  registerIfOwned("read", () => {
+  const registerActiveBuiltInRenderers = (): void => {
+    let activeTools: ReadonlySet<string>;
+    try {
+      activeTools = new Set(pi.getActiveTools());
+    } catch (error) {
+      logToolDisplayDebug("Active tool discovery unavailable; skipped built-in renderer registration.", error);
+      return;
+    }
+
+  registerIfOwned(activeTools, "read", () => {
     registerRuntimeTool(pi, {
       name: "read",
       label: "read",
@@ -1668,7 +1679,7 @@ export function registerToolDisplayOverrides(
     });
   });
 
-  registerIfOwned("grep", () => {
+  registerIfOwned(activeTools, "grep", () => {
     registerRuntimeTool(pi, {
       name: "grep",
     label: "grep",
@@ -1686,7 +1697,7 @@ export function registerToolDisplayOverrides(
     });
   });
 
-  registerIfOwned("find", () => {
+  registerIfOwned(activeTools, "find", () => {
     registerRuntimeTool(pi, {
       name: "find",
     label: "find",
@@ -1701,7 +1712,7 @@ export function registerToolDisplayOverrides(
     });
   });
 
-  registerIfOwned("ls", () => {
+  registerIfOwned(activeTools, "ls", () => {
     registerRuntimeTool(pi, {
       name: "ls",
     label: "ls",
@@ -1716,7 +1727,7 @@ export function registerToolDisplayOverrides(
     });
   });
 
-  registerIfOwned("edit", () => {
+  registerIfOwned(activeTools, "edit", () => {
     registerRuntimeTool(pi, {
       name: "edit",
     label: "edit",
@@ -1742,7 +1753,7 @@ export function registerToolDisplayOverrides(
     });
   });
 
-  registerIfOwned("write", () => {
+  registerIfOwned(activeTools, "write", () => {
     registerRuntimeTool(pi, {
       name: "write",
     label: "write",
@@ -1818,7 +1829,7 @@ export function registerToolDisplayOverrides(
     });
   });
 
-  registerIfOwned("bash", () => {
+  registerIfOwned(activeTools, "bash", () => {
     registerRuntimeTool(pi, {
       name: "bash",
     label: "bash",
@@ -1895,6 +1906,14 @@ export function registerToolDisplayOverrides(
     });
   });
 
-  pi.on("session_start", async () => clearWriteExecutionMeta(writeExecutionMetaByToolCallId));
-  pi.on("before_agent_start", async () => clearWriteExecutionMeta(writeExecutionMetaByToolCallId));
+  };
+
+  pi.on("session_start", async () => {
+    clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
+    registerActiveBuiltInRenderers();
+  });
+  pi.on("before_agent_start", async () => {
+    clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
+    registerActiveBuiltInRenderers();
+  });
 }

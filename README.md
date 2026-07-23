@@ -189,7 +189,7 @@ Set any entry to `false` if another extension should handle that tool instead.
 
 ### Custom tool overrides
 
-Use `customToolOverrides` when another extension registers a noisy top-level tool and you want `pi-tool-display` to render that tool's call/result output. Custom overrides are explicit opt-in only: unlisted or disabled tools keep their original renderers.
+Use `customToolOverrides` when another extension registers a noisy top-level tool and you want `pi-tool-display` to compact its result output. Custom overrides are explicit opt-in only: unlisted or disabled tools keep their original renderers, and native call renderers are preserved by default.
 
 ```json
 {
@@ -215,6 +215,7 @@ Each entry supports:
 | `enabled` | boolean | `true` | Whether `pi-tool-display` should decorate this custom tool |
 | `kind` | string | `"generic"` | `generic` for plain compact output, or `mcp` for MCP-style call labels and result handling |
 | `outputMode` | string | `"summary"` | `hidden`, `summary`, or `preview` for this custom tool's result output |
+| `overrideCallRenderer` | boolean | `false` | Replace the tool's native call renderer with the generic or MCP call renderer |
 
 Boolean shorthand is also accepted:
 
@@ -230,8 +231,8 @@ Boolean shorthand is also accepted:
 Notes:
 
 - Built-in tool names (`read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`) are ignored here; use `registerToolOverrides` for those.
-- `generic` call rendering shows the tool name and argument count, then compacts the result according to `outputMode`.
-- `mcp` call rendering understands MCP proxy-style arguments such as `tool`, `server`, `search`, `describe`, and `connect`.
+- With `overrideCallRenderer: true`, `generic` call rendering shows the tool name and argument count.
+- With `overrideCallRenderer: true`, `mcp` call rendering understands MCP proxy-style arguments such as `tool`, `server`, `search`, `describe`, and `connect`.
 - Overrides are selected at render time, so they work regardless of tool registration or extension load order.
 
 ### Example config

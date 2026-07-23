@@ -178,6 +178,7 @@ export function normalizeCustomToolOverrideEntry(rawEntry: unknown): CustomToolO
 			enabled: rawEntry,
 			kind: "generic",
 			outputMode: "summary",
+			overrideCallRenderer: false,
 		};
 	}
 
@@ -190,6 +191,7 @@ export function normalizeCustomToolOverrideEntry(rawEntry: unknown): CustomToolO
 		enabled: toBoolean(source.enabled, true),
 		kind: toCustomToolOverrideKind(source.kind),
 		outputMode: toCustomToolOutputMode(source.outputMode),
+		overrideCallRenderer: toBoolean(source.overrideCallRenderer, false),
 	};
 }
 

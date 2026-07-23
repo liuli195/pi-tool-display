@@ -66,7 +66,10 @@ function withDefaultReadEditOwners(tools: unknown[] = []): unknown[] {
 	return [...defaults, ...tools];
 }
 
-function createExtensionApiStub(allTools: unknown[] = []): {
+function createExtensionApiStub(
+	allTools: unknown[] = [],
+	activeTools: string[] = ["read", "grep", "find", "ls", "bash", "edit", "write"],
+): {
 	api: ExtensionAPI;
 	registeredTools: RegisteredToolLike[];
 	eventHandlers: ToolEventHandlers;
@@ -83,6 +86,9 @@ function createExtensionApiStub(allTools: unknown[] = []): {
 		getAllTools(): unknown[] {
 			return withDefaultReadEditOwners(allTools);
 		},
+		getActiveTools(): string[] {
+			return activeTools;
+		},
 	} as unknown as ExtensionAPI;
 
 	return { api, registeredTools, eventHandlers };
@@ -92,6 +98,8 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+	assert.equal(registeredTools.length, 0, "registration waits until owners are known");
+	await eventHandlers.session_start?.();
 	assert.deepEqual(
 		registeredTools.map((tool) => tool.name).sort(),
 		["bash", "edit", "find", "grep", "ls", "read", "write"],
@@ -128,18 +136,40 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 	assert.equal(byName.get("bash")?.promptGuidelines, undefined);
 });
 
-test("registerToolDisplayOverrides registers built-in display renderers during extension load for pre-bind history rendering", () => {
-	const { api, registeredTools } = createExtensionApiStub();
+test("registerToolDisplayOverrides registers only active built-in renderers after extension loading", async () => {
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub([], ["read", "bash"]);
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+	assert.equal(registeredTools.length, 0);
+	await eventHandlers.session_start?.();
 
 	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
-	for (const name of ["read", "grep", "find", "ls", "bash", "edit", "write"] as const) {
+	for (const name of ["read", "bash"] as const) {
 		const registeredTool = byName.get(name);
-		assert.ok(registeredTool, `expected '${name}' to be available before session_start`);
-		assert.equal(typeof registeredTool.renderCall, "function", `${name} has renderCall before session_start`);
-		assert.equal(typeof registeredTool.renderResult, "function", `${name} has renderResult before session_start`);
+		assert.ok(registeredTool, `expected active '${name}' renderer`);
+		assert.equal(typeof registeredTool.renderCall, "function");
+		assert.equal(typeof registeredTool.renderResult, "function");
 	}
+	assert.equal(byName.has("find"), false);
+	assert.equal(byName.has("ls"), false);
+});
+
+test("restored history can use built-in renderers after session startup", async () => {
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub([], ["read"]);
+	registerToolDisplayOverrides(api, () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, readOutputMode: "summary" }));
+	await eventHandlers.session_start?.();
+
+	const read = registeredTools.find((tool) => tool.name === "read");
+	assert.ok(read?.renderCall && read.renderResult);
+	const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
+	const call = read.renderCall({ path: "historic.txt" }, theme) as { render(width: number): string[] };
+	const result = read.renderResult(
+		{ content: [{ type: "text", text: "historic content" }], details: {} },
+		{ expanded: false, isPartial: false },
+		theme,
+	) as { render(width: number): string[] };
+	assert.match(call.render(80).join("\n"), /historic\.txt/);
+	assert.ok(result.render(80).length > 0);
 });
 
 test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI keeps extension renderers active", async () => {
@@ -190,7 +220,7 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 	]);
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	await eventHandlers.before_agent_start?.();
+	await eventHandlers.session_start?.();
 
 	const registeredNames = new Set(registeredTools.map((tool) => tool.name));
 	assert.equal(registeredNames.has("read"), false);
@@ -200,6 +230,23 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 	assert.equal(registeredNames.has("ls"), true);
 	assert.equal(registeredNames.has("bash"), true);
 	assert.equal(registeredNames.has("write"), true);
+});
+
+test("later-loaded read and bash owners are not shadowed", async () => {
+	const allTools: unknown[] = [];
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub(allTools);
+
+	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+	allTools.push(
+		{ name: "read", sourceInfo: { source: "local", path: "pi-hashline-edit-pro" } },
+		{ name: "bash", sourceInfo: { source: "local", path: "pi-patty-bg-tasks" } },
+	);
+	await eventHandlers.session_start?.();
+
+	const names = new Set(registeredTools.map((tool) => tool.name));
+	assert.equal(names.has("read"), false);
+	assert.equal(names.has("bash"), false);
+	assert.equal(names.has("edit"), true, "active ownerless built-ins still receive renderers");
 });
 
 test("bash override uses shellPath from Pi settings", async () => {
