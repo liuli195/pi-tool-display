@@ -107,6 +107,34 @@ test("unconfigured third-party and built-in tools retain their original renderer
 });
 
 test("pre-upgrade built-in rows without runtime provenance redraw through current renderers", async () => {
+  const ui = { requestRender() {} } as any;
+  const preUpgradeRow = (oldDefinition: { name: string }, args: Record<string, unknown>, toolResult: Record<string, unknown>) => {
+    const name = oldDefinition.name;
+    assert.equal((oldDefinition as unknown as Record<PropertyKey, unknown>)[Symbol.for("pi-tool-display.runtimeBuiltInOverride.v1")], undefined);
+    const row = new ToolExecutionComponent(name, `old-${name}`, args, {}, oldDefinition as any, ui, process.cwd());
+    row.updateResult({ isError: false, details: {}, ...toolResult } as any);
+    return row;
+  };
+  const first = apiStub();
+  let bash!: ToolExecutionComponent;
+  let grep!: ToolExecutionComponent;
+  let write!: ToolExecutionComponent;
+  let edit!: ToolExecutionComponent;
+  try {
+    registerToolExecutionPatch(first.api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+    bash = preUpgradeRow(createBashTool(process.cwd()), { command: "printf one\nprintf two\nprintf three\nprintf four" }, { content: [{ type: "text", text: "done" }] });
+    grep = preUpgradeRow(createGrepTool(process.cwd()), { pattern: "needle", path: "." }, { content: [{ type: "text", text: "a:1\nb:2\nc:3" }] });
+    write = preUpgradeRow(createWriteTool(process.cwd()), { path: "file.txt", content: "one\ntwo\nthree\nfour\nfive\nsix" }, { content: [{ type: "text", text: "Wrote file.txt" }] });
+    edit = preUpgradeRow(createEditTool(process.cwd()), { path: "file.ts", edits: [] }, {
+      content: [{ type: "text", text: "Done" }],
+      details: { diff: "@@ -1,3 +1,3 @@\n-old one\n-old two\n-old three\n+new one\n+new two\n+new three" },
+    });
+  } finally {
+    first.handlers.session_shutdown?.({ reason: "reload" });
+    disposeAll();
+    resetDisposed();
+  }
+
   const handlers: Record<string, (event?: unknown) => unknown> = {};
   let owners: Record<string, unknown>[] = [];
   const api = {
@@ -128,43 +156,24 @@ test("pre-upgrade built-in rows without runtime provenance redraw through curren
     diffViewMode: "unified" as const,
     diffCollapsedLines: 4,
   };
-  const ui = { requestRender() {} } as any;
-  const preUpgradeRow = (oldDefinition: { name: string }, args: Record<string, unknown>, toolResult: Record<string, unknown>) => {
-    const name = oldDefinition.name;
-    assert.equal((oldDefinition as unknown as Record<PropertyKey, unknown>)[Symbol.for("pi-tool-display.runtimeBuiltInOverride.v1")], undefined);
-    const row = new ToolExecutionComponent(name, `old-${name}`, args, {}, oldDefinition as any, ui, process.cwd());
-    row.updateResult({ isError: false, details: {}, ...toolResult } as any);
-    return row;
-  };
-  const bash = preUpgradeRow(createBashTool(process.cwd()), { command: "printf one\nprintf two\nprintf three\nprintf four" }, { content: [{ type: "text", text: "done" }] });
-  const grep = preUpgradeRow(createGrepTool(process.cwd()), { pattern: "needle", path: "." }, { content: [{ type: "text", text: "a:1\nb:2\nc:3" }] });
-  const write = preUpgradeRow(createWriteTool(process.cwd()), { path: "file.txt", content: "one\ntwo\nthree\nfour\nfive\nsix" }, { content: [{ type: "text", text: "Wrote file.txt" }] });
-  const edit = preUpgradeRow(createEditTool(process.cwd()), { path: "file.ts", edits: [] }, {
-    content: [{ type: "text", text: "Done" }],
-    details: { diff: "@@ -1,3 +1,3 @@\n-old one\n-old two\n-old three\n+new one\n+new two\n+new three" },
-  });
-
-  registerToolDisplayOverrides(api, () => currentConfig);
-  registerToolExecutionPatch(api, () => currentConfig);
-  await handlers.session_start?.();
   try {
+    registerToolDisplayOverrides(api, () => currentConfig);
+    registerToolExecutionPatch(api, () => currentConfig);
+    await handlers.session_start?.();
     assert.deepEqual(owners.map((owner) => owner.name).sort(), ["bash", "edit", "grep", "write"]);
     edit.setExpanded(false);
     assert.doesNotMatch(plainRender(edit), /new three/);
     edit.setExpanded(true);
     assert.match(plainRender(edit), /new three/);
-
     bash.setExpanded(false);
     assert.match(plainRender(bash), /printf one/);
     assert.match(plainRender(bash), /more visual lines/);
     bash.setExpanded(true);
     assert.match(plainRender(bash), /printf four/);
-
     grep.setExpanded(false);
     assert.match(plainRender(grep), /3 matches/);
     grep.setExpanded(true);
     assert.match(plainRender(grep), /c:3/);
-
     write.setExpanded(false);
     assert.doesNotMatch(plainRender(write), /six/);
     write.setExpanded(true);
@@ -199,31 +208,39 @@ test("historical rows follow current built-in ownership and stop refreshing for 
       diffViewMode: "unified" as const,
       diffCollapsedLines: outputMode === "summary" ? 1 : 24,
     };
-    registerToolDisplayOverrides(api, () => currentConfig);
-    registerToolExecutionPatch(api, () => currentConfig);
-    return { api, handlers, registered, setOwners: (next: Record<string, unknown>[]) => { owners = next; } };
+    return { api, handlers, registered, currentConfig, setOwners: (next: Record<string, unknown>[]) => { owners = next; } };
   };
   const ui = { requestRender() {} } as any;
 
   const first = makeRuntime("preview");
-  await first.handlers.session_start?.();
-  const oldDefinition = first.registered.find((tool) => tool.name === "bash") as any;
-  const oldEditDefinition = first.registered.find((tool) => tool.name === "edit") as any;
-  const historical = new ToolExecutionComponent("bash", "old-call", { command: "printf one" }, {}, oldDefinition, ui, process.cwd());
-  historical.updateResult({ ...result, isError: false });
-  const historicalEdit = new ToolExecutionComponent("edit", "old-edit", { path: "file.ts", edits: [] }, {}, oldEditDefinition, ui, process.cwd());
-  historicalEdit.updateResult({
-    content: [{ type: "text", text: "Done" }],
-    details: { diff: "@@ -1,3 +1,3 @@\n-old one\n-old two\n-old three\n+new one\n+new two\n+new three" },
-    isError: false,
-  });
-  first.handlers.session_shutdown?.({ reason: "reload" });
-  disposeAll();
-  resetDisposed();
+  let oldDefinition: any;
+  let historical!: ToolExecutionComponent;
+  let historicalEdit!: ToolExecutionComponent;
+  try {
+    registerToolDisplayOverrides(first.api, () => first.currentConfig);
+    registerToolExecutionPatch(first.api, () => first.currentConfig);
+    await first.handlers.session_start?.();
+    oldDefinition = first.registered.find((tool) => tool.name === "bash") as any;
+    const oldEditDefinition = first.registered.find((tool) => tool.name === "edit") as any;
+    historical = new ToolExecutionComponent("bash", "old-call", { command: "printf one" }, {}, oldDefinition, ui, process.cwd());
+    historical.updateResult({ ...result, isError: false });
+    historicalEdit = new ToolExecutionComponent("edit", "old-edit", { path: "file.ts", edits: [] }, {}, oldEditDefinition, ui, process.cwd());
+    historicalEdit.updateResult({
+      content: [{ type: "text", text: "Done" }],
+      details: { diff: "@@ -1,3 +1,3 @@\n-old one\n-old two\n-old three\n+new one\n+new two\n+new three" },
+      isError: false,
+    });
+  } finally {
+    first.handlers.session_shutdown?.({ reason: "reload" });
+    disposeAll();
+    resetDisposed();
+  }
 
   const second = makeRuntime("summary");
-  await second.handlers.session_start?.();
   try {
+    registerToolDisplayOverrides(second.api, () => second.currentConfig);
+    registerToolExecutionPatch(second.api, () => second.currentConfig);
+    await second.handlers.session_start?.();
     delete oldDefinition.name;
     historical.setExpanded(false);
     assert.match(plainRender(historical), /↳ 2 lines returned .*Ctrl\+O to expand/);
