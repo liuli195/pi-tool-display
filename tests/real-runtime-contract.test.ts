@@ -24,23 +24,30 @@ for (const runtimeRoot of runtimeRoots) test(`real Pi runtime exposes cold, relo
     assert.ok(run.activeToolNames.includes("read"));
     assert.ok(run.ownership.every((tool) => tool.sourceInfo));
     for (const definition of run.definitions) {
-      assert.strictEqual(definition.after, definition.before);
-      assert.deepEqual(definition.afterDescriptors, definition.beforeDescriptors);
+      assert.strictEqual(definition.initialized, definition.pristine);
+      assert.strictEqual(definition.disposed, definition.pristine);
+      assert.deepEqual(definition.initializedDescriptors, definition.pristineDescriptors);
+      assert.deepEqual(definition.disposedDescriptors, definition.pristineDescriptors);
     }
     for (const execution of run.executions) {
-      assert.strictEqual(execution.after, execution.before);
-      assert.equal(typeof execution.after, "function");
+      assert.strictEqual(execution.initialized, execution.pristine);
+      assert.strictEqual(execution.disposed, execution.pristine);
+      assert.equal(typeof execution.pristine, "function");
     }
-    assert.deepEqual(run.events.map(({ type }) => type), ["tool_execution_start", "tool_execution_end"]);
+    assert.deepEqual(run.toolCall.arguments, { path: "contract.txt" });
+    assert.deepEqual(run.toolCall.callbackUpdates, ["contract streaming output"]);
+    assert.deepEqual(run.toolCall.updateEvents, ["contract streaming output"]);
+    assert.equal(run.toolCall.result, "contract final output");
+    assert.deepEqual(run.toolCall.eventOrder, ["start", "update", "end"]);
     assert.match(run.modelContext, /contract-cold-read/);
-    assert.match(run.sessionSerialization, /contract-cold-read/);
+    assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
     assert.match(plain(run.tuiOutput.reload), /contract\.txt/);
-    assert.match(plain(run.tuiOutput.newCall), /contract\.txt/);
+    assert.match(plain(run.tuiOutput.newCall), /contract_probe/);
   }
 
   assert.deepEqual(observation.present.activeToolNames, observation.absent.activeToolNames);
   assert.deepEqual(observation.present.ownership, observation.absent.ownership);
-  assert.deepEqual(observation.present.events, observation.absent.events);
+  assert.deepEqual(observation.present.toolCall, observation.absent.toolCall);
   assert.equal(observation.present.modelContext, observation.absent.modelContext);
-  assert.equal(observation.present.sessionSerialization, observation.absent.sessionSerialization);
+  assert.equal(observation.present.sessionSerializationAfterDispose, observation.absent.sessionSerializationAfterDispose);
 });

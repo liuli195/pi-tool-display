@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -7,11 +7,11 @@ interface RunObservation {
   activeToolNames: string[];
   loadedExtensionPaths: string[];
   ownership: Array<{ name: string; sourceInfo: unknown }>;
-  definitions: Array<{ name: string; before: object; after: object; beforeDescriptors: PropertyDescriptorMap; afterDescriptors: PropertyDescriptorMap }>;
-  executions: Array<{ name: string; before: Function; after: Function }>;
-  events: Array<{ type: string; [key: string]: unknown }>;
+  definitions: Array<{ name: string; pristine: object; initialized: object; disposed: object; pristineDescriptors: PropertyDescriptorMap; initializedDescriptors: PropertyDescriptorMap; disposedDescriptors: PropertyDescriptorMap }>;
+  executions: Array<{ name: string; pristine: Function; initialized: Function; disposed: Function }>;
+  toolCall: { arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] };
   modelContext: string;
-  sessionSerialization: string;
+  sessionSerializationAfterDispose: string;
   tuiOutput: { cold: string; reload: string; newCall: string };
 }
 
@@ -57,14 +57,20 @@ async function waitForOutput(terminal: MemoryTerminal, text: string) {
 }
 const serialize = (value: unknown) => JSON.stringify(value, (_key, item) => typeof item === "function" ? `[function:${item.name}]` : item);
 
-async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, customTools: any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
+async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, createTools: () => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-contract-"));
   const terminal = new MemoryTerminal();
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   try {
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
+    await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({ readOutputMode: "hidden" }));
     const sessionFile = join(agentDir, "contract.jsonl");
     await writeFile(sessionFile, sessionJsonl);
+    const customTools = createTools();
+    const pristineDefinitions = new Map(customTools.map((tool: any) => [tool.name, tool]));
     const sessionManager = pi.SessionManager.open(sessionFile);
 
     const entry = resolve(import.meta.dirname, "..", "..", "index.ts");
@@ -83,7 +89,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       return { ...created, services, diagnostics: services.diagnostics };
     };
     const runtime = await pi.createAgentSessionRuntime(createRuntime, { cwd: process.cwd(), agentDir, sessionManager });
-    const definitionsBefore = new Map(runtime.session.getAllTools().map((tool: any) => [tool.name, runtime.session.getToolDefinition(tool.name)]));
+    const definitionsInitialized = new Map(runtime.session.getAllTools().map((tool: any) => [tool.name, runtime.session.getToolDefinition(tool.name)]));
     const mode = new pi.InteractiveMode(runtime) as any;
     mode.ui.terminal = terminal;
     const actionsBeforeFirstOutput: string[] = [];
@@ -107,34 +113,44 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     await waitForOutput(terminal, "contract.txt");
     const cold = terminal.take();
     const actionsAtFirstOutput = [...actionsBeforeFirstOutput];
-    const definitionsAfterCold = new Map(runtime.session.getAllTools().map((tool: any) => [tool.name, runtime.session.getToolDefinition(tool.name)]));
 
     await mode.handleReloadCommand();
     await tick();
     const reload = terminal.take();
 
-    const events = [
-      { type: "tool_execution_start", toolCallId: "contract-new-read", toolName: "read", args: { path: "contract.txt" } },
-      { type: "tool_execution_end", toolCallId: "contract-new-read", toolName: "read", result: { content: [{ type: "text", text: "contract fixture output" }], details: {} }, isError: false },
-    ];
-    const observedEvents: typeof events = [];
+    const toolCallId = "contract-new-call";
+    const args = { path: "contract.txt" };
+    const callbackUpdates: string[] = [];
+    const observedEvents: any[] = [];
     const unsubscribe = runtime.session.subscribe((event: any) => {
-      if (event.type.startsWith("tool_execution_")) observedEvents.push(event);
+      if (event.toolCallId === toolCallId) observedEvents.push(event);
     });
-    for (const event of events) runtime.session._emit(event);
-    await tick();
+    runtime.session._emit({ type: "tool_execution_start", toolCallId, toolName: "contract_probe", args });
+    const probe = runtime.session.getToolDefinition("contract_probe");
+    const result = await probe.execute(toolCallId, args, undefined, (partial: any) => {
+      const text = partial.content[0].text;
+      callbackUpdates.push(text);
+      runtime.session._emit({ type: "tool_execution_update", toolCallId, toolName: "contract_probe", args, partialResult: partial });
+    });
+    runtime.session._emit({ type: "tool_execution_end", toolCallId, toolName: "contract_probe", result, isError: false });
+    await waitForOutput(terminal, "contract_probe");
     unsubscribe();
     const newCall = terminal.take();
 
     const session = runtime.session;
     const tools = session.getAllTools();
-    const definitions = tools.map((tool: any) => {
-      const before = definitionsBefore.get(tool.name) as object;
-      const after = definitionsAfterCold.get(tool.name) as object;
+    const initializedSessionDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
+    mode.stop();
+    await runtime.dispose();
+    const disposedDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
+    const definitions = [...pristineDefinitions].map(([name, pristine]: any) => {
+      const initialized = (definitionsInitialized.get(name) ?? initializedSessionDefinitions.get(name)) as object;
+      const disposed = disposedDefinitions.get(name) as object;
       return {
-        name: tool.name, before, after,
-        beforeDescriptors: Object.getOwnPropertyDescriptors(before),
-        afterDescriptors: Object.getOwnPropertyDescriptors(after),
+        name, pristine, initialized, disposed,
+        pristineDescriptors: Object.getOwnPropertyDescriptors(pristine),
+        initializedDescriptors: Object.getOwnPropertyDescriptors(initialized),
+        disposedDescriptors: Object.getOwnPropertyDescriptors(disposed),
       };
     });
     const observation = {
@@ -142,17 +158,23 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       loadedExtensionPaths: session.resourceLoader.getExtensions().extensions.map((extension: any) => extension.resolvedPath),
       ownership: tools.map((tool: any) => ({ name: tool.name, sourceInfo: tool.sourceInfo })),
       definitions,
-      executions: definitions.map(({ name, before, after }: any) => ({ name, before: before.execute, after: after.execute })),
-      events: observedEvents,
+      executions: definitions.map(({ name, pristine, initialized, disposed }: any) => ({ name, pristine: pristine.execute, initialized: initialized.execute, disposed: disposed.execute })),
+      toolCall: {
+        arguments: observedEvents[0].args,
+        callbackUpdates,
+        updateEvents: observedEvents.filter(({ type }) => type === "tool_execution_update").map(({ partialResult }) => partialResult.content[0].text),
+        result: result.content[0].text,
+        eventOrder: observedEvents.map(({ type }) => type.replace("tool_execution_", "")),
+      },
       modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
-      sessionSerialization: await readFile(sessionFile, "utf8"),
+      sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),
       tuiOutput: { cold, reload, newCall },
       actionsBeforeFirstOutput: actionsAtFirstOutput,
     };
-    mode.stop();
-    await runtime.dispose();
     return observation;
   } finally {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
     await rm(agentDir, { recursive: true, force: true });
   }
 }
@@ -174,9 +196,18 @@ export async function runPureDisplayContract(runtimeRoot: string): Promise<PureD
   });
   seed.appendThinkingLevelChange("medium");
   const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
-  const customTools = pi.createCodingTools(process.cwd());
-  const absent = await run(runtimeRoot, false, sessionJsonl, customTools);
-  const present = await run(runtimeRoot, true, sessionJsonl, customTools);
+  const createTools = () => [...pi.createCodingTools(process.cwd()), {
+    name: "contract_probe",
+    label: "Contract probe",
+    description: "Deterministic contract tool",
+    parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"], additionalProperties: false },
+    execute: async (_id: string, _args: unknown, _signal: unknown, onUpdate: (result: unknown) => void) => {
+      onUpdate({ content: [{ type: "text", text: "contract streaming output" }], details: {} });
+      return { content: [{ type: "text", text: "contract final output" }], details: {} };
+    },
+  }];
+  const absent = await run(runtimeRoot, false, sessionJsonl, createTools);
+  const present = await run(runtimeRoot, true, sessionJsonl, createTools);
   return {
     paths: ["cold", "reload", "new-call"],
     firstCollapsedOutput: present.tuiOutput.cold,
