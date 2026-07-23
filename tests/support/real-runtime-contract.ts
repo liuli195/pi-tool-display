@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -57,16 +57,19 @@ async function waitForOutput(terminal: MemoryTerminal, text: string) {
   }
 }
 const serialize = (value: unknown) => JSON.stringify(value, (_key, item) => typeof item === "function" ? `[function:${item.name}]` : item);
-function deterministicJsonl(value: string): string {
-  const ids = new Map<string, string>();
-  return value.trimEnd().split("\n").map((line, index) => {
-    const entry = JSON.parse(line);
-    if (entry.id) ids.set(entry.id, `entry-${index}`);
-    if (entry.id) entry.id = ids.get(entry.id);
-    if (entry.parentId) entry.parentId = ids.get(entry.parentId);
-    if (entry.type !== "session") entry.timestamp = "deterministic";
-    return JSON.stringify(entry);
-  }).join("\n") + "\n";
+
+async function importRuntimePackage(root: string, name: string) {
+  const paths = [join(root, "node_modules", "@earendil-works", name, "dist", "index.js"), join(dirname(dirname(root)), "@earendil-works", name, "dist", "index.js")];
+  for (const path of paths) {
+    try { await access(path); return import(pathToFileURL(path).href); } catch {}
+  }
+  throw new Error(`Unsupported Pi package shape: cannot resolve @earendil-works/${name}`);
+}
+
+function installDeterministicStream(agent: any, stream: (...args: unknown[]) => unknown) {
+  if (typeof agent?.streamFunction === "function") agent.streamFunction = stream;
+  else if (typeof agent?.streamFn === "function") agent.streamFn = stream;
+  else throw new Error("Unsupported Pi Agent shape: expected streamFunction or streamFn");
 }
 
 async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, createTools: (probe: { updates: string[]; arguments?: unknown }) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
@@ -85,6 +88,13 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     const customTools = createTools(probeObservation);
     const pristineDefinitions = new Map(customTools.map((tool: any) => [tool.name, tool]));
     const sessionManager = pi.SessionManager.open(sessionFile);
+    const appendEntry = sessionManager._appendEntry;
+    let appendedEntries = 0;
+    sessionManager._appendEntry = function (entry: any) {
+      entry.id = `contract-entry-${++appendedEntries}`;
+      entry.timestamp = "2000-01-01T00:00:00.000Z";
+      return appendEntry.call(this, entry);
+    };
 
     const entry = resolve(import.meta.dirname, "..", "..", "index.ts");
     const createRuntime = async ({ cwd, agentDir: nextAgentDir, sessionManager: nextManager, sessionStartEvent }: any) => {
@@ -119,9 +129,11 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       if (args[0] === true) actionsBeforeFirstOutput.push("manual-invalidation");
       return requestRender.apply(this, args);
     };
-    track("theme", mode.themeController, "setThemeName");
-    track("theme", mode.themeController, "setThemeInstance");
-    track("theme", mode.themeController, "preview");
+    if (mode.themeController) {
+      track("theme", mode.themeController, "setThemeName");
+      track("theme", mode.themeController, "setThemeInstance");
+      track("theme", mode.themeController, "preview");
+    }
     await mode.init();
     await waitForOutput(terminal, "contract.txt");
     const cold = terminal.frames.find((frame) => frame.includes("contract.txt")) ?? "";
@@ -141,9 +153,9 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     const unsubscribe = runtime.session.subscribe((event: any) => {
       if (event.toolCallId === toolCallId) observedEvents.push(event);
     });
-    const ai = await import(pathToFileURL(join(root, "node_modules", "@earendil-works", "pi-ai", "dist", "index.js")).href);
+    const ai = await importRuntimePackage(root, "pi-ai");
     let response = 0;
-    runtime.session.agent.streamFn = () => {
+    installDeterministicStream(runtime.session.agent, () => {
       const stream = new ai.AssistantMessageEventStream();
       const toolCall = { type: "toolCall", id: toolCallId, name: "contract_probe", arguments: args };
       const message = {
@@ -153,7 +165,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       };
       queueMicrotask(() => { stream.push({ type: "start", partial: message }); stream.push({ type: "done", reason: message.stopReason, message }); });
       return stream;
-    };
+    });
     const realNow = Date.now;
     Date.now = () => 2;
     try {
@@ -181,6 +193,8 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
         disposedDescriptors: Object.getOwnPropertyDescriptors(disposed),
       };
     });
+    const endEvent = observedEvents.find(({ type }) => type === "tool_execution_end");
+    if (!endEvent) throw new Error(`Unsupported Pi event shape: expected tool_execution_end, received ${serialize(observedEvents.map(({ type }) => type))}`);
     const observation = {
       activeToolNames: session.getActiveToolNames(),
       loadedExtensionPaths: session.resourceLoader.getExtensions().extensions.map((extension: any) => extension.resolvedPath),
@@ -191,11 +205,11 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
         arguments: probeObservation.arguments,
         callbackUpdates: probeObservation.updates,
         updateEvents: observedEvents.filter(({ type }) => type === "tool_execution_update").map(({ partialResult }) => partialResult.content[0].text),
-        result: observedEvents.find(({ type }) => type === "tool_execution_end").result.content[0].text,
+        result: endEvent.result.content[0].text,
         eventOrder: observedEvents.map(({ type }) => type.replace("tool_execution_", "")),
       },
       modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
-      sessionSerializationAfterDispose: deterministicJsonl(await readFile(sessionFile, "utf8")),
+      sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),
       tuiOutput: { cold, expandedCold, reload, newCall },
       actionsBeforeFirstOutput: actionsAtFirstOutput,
     };

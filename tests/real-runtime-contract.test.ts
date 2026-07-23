@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { runPureDisplayContract } from "./support/real-runtime-contract.js";
 
@@ -16,15 +15,15 @@ test("runtime matrix pins development, Pi 0.81.1, and the declared minimum", () 
     { name: "pi-0.81.1", version: "0.81.1" },
     { name: "minimum-supported", version: "0.74.0" },
   ]);
-  assert.equal(matrix.filter(({ required }) => required).length, 1);
+  assert.equal(matrix.every(({ required }) => required), true);
   assert.equal(matrix.find(({ name }) => name === "development")?.env, "PI_RUNTIME_DEV_ROOT");
 });
 
 for (const entry of matrix) {
-  const runtimeRoot = process.env[entry.env]
-    ?? (entry.name === "development" ? fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")) : undefined);
-  test(`real Pi runtime contract: ${entry.name}`, { skip: runtimeRoot ? false : `${entry.env} is not supplied` }, async () => {
-    assert.ok(runtimeRoot);
+  const runtimeRoot = process.env[entry.env];
+  const optional = process.env.npm_lifecycle_event === "test:contract:local";
+  test(`real Pi runtime contract: ${entry.name}`, { skip: optional && !runtimeRoot ? `${entry.env} is not supplied` : false }, async () => {
+    assert.ok(runtimeRoot, `${entry.env} is required (use npm run test:contract:local for optional local runtimes)`);
     const packagePath = runtimeRoot.endsWith("package.json") ? runtimeRoot : resolve(runtimeRoot.endsWith(".js") ? dirname(dirname(runtimeRoot)) : runtimeRoot, "package.json");
     const packageVersion = JSON.parse(readFileSync(packagePath, "utf8")).version;
     if (entry.version) assert.equal(packageVersion, entry.version, `${entry.env} must point to Pi ${entry.version}`);
@@ -35,7 +34,11 @@ for (const entry of matrix) {
     assert.deepEqual(observation.paths, ["cold", "reload", "new-call"]);
     assert.deepEqual(observation.actionsBeforeFirstOutput, []);
     assert.match(cold, /contract\.txt/);
-    assert.doesNotMatch(cold, /contract fixture first line|contract folded (?:second|third) line/);
+    if (entry.version === "0.74.0") {
+      assert.match(cold, /contract fixture first line/); // 0.74 uses native fallback at this unverified private TUI shape.
+    } else {
+      assert.doesNotMatch(cold, /contract fixture first line|contract folded (?:second|third) line/);
+    }
     assert.match(plain(observation.present.tuiOutput.expandedCold), /contract fixture first line/);
     assert.match(plain(observation.present.tuiOutput.expandedCold), /contract folded third line/);
 
