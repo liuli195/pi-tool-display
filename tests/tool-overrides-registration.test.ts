@@ -10,7 +10,6 @@ import {
 	createGrepTool,
 	createLsTool,
 	createReadTool,
-	createWriteTool,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
@@ -144,12 +143,11 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 		ls: createLsTool(cwd),
 		bash: createBashTool(cwd),
 		edit: createEditTool(cwd),
-		write: createWriteTool(cwd),
 	};
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
-		if (["read", "grep", "find", "ls", "edit", "write"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
+		if (["read", "grep", "find", "ls", "edit"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
 		const builtInMetadata = builtInTool as unknown as RegisteredToolLike;
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
 		assert.equal(registeredTool.promptSnippet, builtInMetadata.promptSnippet);
@@ -157,7 +155,6 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 
 	assert.deepEqual(byName.get("read")?.promptGuidelines, undefined);
 	assert.deepEqual(byName.get("edit")?.promptGuidelines, undefined);
-	assert.deepEqual(byName.get("write")?.promptGuidelines, undefined);
 	assert.equal(byName.get("grep")?.promptGuidelines, undefined);
 	assert.equal(byName.get("find")?.promptGuidelines, undefined);
 	assert.equal(byName.get("ls")?.promptGuidelines, undefined);
@@ -194,12 +191,11 @@ test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI k
 		ls: createLsTool(cwd),
 		bash: createBashTool(cwd),
 		edit: createEditTool(cwd),
-		write: createWriteTool(cwd),
 	};
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
-		if (["read", "grep", "find", "ls", "edit", "write"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
+		if (["read", "grep", "find", "ls", "edit"].includes(name)) { assert.equal(registeredTool, undefined); continue; }
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
 		assert.notEqual(
 			registeredTool.parameters,

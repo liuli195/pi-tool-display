@@ -18,8 +18,6 @@ import {
   createGrepTool,
   createLsTool,
   createReadTool,
-  createWriteTool,
-  formatSize,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text, type Component } from "@earendil-works/pi-tui";
 import { resolvePiAgentDir } from "./agent-dir.js";
@@ -63,7 +61,6 @@ interface BuiltInTools {
   ls: ReturnType<typeof createLsTool>;
   bash: ReturnType<typeof createBashTool>;
   edit: ReturnType<typeof createEditTool>;
-  write: ReturnType<typeof createWriteTool>;
 }
 
 type ConfigGetter = () => ToolDisplayConfig;
@@ -289,7 +286,6 @@ function createLazyBuiltInTools(cwd: string): BuiltInTools {
     get ls() { return get("ls", () => createLsTool(cwd)); },
     get bash() { return get("bash", () => createBashTool(cwd, loadBashToolOverrideOptions())); },
     get edit() { return get("edit", () => createEditTool(cwd)); },
-    get write() { return get("write", () => createWriteTool(cwd)); },
   } as BuiltInTools;
 }
 
@@ -311,7 +307,6 @@ function createLazyToolRecord<T>(
     get ls() { return get("ls"); },
     get bash() { return get("bash"); },
     get edit() { return get("edit"); },
-    get write() { return get("write"); },
   } as Record<keyof BuiltInTools, T>;
 }
 
@@ -398,10 +393,6 @@ function getNumericField(value: unknown, field: string): number | undefined {
 
 function getToolPathArg(value: unknown): string | undefined {
   return getStringField(value, "file_path") ?? getStringField(value, "path");
-}
-
-function getToolContentArg(value: unknown): string | undefined {
-  return getStringField(value, "content");
 }
 
 function getEditPayloadLineCount(value: unknown): number {
@@ -520,17 +511,6 @@ function formatLineCountSuffix(
   theme: RenderTheme,
 ): string {
   return theme.fg("muted", ` (${lineCount} ${pluralize(lineCount, "line")})`);
-}
-
-function formatWriteCallSuffix(
-  lineCount: number,
-  sizeBytes: number,
-  theme: RenderTheme,
-): string {
-  return theme.fg(
-    "muted",
-    ` (${lineCount} ${pluralize(lineCount, "line")} • ${formatSize(sizeBytes)})`,
-  );
 }
 
 function formatInProgressLineCount(

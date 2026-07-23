@@ -7,7 +7,6 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   countWriteContentLines,
   getWriteContentSizeBytes,
-  shouldRenderWriteCallSummary,
 } from "../src/write-display-utils.ts";
 import {
   extractUserMessageMarkdownState,
@@ -93,30 +92,6 @@ test("pending edit preview trusts supplied evidence without reading the current 
   } finally {
     rmSync(baseDir, { recursive: true, force: true });
   }
-});
-
-test("write call summary moves metrics onto the first line when the result header omits them", () => {
-  assert.equal(
-    shouldRenderWriteCallSummary({
-      hasContent: true,
-      hasDetailedResultHeader: false,
-    }),
-    true,
-  );
-  assert.equal(
-    shouldRenderWriteCallSummary({
-      hasContent: true,
-      hasDetailedResultHeader: true,
-    }),
-    false,
-  );
-  assert.equal(
-    shouldRenderWriteCallSummary({
-      hasContent: false,
-      hasDetailedResultHeader: false,
-    }),
-    false,
-  );
 });
 
 test("write content line counting ignores trailing newlines", () => {
