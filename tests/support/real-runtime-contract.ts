@@ -12,7 +12,16 @@ interface RunObservation {
   toolCall: { arguments: unknown; callbackUpdates: string[]; updateEvents: string[]; result: string; eventOrder: string[] };
   modelContext: string;
   modelVisibleInvocations: string;
-  hostCallbacks: { keys: string[]; postConstructionDescriptors: PropertyDescriptorMap; invocations: Array<Record<string, Function>> };
+  hostCallbacks: {
+    keys: string[];
+    invocationTypes: Record<string, string>;
+    invocations: Array<Record<string, Function>>;
+    producer: {
+      key: string;
+      pristine: Function; initialized: Function; disposed: Function;
+      pristineDescriptor: PropertyDescriptor; initializedDescriptor: PropertyDescriptor; disposedDescriptor: PropertyDescriptor;
+    };
+  };
   sessionSerializationAfterDispose: string;
   tuiOutput: { cold: string; expandedCold: string; reload: string; newCall: string };
 }
@@ -159,7 +168,7 @@ export function modelVisibleInvocationSnapshot(args: unknown[]): string {
   const { model, context: contextValue, options: optionsValue, contextEntries, optionEntries } = invocationParts(args);
   const toolsEntry = contextEntries.find(([key]) => key === "tools");
   if (toolsEntry && !Array.isArray(toolsEntry[1])) throw new Error("Unsupported model context tools shape");
-  const tools = (toolsEntry?.[1] as unknown[] | undefined)?.map((tool, index) => {
+  const tools = toolsEntry ? arrayDataValues(toolsEntry[1] as unknown[], "context.tools").map((tool, index) => {
     const path = `context.tools[${index}]`;
     const entries = ownDataEntries(tool as object, path);
     const execute = entries.find(([key]) => key === "execute");
@@ -167,7 +176,7 @@ export function modelVisibleInvocationSnapshot(args: unknown[]): string {
     const prepare = entries.find(([key]) => key === "prepareArguments");
     if (prepare && prepare[1] !== undefined && typeof prepare[1] !== "function") throw new Error(`Unsupported model tool shape at ${path}: prepareArguments must be undefined or an own function`);
     return projectObject(tool, path, new Set(["execute", "prepareArguments"]));
-  });
+  }) : undefined;
   const context = projectObject(contextValue, "context", new Set(), new Map([["tools", tools]]));
   for (const [key, value] of optionEntries) {
     if (hostCallbackOptionKeys.has(key) && value !== undefined && typeof value !== "function") throw new Error(`Unsupported ${key} option shape`);
@@ -180,11 +189,23 @@ function arrayDataValues(value: unknown[], path: string): unknown[] {
   const entries = ownDataEntries(value, path);
   const length = entries.find(([key]) => key === "length")?.[1];
   if (typeof length !== "number" || entries.length !== length + 1) throw new Error(`Unsupported sparse or decorated array at ${path}`);
+  const indexed = new Map(entries);
   return Array.from({ length }, (_, index) => {
-    const entry = entries.find(([key]) => key === String(index));
-    if (!entry) throw new Error(`Unsupported sparse or decorated array at ${path}`);
-    return entry[1];
+    if (!indexed.has(String(index))) throw new Error(`Unsupported sparse or decorated array at ${path}`);
+    return indexed.get(String(index));
   });
+}
+
+function callbackProducerDescriptor(value: object): { key: string; value: Function; descriptor: PropertyDescriptor } {
+  for (const key of ["createLoopConfig", "getConfig"]) {
+    for (let owner: object | null = value; owner; owner = Object.getPrototypeOf(owner)) {
+      const descriptor = Object.getOwnPropertyDescriptor(owner, key);
+      if (!descriptor) continue;
+      if (!("value" in descriptor) || typeof descriptor.value !== "function") throw new Error(`Unsupported ${key} producer descriptor`);
+      return { key, value: descriptor.value, descriptor };
+    }
+  }
+  throw new Error("Unsupported Pi Agent shape: expected callback config producer");
 }
 
 export function captureModelInvocation(seam: "streamFunction" | "streamFn", args: unknown[]): string {
@@ -234,7 +255,9 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     };
 
     const entry = resolve(import.meta.dirname, "..", "..", "index.ts");
-    let postConstructionCallbackDescriptors: PropertyDescriptorMap = {};
+    const agentCore = await importRuntimePackage(root, "pi-agent-core");
+    const pristineProducer = callbackProducerDescriptor(agentCore.Agent.prototype);
+    let initializedProducer = pristineProducer;
     const createRuntime = async ({ cwd, agentDir: nextAgentDir, sessionManager: nextManager, sessionStartEvent }: any) => {
       const services = await pi.createAgentSessionServices({
         cwd, agentDir: nextAgentDir,
@@ -247,12 +270,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
         services, sessionManager: nextManager, sessionStartEvent,
         customTools,
       });
-      postConstructionCallbackDescriptors = Object.fromEntries(Reflect.ownKeys(created.session.agent).flatMap((key) => {
-        if (typeof key !== "string" || !hostCallbackOptionKeys.has(key)) return [];
-        const descriptor = Object.getOwnPropertyDescriptor(created.session.agent, key)!;
-        if (!("value" in descriptor)) throw new Error(`Unsupported post-construction Agent callback descriptor: ${key}`);
-        return [[key, descriptor]];
-      }));
+      initializedProducer = callbackProducerDescriptor(created.session.agent);
       return { ...created, services, diagnostics: services.diagnostics };
     };
     const runtime = await pi.createAgentSessionRuntime(createRuntime, { cwd: process.cwd(), agentDir, sessionManager });
@@ -331,6 +349,8 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     const initializedSessionDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
     mode.stop();
     await runtime.dispose();
+    const disposedProducer = callbackProducerDescriptor(session.agent);
+    if (initializedProducer.key !== pristineProducer.key || disposedProducer.key !== pristineProducer.key) throw new Error("Pi Agent callback config producer changed during extension lifecycle");
     const disposedDefinitions = new Map(tools.map((tool: any) => [tool.name, session.getToolDefinition(tool.name)]));
     const definitions = [...pristineDefinitions].map(([name, pristine]: any) => {
       const initialized = (definitionsInitialized.get(name) ?? initializedSessionDefinitions.get(name)) as object;
@@ -361,8 +381,15 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       modelVisibleInvocations: JSON.stringify(modelInvocations),
       hostCallbacks: {
         keys: Object.keys(callbackInvocations[0] ?? {}).sort(),
-        postConstructionDescriptors: postConstructionCallbackDescriptors,
+        invocationTypes: Object.fromEntries(Object.entries(callbackInvocations[0] ?? {}).map(([key, value]) => [key, typeof value])),
         invocations: callbackInvocations,
+        producer: {
+          key: pristineProducer.key,
+          pristine: pristineProducer.value, initialized: initializedProducer.value, disposed: disposedProducer.value,
+          pristineDescriptor: pristineProducer.descriptor,
+          initializedDescriptor: initializedProducer.descriptor,
+          disposedDescriptor: disposedProducer.descriptor,
+        },
       },
       sessionSerializationAfterDispose: await readFile(sessionFile, "utf8"),
       tuiOutput: { cold, expandedCold, reload, newCall },

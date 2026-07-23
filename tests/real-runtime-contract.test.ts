@@ -116,26 +116,13 @@ for (const entry of matrix) {
       assert.match(run.modelVisibleInvocations, /contract-cold-read/);
       assert.match(run.modelVisibleInvocations, /contract_probe/);
       assert.match(run.modelVisibleInvocations, /Deterministic contract tool/);
-      const postConstructionKeys = Object.entries(run.hostCallbacks.postConstructionDescriptors)
-        .filter(([, descriptor]) => "value" in descriptor && typeof descriptor.value === "function")
-        .map(([key]) => key).sort();
-      const callbacksIntroducedAfterConstruction: Record<string, readonly string[]> = {
-        "0.74.0": ["getFollowUpMessages", "getSteeringMessages"],
-        "0.80.3": ["getFollowUpMessages", "getSteeringMessages", "prepareNextTurn"],
-        "0.81.1": ["getFollowUpMessages", "getSteeringMessages", "prepareNextTurn"],
-      };
-      const permittedIntroductions = callbacksIntroducedAfterConstruction[packageVersion];
-      assert.ok(permittedIntroductions, `Pi ${packageVersion} needs an explicit callback-introduction invariant`);
-      assert.deepEqual(run.hostCallbacks.keys, [...postConstructionKeys, ...permittedIntroductions].sort());
+      assert.strictEqual(run.hostCallbacks.producer.initialized, run.hostCallbacks.producer.pristine);
+      assert.strictEqual(run.hostCallbacks.producer.disposed, run.hostCallbacks.producer.pristine);
+      assert.deepEqual(run.hostCallbacks.producer.initializedDescriptor, run.hostCallbacks.producer.pristineDescriptor);
+      assert.deepEqual(run.hostCallbacks.producer.disposedDescriptor, run.hostCallbacks.producer.pristineDescriptor);
+      assert.deepEqual(run.hostCallbacks.invocationTypes, Object.fromEntries(run.hostCallbacks.keys.map((key) => [key, "function"])));
       for (const callbacks of run.hostCallbacks.invocations) {
         assert.deepEqual(Object.keys(callbacks).sort(), run.hostCallbacks.keys);
-        // Queue/next-turn callbacks are fresh closures created inside Agent.getConfig() for each run.
-        // Extensions cannot reach their source references, so only their versioned presence is asserted.
-        for (const key of postConstructionKeys) {
-          const descriptor = run.hostCallbacks.postConstructionDescriptors[key];
-          assert.ok(descriptor && "value" in descriptor && typeof descriptor.value === "function");
-          assert.strictEqual(callbacks[key], descriptor.value);
-        }
       }
       assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
       assert.match(plain(run.tuiOutput.reload), /contract\.txt/);
