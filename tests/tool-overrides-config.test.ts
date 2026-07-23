@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
+import { createRendererCatalog } from "../src/renderer-catalog.ts";
+import { createToolDisplayResolver } from "../src/tool-display-resolver.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 
 interface RenderThemeLike {
@@ -105,6 +107,14 @@ function normalizeRenderedText(component: RenderComponentLike): string {
 		.trim();
 }
 
+function resolveBash(config: ToolDisplayConfig): RegisteredToolLike {
+	const plan = createToolDisplayResolver(() => config, createRendererCatalog()).resolve(
+		{ toolName: "bash", arguments: {}, builtIn: true },
+		{},
+	);
+	return { name: "bash", renderCall: plan.call, renderResult: plan.result } as RegisteredToolLike;
+}
+
 function renderToolResult(
 	tool: RegisteredToolLike | undefined,
 	input:
@@ -185,7 +195,7 @@ test("bash output modes stay distinct across opencode, summary, and preview", as
 	registerToolDisplayOverrides(opencodeStub.api, () => opencodeConfig);
 	await opencodeStub.eventHandlers.before_agent_start?.();
 	assert.equal(
-		renderToolResult(opencodeStub.registeredTools.find((tool) => tool.name === "bash"), output),
+		renderToolResult(resolveBash(opencodeConfig), output),
 		"alpha\n... (2 more lines • Ctrl+O to expand)",
 	);
 
@@ -197,11 +207,11 @@ test("bash output modes stay distinct across opencode, summary, and preview", as
 	registerToolDisplayOverrides(summaryStub.api, () => summaryConfig);
 	await summaryStub.eventHandlers.before_agent_start?.();
 	assert.equal(
-		renderToolResult(summaryStub.registeredTools.find((tool) => tool.name === "bash"), output),
+		renderToolResult(resolveBash(summaryConfig), output),
 		"↳ 3 lines returned • Ctrl+O to expand",
 	);
 	assert.equal(
-		renderToolResult(summaryStub.registeredTools.find((tool) => tool.name === "bash"), {
+		renderToolResult(resolveBash(summaryConfig), {
 			text: output,
 			expanded: true,
 		}),
@@ -217,7 +227,7 @@ test("bash output modes stay distinct across opencode, summary, and preview", as
 	registerToolDisplayOverrides(previewStub.api, () => previewConfig);
 	await previewStub.eventHandlers.before_agent_start?.();
 	assert.equal(
-		renderToolResult(previewStub.registeredTools.find((tool) => tool.name === "bash"), output),
+		renderToolResult(resolveBash(previewConfig), output),
 		"alpha\nbeta\n... (1 more line • Ctrl+O to expand)",
 	);
 });
@@ -230,7 +240,7 @@ test("bash call spinner appears only while execution is active", async () => {
 	registerToolDisplayOverrides(api, () => config);
 	await eventHandlers.before_agent_start?.();
 
-	const bashTool = registeredTools.find((tool) => tool.name === "bash");
+	const bashTool = resolveBash(config);
 	const idle = renderToolCall(bashTool, { command: "npm test" });
 	assert.equal(idle.output, "$ npm test");
 
@@ -276,7 +286,7 @@ test("bash render keeps the running result area empty until output exists", asyn
 	registerToolDisplayOverrides(api, () => config);
 	await eventHandlers.before_agent_start?.();
 
-	const bashTool = registeredTools.find((tool) => tool.name === "bash");
+	const bashTool = resolveBash(config);
 	assert.equal(
 		renderToolResult(bashTool, { text: "", isPartial: true }),
 		"",
@@ -292,7 +302,7 @@ test("bash render shows live partial output once streaming begins", async () => 
 	registerToolDisplayOverrides(api, () => config);
 	await eventHandlers.before_agent_start?.();
 
-	const bashTool = registeredTools.find((tool) => tool.name === "bash");
+	const bashTool = resolveBash(config);
 	assert.equal(
 		renderToolResult(bashTool, {
 			text: "alpha\nbeta\ngamma\n",
@@ -312,7 +322,7 @@ test("bash live partial output respects opencode collapse settings", async () =>
 	registerToolDisplayOverrides(api, () => config);
 	await eventHandlers.before_agent_start?.();
 
-	const bashTool = registeredTools.find((tool) => tool.name === "bash");
+	const bashTool = resolveBash(config);
 	assert.equal(
 		renderToolResult(bashTool, {
 			text: "alpha\nbeta\ngamma\n",
@@ -328,7 +338,7 @@ test("bash errors use their independent summary mode", async () => {
 	registerToolDisplayOverrides(api, () => config);
 	await eventHandlers.before_agent_start?.();
 
-	const bashTool = registeredTools.find((tool) => tool.name === "bash");
+	const bashTool = resolveBash(config);
 	assert.equal(
 		renderToolResult(bashTool, {
 			text: "npm ERR! missing script: test\nSee npm help run-script\n",
@@ -348,7 +358,7 @@ test("bash error preview folds long single lines by terminal width", async () =>
 	registerToolDisplayOverrides(api, () => config);
 	await eventHandlers.before_agent_start?.();
 
-	const bashTool = registeredTools.find((tool) => tool.name === "bash");
+	const bashTool = resolveBash(config);
 	assert.ok(bashTool?.renderResult);
 	const component = bashTool.renderResult(
 		{ content: [{ type: "text", text: "error ".repeat(80) }], isError: true },

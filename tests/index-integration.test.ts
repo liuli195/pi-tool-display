@@ -103,7 +103,7 @@ test("entry point registers built-in tool overrides after loading", async () => 
   for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
 
   const toolNames = capturedTools.map((t) => t.name);
-  assert.deepEqual(toolNames.sort(), ["bash"]);
+  assert.deepEqual(toolNames, []);
 });
 
 test("session_start handler refreshes capabilities and notifies pending errors", async () => {
@@ -148,7 +148,7 @@ test("multiple calls to toolDisplayExtension are idempotent", async () => {
   // not crash.
   const toolNames = capturedTools.map((t) => t.name);
   assert.equal(toolNames.some((name) => ["read", "grep", "find", "ls", "edit", "write"].includes(name)), false);
-  assert.ok(toolNames.filter((n) => n === "bash").length >= 1, "bash registered at least once");
+  assert.equal(toolNames.length, 0);
 
   const cmdNames = capturedCommands.map((c) => c.name);
   assert.ok(cmdNames.filter((n) => n === "tool-display").length >= 1, "command registered at least once");
@@ -274,8 +274,7 @@ test("overridden tools include renderCall and renderResult functions", async () 
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} } });
-  assert.equal(capturedTools.length, 1);
-  assert.equal(capturedTools.some((tool) => ["read", "grep", "find", "ls", "edit", "write"].includes(tool.name)), false);
+  assert.equal(capturedTools.length, 0);
 
   for (const tool of capturedTools) {
     assert.ok(
@@ -289,20 +288,9 @@ test("overridden tools include renderCall and renderResult functions", async () 
   }
 });
 
-test("overridden tools preserve promptSnippet and promptGuidelines from built-ins", async () => {
+test("display overrides do not replace built-in definitions", async () => {
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
-
-  const byName = new Map(capturedTools.map((t) => [t.name, t]));
-
-  for (const name of ["bash"] as const) {
-    const tool = byName.get(name);
-    assert.ok(tool, `${name} is registered`);
-    // promptSnippet should be a non-empty string or undefined
-    // (built-in tools may or may not have promptSnippet)
-    if (tool.promptSnippet !== undefined) {
-      assert.equal(typeof tool.promptSnippet, "string");
-    }
-  }
+  assert.deepEqual(capturedTools, []);
 });

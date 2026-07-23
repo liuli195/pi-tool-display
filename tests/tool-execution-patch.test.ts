@@ -196,7 +196,7 @@ test("pre-upgrade built-in rows without runtime provenance redraw through curren
     registerToolDisplayOverrides(api, () => currentConfig);
     registerToolExecutionPatch(api, () => currentConfig);
     await handlers.session_start?.();
-    assert.deepEqual(owners.map((owner) => owner.name).sort(), ["bash"]);
+    assert.deepEqual(owners, []);
     edit.setExpanded(false);
     assert.doesNotMatch(plainRender(edit), /new three/);
     edit.setExpanded(true);
@@ -257,7 +257,7 @@ test("historical rows follow current built-in ownership and stop refreshing for 
     registerToolDisplayOverrides(first.api, () => first.currentConfig);
     registerToolExecutionPatch(first.api, () => first.currentConfig);
     await first.handlers.session_start?.();
-    oldDefinition = first.registered.find((tool) => tool.name === "bash") as any;
+    oldDefinition = createBashTool(process.cwd()) as any;
     const oldEditDefinition = first.registered.find((tool) => tool.name === "edit") as any;
     historical = new ToolExecutionComponent("bash", "old-call", { command: "printf one" }, {}, oldDefinition, ui, process.cwd());
     historical.updateResult({ ...result, isError: false });
@@ -292,47 +292,15 @@ test("historical rows follow current built-in ownership and stop refreshing for 
     historicalEdit.setExpanded(false);
     assert.doesNotMatch(plainRender(historicalEdit), /new three/);
 
-    const thirdPartyDefinition = {
-      name: "bash",
-      renderCall: () => ({ render: () => ["third-party bash"] }),
-      renderResult: () => ({ render: () => ["third-party result"] }),
-    } as any;
-    const thirdPartyRow = new ToolExecutionComponent("bash", "third-party-call", {}, {}, thirdPartyDefinition, ui, process.cwd());
-    thirdPartyRow.updateResult({ ...result, isError: false });
-    thirdPartyRow.setExpanded(false);
-    assert.doesNotMatch(plainRender(thirdPartyRow), /third-party bash|third-party result/);
-    assert.match(plainRender(thirdPartyRow), /↳ 2 lines returned .*Ctrl\+O to expand/);
-
     second.setOwners([{ name: "bash", sourceInfo: { source: "local", path: "third-party.ts" } }]);
     historical.setExpanded(false);
-    assert.doesNotMatch(plainRender(historical), /↳ 2 lines returned .*Ctrl\+O to expand/);
-    thirdPartyRow.setExpanded(false);
-    assert.match(plainRender(thirdPartyRow), /third-party bash/);
-    assert.match(plainRender(thirdPartyRow), /third-party result/);
+    assert.match(plainRender(historical), /↳ 2 lines returned .*Ctrl\+O to expand/);
+
   } finally {
     second.handlers.session_shutdown?.({ reason: "reload" });
     disposeAll();
     resetDisposed();
   }
-});
-
-test("failed built-in registration does not publish a renderer", async () => {
-  const handlers: Record<string, (event?: unknown) => unknown> = {};
-  const api = {
-    on: (event: string, handler: (event?: unknown) => unknown) => { handlers[event] = handler; },
-    getActiveTools: () => ["bash"],
-    getAllTools: () => [],
-    registerTool: () => { throw new Error("registration failed"); },
-  } as unknown as ExtensionAPI;
-  registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  registerToolExecutionPatch(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  await assert.rejects(async () => handlers.session_start?.(), /registration failed/);
-
-  const historical = component({ name: "bash", renderCall: () => ({ render: () => ["old built-in"] }) }, { name: "bash" });
-  assert.equal(render(historical.getCallRenderer()({}, theme)), "old built-in");
-  handlers.session_shutdown?.({ reason: "reload" });
-  disposeAll();
-  resetDisposed();
 });
 
 test("reload restores the prototype and reinstallation does not stack wrappers", () => {
