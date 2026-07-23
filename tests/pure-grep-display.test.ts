@@ -29,39 +29,6 @@ function syntheticHost() {
   return { host, calls };
 }
 
-test("read, find, and ls modes use the same pure resolver seam", () => {
-  const native = function () { return { render: () => ["native"] }; };
-  const readOutput = { content: [{ type: "text", text: "one\ntwo\nthree" }], details: { truncation: { truncated: true, originalLines: 9 } } };
-  for (const [mode, collapsed, expanded] of [["hidden", "", ""], ["summary", "3 lines", "three"], ["preview", "one", "three"]] as const) {
-    const display = createToolDisplayResolver(() => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, readOutputMode: mode, previewLines: 1 }), createRendererCatalog());
-    const plan = display.resolve({ toolName: "read", arguments: { path: "fixture.txt" } }, { call: native, result: native });
-    assert.notStrictEqual(plan.call, native);
-    const collapsedOutput = render(plan.result!(readOutput, { expanded: false, isPartial: false }, theme));
-    const expandedOutput = render(plan.result!(readOutput, { expanded: true, isPartial: false }, theme));
-    if (mode === "hidden") assert.deepEqual([collapsedOutput, expandedOutput], ["", ""]);
-    else {
-      assert.match(collapsedOutput, new RegExp(collapsed));
-      assert.match(expandedOutput, new RegExp(expanded));
-    }
-  }
-
-  for (const toolName of ["find", "ls"] as const) {
-    const display = createToolDisplayResolver(() => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, searchOutputMode: "preview", previewLines: 1 }), createRendererCatalog());
-    const plan = display.resolve({ toolName, arguments: { pattern: "*.ts", path: "." } }, { call: native, result: native });
-    assert.notStrictEqual(plan.call, native);
-    assert.match(render(plan.result!(output, { expanded: false, isPartial: false }, theme)), /a:1/);
-    assert.doesNotMatch(render(plan.result!(output, { expanded: false, isPartial: false }, theme)), /c:3/);
-    assert.match(render(plan.result!(output, { expanded: true, isPartial: false }, theme)), /c:3/);
-  }
-
-  const disabled = createToolDisplayResolver(() => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides, read: false, find: false, ls: false } }), createRendererCatalog());
-  for (const toolName of ["read", "find", "ls"]) {
-    const plan = disabled.resolve({ toolName, arguments: {} }, { call: native, result: native });
-    assert.strictEqual(plan.call, native);
-    assert.strictEqual(plan.result, native);
-  }
-});
-
 test("grep modes and renderer failures fail open without vacuous hidden assertions", () => {
   const native = function () { return { render: () => ["native"] }; };
   const hidden = config("hidden").resolve({ toolName: "grep", arguments: { pattern: "x" } }, { result: native });

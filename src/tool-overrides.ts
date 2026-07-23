@@ -1684,21 +1684,6 @@ export function registerToolDisplayOverrides(
     };
   }
 
-  const renderSearchToolResult = (
-    result: ToolRenderInput,
-    options: ToolRenderResultOptions,
-    theme: RenderTheme,
-    unitLabel: string,
-    pluralLabel?: string,
-  ): Text => {
-    const config = getConfig();
-    return renderSearchResult(result as never, options, config, theme, unitLabel, result.details, pluralLabel);
-  };
-
-  const buildSearchCallSuffix = (args: Record<string, unknown>): { scope: string; limitSuffix: string } => {
-    return { scope: getSearchScope(args), limitSuffix: args.limit !== undefined ? ` (limit ${args.limit})` : "" };
-  };
-
   const registerActiveBuiltInRenderers = (): void => {
     let activeTools: ReadonlySet<string>;
     try {
@@ -1707,68 +1692,6 @@ export function registerToolDisplayOverrides(
       logToolDisplayDebug("Active tool discovery unavailable; skipped built-in renderer registration.", error);
       return;
     }
-
-  registerIfOwned(activeTools, "read", () => {
-    registerRuntimeTool(pi, {
-      name: "read",
-      label: "read",
-      ...createBuiltinToolBase("read"),
-      renderCall(args, theme) {
-        return renderReadDisplayCall(args, theme);
-      },
-      renderResult(result, options, theme) {
-        return renderReadDisplayResult(result, options, getConfig(), theme);
-      },
-    });
-  });
-
-  registerIfOwned(activeTools, "grep", () => {
-    registerRuntimeTool(pi, {
-      name: "grep",
-    label: "grep",
-    ...createBuiltinToolBase("grep"),
-    renderCall(args, theme) {
-      const scope = getSearchScope(args);
-      const globSuffix = args.glob ? ` (${args.glob})` : "";
-      const limitSuffix =
-        args.limit !== undefined ? ` limit ${args.limit}` : "";
-      return formatSearchCallLine("grep", `/${args.pattern}/`, ` in ${scope}${globSuffix}${limitSuffix}`, theme);
-    },
-    renderResult(result, options, theme) {
-      return renderSearchToolResult(result, options, theme, "match", "matches");
-    },
-    });
-  });
-
-  registerIfOwned(activeTools, "find", () => {
-    registerRuntimeTool(pi, {
-      name: "find",
-    label: "find",
-    ...createBuiltinToolBase("find"),
-    renderCall(args, theme) {
-      const { scope, limitSuffix } = buildSearchCallSuffix(args);
-      return formatSearchCallLine("find", args.pattern as string, ` in ${scope}${limitSuffix}`, theme);
-    },
-    renderResult(result, options, theme) {
-      return renderSearchToolResult(result, options, theme, "result");
-    },
-    });
-  });
-
-  registerIfOwned(activeTools, "ls", () => {
-    registerRuntimeTool(pi, {
-      name: "ls",
-    label: "ls",
-    ...createBuiltinToolBase("ls"),
-    renderCall(args, theme) {
-      const { scope, limitSuffix } = buildSearchCallSuffix(args);
-      return formatSearchCallLine("ls", scope, limitSuffix, theme);
-    },
-    renderResult(result, options, theme) {
-      return renderSearchToolResult(result, options, theme, "entry", "entries");
-    },
-    });
-  });
 
   registerIfOwned(activeTools, "edit", () => {
     registerRuntimeTool(pi, {

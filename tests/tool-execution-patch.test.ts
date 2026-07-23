@@ -4,6 +4,9 @@ import {
   createBashTool,
   createEditTool,
   createGrepTool,
+  createFindTool,
+  createLsTool,
+  createReadTool,
   createWriteTool,
   initTheme,
   ToolExecutionComponent,
@@ -36,6 +39,39 @@ function apiStub() {
 function component(toolDefinition: Record<string, unknown>, builtInToolDefinition?: Record<string, unknown>): any {
   return Object.assign(Object.create(ToolExecutionComponent.prototype), { toolDefinition, builtInToolDefinition });
 }
+
+test("real ToolExecution rows apply read/find/ls policy to same-name third-party owners across reload", () => {
+  const makeRow = (definition: any, name: string, args: Record<string, unknown>, body: string) => {
+    const row = new ToolExecutionComponent(name, `${name}-call`, args, {}, definition, { requestRender() {} } as any, process.cwd());
+    row.updateResult({ content: [{ type: "text", text: body }], details: { truncation: { truncated: true } }, isError: false } as any);
+    return row;
+  };
+  const definitions = [createReadTool(process.cwd()), createFindTool(process.cwd()), createLsTool(process.cwd())];
+  const pristine = definitions.map((definition: any) => ({ definition, descriptors: Object.getOwnPropertyDescriptors(definition), execute: definition.execute }));
+  const rows = [
+    makeRow(definitions[0], "read", { path: "fixture.txt" }, "one\ntwo\nthree"),
+    makeRow(definitions[1], "find", { pattern: "*.ts", path: "." }, "a.ts\nb.ts\nc.ts"),
+    makeRow(definitions[2], "ls", { path: "." }, "a.ts\nb.ts\nc.ts"),
+  ];
+  const run = () => {
+    const { api, handlers } = apiStub();
+    registerToolExecutionPatch(api, () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, readOutputMode: "preview", searchOutputMode: "preview", previewLines: 1, showTruncationHints: true }));
+    for (const row of rows) {
+      row.setExpanded(false);
+      assert.doesNotMatch(plainRender(row), /two|three|b\.ts|c\.ts/);
+      assert.match(plainRender(row), /truncated/);
+      row.setExpanded(true);
+      assert.match(plainRender(row), /three|c\.ts/);
+    }
+    handlers.session_shutdown?.({ reason: "reload" });
+  };
+  run();
+  run();
+  for (const { definition, descriptors, execute } of pristine) {
+    assert.strictEqual((definition as any).execute, execute);
+    assert.deepEqual(Object.getOwnPropertyDescriptors(definition), descriptors);
+  }
+});
 
 test("configured third-party tools preserve native calls and override results at final renderer selection", () => {
   const { api, handlers } = apiStub();
