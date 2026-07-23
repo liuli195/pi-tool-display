@@ -111,7 +111,9 @@ const dispose = registerRendererAdapter({
 dispose();
 ```
 
-Registration is display-only, deterministic, disposable, and does not expose or mutate the executable tool definition. The deprecated `decorateToolForDisplay(tool, adapter)` migration facade registers the same display intent and returns the exact original tool unchanged.
+Registration is display-only, deterministic, disposable, and does not expose or mutate the executable tool definition. Retain the returned disposer even when registering before `pi-tool-display` loads: after the pending intent is drained, that same disposer delegates to the live registration and remains idempotent before or after the drain.
+
+The deprecated `decorateToolForDisplay(tool, adapter)` migration facade registers the same display intent and returns the exact original tool unchanged. Its registration lasts only for the current `pi-tool-display` load epoch; repeated calls for the same tool and adapter ID in that epoch replace the previous intent, and consumers must call it again after reload. New integrations should retain the disposer from `registerRendererAdapter` instead.
 
 ## Presets
 

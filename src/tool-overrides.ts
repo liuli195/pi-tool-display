@@ -168,8 +168,9 @@ export interface ToolDisplayApi {
 
 interface PendingToolDisplayDecoration {
   toolName?: string;
-  tool?: RuntimeToolDefinition;
   adapter?: ToolDisplayAdapter;
+  disposed?: boolean;
+  liveDispose?: () => void;
 }
 
 type GlobalWithToolDisplayApi = typeof globalThis & {
@@ -1447,16 +1448,20 @@ function drainPendingToolDisplayDecorations(api: ToolDisplayApi): void {
   delete globalWithApi[TOOL_DISPLAY_PENDING_DECORATIONS_KEY];
   if (!Array.isArray(entries)) return;
   for (const entry of entries) {
-    const toolName = entry?.toolName ?? getTextField(entry?.tool, "name");
+    if (entry?.disposed) continue;
+    const toolName = entry?.toolName;
     if (!toolName) continue;
-    try { api.registerAdapter(toProducerAdapter(toolName, entry.adapter)); }
-    catch (error) { logToolDisplayDebug("Tool display Adapter registration failed.", error); }
+    try {
+      entry.liveDispose = api.registerAdapter(toProducerAdapter(toolName, entry.adapter));
+      if (entry.disposed) entry.liveDispose();
+    } catch (error) { logToolDisplayDebug("Tool display Adapter registration failed.", error); }
   }
   entries.length = 0;
 }
 
 function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
   const disposers = new Set<() => void>();
+  const legacyDisposers = new Map<string, () => void>();
   const api: ToolDisplayApi = {
     version: 1,
     registerAdapter(adapter) {
@@ -1474,7 +1479,10 @@ function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
     decorateTool<T extends RuntimeToolDefinition>(tool: T, adapter?: ToolDisplayAdapter): T {
       const toolName = getTextField(tool, "name");
       if (!toolName) throw new Error("Tool display compatibility registration requires tool.name");
-      api.registerAdapter(toProducerAdapter(toolName, adapter));
+      const key = `${toolName}:${adapter?.id ?? toolName}`;
+      legacyDisposers.get(key)?.();
+      const dispose = api.registerAdapter(toProducerAdapter(toolName, adapter));
+      legacyDisposers.set(key, dispose);
       return tool;
     },
   };

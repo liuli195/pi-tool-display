@@ -18,12 +18,31 @@ test("compatibility facade registers display intent and returns the exact execut
   } finally { if (previous === undefined) delete (globalThis as any)[API]; else (globalThis as any)[API] = previous; }
 });
 
+test("pending disposer delegates exactly once after the live API drains it", () => {
+  const previousApi = (globalThis as any)[API], previousPending = (globalThis as any)[PENDING];
+  delete (globalThis as any)[API]; delete (globalThis as any)[PENDING];
+  let liveDisposals = 0;
+  try {
+    const dispose = registerRendererAdapter({ id: "early-live", toolName: "consumer", kind: "generic" });
+    const [entry] = (globalThis as any)[PENDING];
+    entry.liveDispose = () => { liveDisposals++; };
+    dispose(); dispose();
+    assert.equal(liveDisposals, 1);
+  } finally {
+    if (previousApi !== undefined) (globalThis as any)[API] = previousApi;
+    if (previousPending === undefined) delete (globalThis as any)[PENDING]; else (globalThis as any)[PENDING] = previousPending;
+  }
+});
+
 test("early registration queues display data only and its disposable removes it once", () => {
   const previousApi = (globalThis as any)[API], previousPending = (globalThis as any)[PENDING];
   delete (globalThis as any)[API]; delete (globalThis as any)[PENDING];
   try {
     const dispose = registerRendererAdapter({ id: "early", toolName: "consumer", kind: "generic" });
-    assert.deepEqual((globalThis as any)[PENDING], [{ toolName: "consumer", adapter: { id: "early", toolName: "consumer", kind: "generic" } }]);
+    const [entry] = (globalThis as any)[PENDING];
+    assert.equal(entry.toolName, "consumer");
+    assert.deepEqual(entry.adapter, { id: "early", toolName: "consumer", kind: "generic" });
+    assert.equal("tool" in entry, false, "pending display intent retains no executable ToolDefinition");
     dispose(); dispose();
     assert.deepEqual((globalThis as any)[PENDING], []);
   } finally {

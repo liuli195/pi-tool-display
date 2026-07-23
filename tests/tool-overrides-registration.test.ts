@@ -14,6 +14,9 @@ import {
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
+import { disposeAll, resetDisposed } from "../src/disposable.ts";
+import { createRendererCatalog } from "../src/renderer-catalog.ts";
+import { decorateToolForDisplay, registerRendererAdapter } from "../tool-display-api-consumer.js";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 
 const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
@@ -93,6 +96,32 @@ function createExtensionApiStub(
 
 	return { api, registeredTools, eventHandlers };
 }
+
+test("adapter lifecycle drains pending intent, coalesces legacy calls per epoch, and cleans repeated epochs", () => {
+	const globalApi = Symbol.for("pi-tool-display.api.v1");
+	const globalPending = Symbol.for("pi-tool-display.pendingDecorations.v1");
+	const tool = Object.freeze({ name: "lifecycle_tool", execute() {} });
+	const row = { toolName: tool.name, arguments: {}, builtIn: false } as const;
+	const retainedDispose = registerRendererAdapter({ id: "retained", toolName: tool.name, kind: "generic" });
+	try {
+		for (let epoch = 0; epoch < 3; epoch++) {
+			resetDisposed();
+			registerToolDisplayOverrides(createExtensionApiStub().api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+			if (epoch === 0) {
+				assert.ok(createRendererCatalog().resolve(row, DEFAULT_TOOL_DISPLAY_CONFIG, {}));
+				retainedDispose(); retainedDispose();
+			}
+			assert.equal(decorateToolForDisplay(tool, { kind: "generic" }), tool);
+			assert.equal(decorateToolForDisplay(tool, { kind: "mcp" }), tool, "same-epoch legacy intent replaces without duplicate failure");
+			assert.ok(createRendererCatalog().resolve(row, DEFAULT_TOOL_DISPLAY_CONFIG, {}));
+			disposeAll();
+			assert.equal(createRendererCatalog().resolve(row, DEFAULT_TOOL_DISPLAY_CONFIG, {}), undefined);
+		}
+	} finally {
+		disposeAll(); resetDisposed();
+		delete (globalThis as any)[globalApi]; delete (globalThis as any)[globalPending];
+	}
+});
 
 test("registerToolDisplayOverrides copies built-in prompt metadata onto overridden tools", async () => {
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
