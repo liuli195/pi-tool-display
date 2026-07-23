@@ -10,11 +10,11 @@ const runtimeRoots = process.env.PI_RUNTIME_PACKAGE_ROOTS?.split(delimiter).filt
 const plain = (value: string) => value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 
 for (const runtimeRoot of runtimeRoots) test(`real Pi runtime exposes cold, reload, new-call, and non-interference observations (${runtimeRoot})`, async () => {
-  const observation = await runPureDisplayContract({ runtimeRoot });
+  const observation = await runPureDisplayContract(runtimeRoot);
   const cold = plain(observation.firstCollapsedOutput);
 
   assert.deepEqual(observation.paths, ["cold", "reload", "new-call"]);
-  assert.equal(observation.manualInvalidationsBeforeFirstOutput, 0);
+  assert.deepEqual(observation.actionsBeforeFirstOutput, []);
   assert.match(cold, /contract\.txt/);
   assert.doesNotMatch(cold, /contract fixture output/);
 
@@ -23,8 +23,14 @@ for (const runtimeRoot of runtimeRoots) test(`real Pi runtime exposes cold, relo
   for (const run of [observation.absent, observation.present]) {
     assert.ok(run.activeToolNames.includes("read"));
     assert.ok(run.ownership.every((tool) => tool.sourceInfo));
-    assert.ok(run.definitions.every((tool) => tool.serialized));
-    assert.ok(run.executions.every((tool) => tool.reference));
+    for (const definition of run.definitions) {
+      assert.strictEqual(definition.after, definition.before);
+      assert.deepEqual(definition.afterDescriptors, definition.beforeDescriptors);
+    }
+    for (const execution of run.executions) {
+      assert.strictEqual(execution.after, execution.before);
+      assert.equal(typeof execution.after, "function");
+    }
     assert.deepEqual(run.events.map(({ type }) => type), ["tool_execution_start", "tool_execution_end"]);
     assert.match(run.modelContext, /contract-cold-read/);
     assert.match(run.sessionSerialization, /contract-cold-read/);
@@ -33,7 +39,8 @@ for (const runtimeRoot of runtimeRoots) test(`real Pi runtime exposes cold, relo
   }
 
   assert.deepEqual(observation.present.activeToolNames, observation.absent.activeToolNames);
+  assert.deepEqual(observation.present.ownership, observation.absent.ownership);
+  assert.deepEqual(observation.present.events, observation.absent.events);
   assert.equal(observation.present.modelContext, observation.absent.modelContext);
-  const sessionMessages = (jsonl: string) => jsonl.split("\n").map((line) => JSON.parse(line).message).filter(Boolean);
-  assert.deepEqual(sessionMessages(observation.present.sessionSerialization), sessionMessages(observation.absent.sessionSerialization));
+  assert.equal(observation.present.sessionSerialization, observation.absent.sessionSerialization);
 });
