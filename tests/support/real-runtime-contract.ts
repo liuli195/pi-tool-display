@@ -4,19 +4,24 @@ import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
 interface ContractOptions { runtimeRoot: string }
-interface ToolObservation { name: string; ownership: unknown; definition: unknown; execute: unknown }
+interface RunObservation {
+  activeToolNames: string[];
+  loadedExtensionPaths: string[];
+  ownership: Array<{ name: string; sourceInfo: unknown }>;
+  definitions: Array<{ name: string; serialized: string }>;
+  executions: Array<{ name: string; reference: string }>;
+  events: Array<{ type: string; [key: string]: unknown }>;
+  modelContext: string;
+  sessionSerialization: string;
+  tuiOutput: { cold: string; reload: string; newCall: string };
+}
 
 export interface PureDisplayContractObservation {
   paths: readonly ["cold", "reload", "new-call"];
   firstCollapsedOutput: string;
   manualInvalidationsBeforeFirstOutput: number;
-  activeToolNames: string[];
-  loadedExtensionPaths: string[];
-  tools: ToolObservation[];
-  events: Array<{ type: string; [key: string]: unknown }>;
-  modelContext: unknown[];
-  sessionSerialization: string;
-  tuiOutput: { cold: string; reload: string; newCall: string };
+  absent: RunObservation;
+  present: RunObservation;
 }
 
 class MemoryTerminal {
@@ -45,12 +50,15 @@ function packageRoot(input: string): string {
   return input;
 }
 
-export async function runPureDisplayContract({ runtimeRoot }: ContractOptions): Promise<PureDisplayContractObservation> {
+const tick = () => new Promise<void>((done) => setImmediate(done));
+const renderChat = (mode: any) => mode.chatContainer.render(120).join("\n");
+const serialize = (value: unknown) => JSON.stringify(value, (_key, item) => typeof item === "function" ? `[function:${item.name}]` : item);
+
+async function run(runtimeRoot: string, withExtension: boolean): Promise<RunObservation> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-contract-"));
   const terminal = new MemoryTerminal();
-
   try {
     const sessionManager = pi.SessionManager.inMemory(process.cwd());
     sessionManager.appendMessage({
@@ -70,50 +78,54 @@ export async function runPureDisplayContract({ runtimeRoot }: ContractOptions): 
       const services = await pi.createAgentSessionServices({
         cwd, agentDir: nextAgentDir,
         resourceLoaderOptions: {
-          additionalExtensionPaths: [entry], noSkills: true, noPromptTemplates: true,
-          noThemes: true, noContextFiles: true,
+          additionalExtensionPaths: withExtension ? [entry] : [],
+          noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
         },
       });
-      const created = await pi.createAgentSessionFromServices({ services, sessionManager: nextManager, sessionStartEvent });
+      const created = await pi.createAgentSessionFromServices({
+        services, sessionManager: nextManager, sessionStartEvent,
+        customTools: pi.createCodingTools(cwd),
+      });
       return { ...created, services, diagnostics: services.diagnostics };
     };
     const runtime = await pi.createAgentSessionRuntime(createRuntime, { cwd: process.cwd(), agentDir, sessionManager });
     const mode = new pi.InteractiveMode(runtime) as any;
     mode.ui.terminal = terminal;
     await mode.init();
-    mode.ui.requestRender(true);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    const cold = terminal.take();
+    await tick();
+    const cold = renderChat(mode);
+    terminal.take();
 
     await mode.handleReloadCommand();
-    mode.ui.requestRender(true);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    const reload = terminal.take();
+    await tick();
+    const reload = renderChat(mode);
+    terminal.take();
 
     const events = [
       { type: "tool_execution_start", toolCallId: "contract-new-read", toolName: "read", args: { path: "contract.txt" } },
       { type: "tool_execution_end", toolCallId: "contract-new-read", toolName: "read", result: { content: [{ type: "text", text: "contract fixture output" }], details: {} }, isError: false },
     ];
-    for (const event of events) await mode.handleEvent(event);
-    mode.ui.requestRender(true);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    const newCall = terminal.take();
+    const observedEvents: typeof events = [];
+    const unsubscribe = runtime.session.subscribe((event: any) => {
+      if (event.type.startsWith("tool_execution_")) observedEvents.push(event);
+    });
+    for (const event of events) runtime.session._emit(event);
+    await tick();
+    unsubscribe();
+    const newCall = renderChat(mode);
+    terminal.take();
 
     const session = runtime.session;
-    const activeToolNames = session.getActiveToolNames();
-    const tools = session.getAllTools().map((tool: any) => {
-      const definition = session.getToolDefinition(tool.name);
-      return { name: tool.name, ownership: tool.source, definition, execute: definition?.execute };
-    });
+    const tools = session.getAllTools();
+    const definitions = tools.map((tool: any) => ({ name: tool.name, serialized: serialize(session.getToolDefinition(tool.name)) }));
     const observation = {
-      paths: ["cold", "reload", "new-call"] as const,
-      firstCollapsedOutput: cold,
-      manualInvalidationsBeforeFirstOutput: 0,
-      activeToolNames,
+      activeToolNames: session.getActiveToolNames(),
       loadedExtensionPaths: session.resourceLoader.getExtensions().extensions.map((extension: any) => extension.resolvedPath),
-      tools,
-      events,
-      modelContext: [{ systemPrompt: session.systemPrompt }, ...session.messages],
+      ownership: tools.map((tool: any) => ({ name: tool.name, sourceInfo: tool.sourceInfo })),
+      definitions,
+      executions: tools.map((tool: any) => ({ name: tool.name, reference: session.getToolDefinition(tool.name)?.execute?.name ?? "" })),
+      events: observedEvents,
+      modelContext: serialize({ systemPrompt: session.systemPrompt, context: session.sessionManager.buildSessionContext() }),
       sessionSerialization: session.sessionManager.getEntries().map((entry: unknown) => JSON.stringify(entry)).join("\n"),
       tuiOutput: { cold, reload, newCall },
     };
@@ -123,4 +135,16 @@ export async function runPureDisplayContract({ runtimeRoot }: ContractOptions): 
   } finally {
     await rm(agentDir, { recursive: true, force: true });
   }
+}
+
+export async function runPureDisplayContract({ runtimeRoot }: ContractOptions): Promise<PureDisplayContractObservation> {
+  const absent = await run(runtimeRoot, false);
+  const present = await run(runtimeRoot, true);
+  return {
+    paths: ["cold", "reload", "new-call"],
+    firstCollapsedOutput: present.tuiOutput.cold,
+    manualInvalidationsBeforeFirstOutput: 0,
+    absent,
+    present,
+  };
 }
