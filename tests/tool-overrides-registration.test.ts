@@ -337,9 +337,9 @@ test("registerToolDisplayOverrides drains pending display decorations from early
 		registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
 
 		assert.equal(registeredTools.some((tool) => tool.name === "mcp"), false);
-		assert.equal(typeof queuedTool.renderCall, "function", "expected queued MCP tool to receive renderCall");
-		assert.equal(typeof queuedTool.renderResult, "function", "expected queued MCP tool to receive renderResult");
-		assert.equal(globalWithPending[TOOL_DISPLAY_PENDING_DECORATIONS_KEY]?.length, 0);
+		assert.equal(queuedTool.renderCall, undefined, "queued tool definition stays unchanged");
+		assert.equal(queuedTool.renderResult, undefined, "queued tool definition stays unchanged");
+		assert.equal(globalWithPending[TOOL_DISPLAY_PENDING_DECORATIONS_KEY], undefined, "queue drains and releases tool references");
 	} finally {
 		if (previousPending) {
 			globalWithPending[TOOL_DISPLAY_PENDING_DECORATIONS_KEY] = previousPending;

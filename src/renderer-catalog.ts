@@ -33,15 +33,20 @@ export class RendererAdapterConflict extends Error {
   }
 }
 
-const producerAdapters = new Map<string, Set<ProducerRendererAdapter>>();
+const producerAdapters = new Map<string, Map<string, ProducerRendererAdapter>>();
 
 export function registerProducerRendererAdapter(adapter: ProducerRendererAdapter): () => void {
-  const adapters = producerAdapters.get(adapter.toolName) ?? new Set<ProducerRendererAdapter>();
-  adapters.add(adapter);
-  producerAdapters.set(adapter.toolName, adapters);
+  const registered = Object.freeze({ ...adapter });
+  const adapters = producerAdapters.get(registered.toolName) ?? new Map<string, ProducerRendererAdapter>();
+  if (adapters.has(registered.id)) throw new Error(`Renderer Adapter '${registered.id}' is already registered for ${registered.toolName}`);
+  adapters.set(registered.id, registered);
+  producerAdapters.set(registered.toolName, adapters);
+  let disposed = false;
   return () => {
-    adapters.delete(adapter);
-    if (!adapters.size) producerAdapters.delete(adapter.toolName);
+    if (disposed) return;
+    disposed = true;
+    if (adapters.get(registered.id) === registered) adapters.delete(registered.id);
+    if (!adapters.size) producerAdapters.delete(registered.toolName);
   };
 }
 
@@ -146,7 +151,7 @@ export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
       const producers = producerAdapters.get(row.toolName);
       if (!configured?.enabled && producers && producers.size > 1) throw new RendererAdapterConflict(
         row.toolName,
-        [...producers].map(({ id, kind }) => ({ id, kind })),
+        [...producers.values()].map(({ id, kind }) => ({ id, kind })).sort((a, b) => a.id.localeCompare(b.id) || a.kind.localeCompare(b.kind)),
       );
       const custom = configured?.enabled ? configured : producers?.values().next().value;
       if (!custom) return undefined;

@@ -100,10 +100,18 @@ Advanced options remain in `config.json`.
 Other extensions can opt into `pi-tool-display` rendering without directly depending on its load order by importing the consumer helper:
 
 ```ts
-import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-tool-display/tool-display-api-consumer";
+import { registerRendererAdapter } from "pi-tool-display/tool-display-api-consumer";
+
+const dispose = registerRendererAdapter({
+  id: "my-extension:mcp",
+  toolName: "my_mcp_tool",
+  kind: "mcp",
+});
+// Dispose during extension shutdown or reload.
+dispose();
 ```
 
-`decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-tool-display` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools.
+Registration is display-only, deterministic, disposable, and does not expose or mutate the executable tool definition. The deprecated `decorateToolForDisplay(tool, adapter)` migration facade registers the same display intent and returns the exact original tool unchanged.
 
 ## Presets
 

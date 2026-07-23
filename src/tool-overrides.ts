@@ -26,6 +26,7 @@ import { resolvePiAgentDir } from "./agent-dir.js";
 import { renderBashCall, VisualLinePreviewComponent } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
+import { registerProducerRendererAdapter, type ProducerRendererAdapter } from "./renderer-catalog.js";
 import {
   compactOutputLines,
   countNonEmptyLines,
@@ -144,17 +145,6 @@ const WRITE_PENDING_PREVIEW_STATE_KEY = "__piToolDisplayWritePendingPreview";
 
 const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
 const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
-const TOOL_DISPLAY_DECORATED_PROPERTIES = [
-  "renderCall",
-  "renderResult",
-  "renderShell",
-  "label",
-  "description",
-  "promptSnippet",
-  "promptGuidelines",
-  "parameters",
-  "prepareArguments",
-] as const;
 
 type ToolDisplayKind = "read" | "edit" | "mcp" | "generic";
 
@@ -172,26 +162,20 @@ export interface ToolDisplayAdapter {
 
 export interface ToolDisplayApi {
   version: 1;
+  registerAdapter(adapter: ProducerRendererAdapter): () => void;
   decorateTool<T extends RuntimeToolDefinition>(tool: T, adapter?: ToolDisplayAdapter): T;
-  registerAdapter(adapter: ToolDisplayAdapter): string;
-  unregisterAdapter(id: string): boolean;
 }
 
 interface PendingToolDisplayDecoration {
-  tool: RuntimeToolDefinition;
+  toolName?: string;
+  tool?: RuntimeToolDefinition;
   adapter?: ToolDisplayAdapter;
 }
-
-type DecoratedPropertyName = typeof TOOL_DISPLAY_DECORATED_PROPERTIES[number];
-type ToolPropertyDescriptorSnapshot = Partial<Record<DecoratedPropertyName, PropertyDescriptor>>;
 
 type GlobalWithToolDisplayApi = typeof globalThis & {
   [TOOL_DISPLAY_API_KEY]?: ToolDisplayApi;
   [TOOL_DISPLAY_PENDING_DECORATIONS_KEY]?: PendingToolDisplayDecoration[];
 };
-
-const decoratedToolDescriptors = new WeakMap<RuntimeToolDefinition, ToolPropertyDescriptorSnapshot>();
-const decoratedTools = new Set<RuntimeToolDefinition>();
 
 function toolOwnerKey(tool: unknown): string | undefined {
   const sourceInfo = toRecord(toRecord(tool).sourceInfo);
@@ -231,45 +215,6 @@ export function getRuntimeBuiltInToolOverride(pi: ExtensionAPI, toolName: string
   } catch {
     return undefined;
   }
-}
-
-function captureToolPropertyDescriptors(
-  tool: RuntimeToolDefinition,
-  descriptorSnapshots: WeakMap<RuntimeToolDefinition, ToolPropertyDescriptorSnapshot>,
-  decoratedTools: Set<RuntimeToolDefinition>,
-): void {
-  if (descriptorSnapshots.has(tool)) {
-    return;
-  }
-
-  const snapshot: ToolPropertyDescriptorSnapshot = {};
-  for (const property of TOOL_DISPLAY_DECORATED_PROPERTIES) {
-    const descriptor = Object.getOwnPropertyDescriptor(tool, property);
-    if (descriptor) {
-      snapshot[property] = descriptor;
-    }
-  }
-  descriptorSnapshots.set(tool, snapshot);
-  decoratedTools.add(tool);
-}
-
-function restoreToolPropertyDescriptors(
-  descriptorSnapshots: WeakMap<RuntimeToolDefinition, ToolPropertyDescriptorSnapshot>,
-  decoratedTools: Set<RuntimeToolDefinition>,
-): void {
-  for (const tool of decoratedTools) {
-    const snapshot = descriptorSnapshots.get(tool) ?? {};
-    for (const property of TOOL_DISPLAY_DECORATED_PROPERTIES) {
-      const descriptor = snapshot[property];
-      if (descriptor) {
-        Object.defineProperty(tool, property, descriptor);
-      } else {
-        delete tool[property];
-      }
-    }
-    descriptorSnapshots.delete(tool);
-  }
-  decoratedTools.clear();
 }
 
 
@@ -1484,108 +1429,58 @@ function handleEditOrWriteResult(
   return { fallbackText, earlyResult: undefined };
 }
 
-function applyToolDisplayDecorationInPlace(
-  tool: RuntimeToolDefinition,
-  api: ToolDisplayApi,
-  adapter?: ToolDisplayAdapter,
-): boolean {
-  try {
-    captureToolPropertyDescriptors(tool, decoratedToolDescriptors, decoratedTools);
-    Object.assign(tool, api.decorateTool(tool, adapter));
-    return true;
-  } catch (error) {
-    logToolDisplayDebug("Tool display decoration failed.", error);
-    return false;
-  }
+function toProducerAdapter(toolName: string, adapter: ToolDisplayAdapter = {}): ProducerRendererAdapter {
+  const kind = adapter.kind === "mcp" ? "mcp" : "generic";
+  return {
+    id: adapter.id ?? toolName,
+    toolName,
+    kind,
+    overrideCallRenderer: adapter.overrideExistingRenderers,
+    renderCall: adapter.renderCall,
+    renderResult: adapter.renderResult,
+  };
 }
 
 function drainPendingToolDisplayDecorations(api: ToolDisplayApi): void {
   const globalWithApi = globalThis as GlobalWithToolDisplayApi;
-  const pendingDecorations = globalWithApi[TOOL_DISPLAY_PENDING_DECORATIONS_KEY];
-  if (!Array.isArray(pendingDecorations) || pendingDecorations.length === 0) {
-    return;
-  }
-
-  const entries = pendingDecorations.splice(0);
+  const entries = globalWithApi[TOOL_DISPLAY_PENDING_DECORATIONS_KEY];
+  delete globalWithApi[TOOL_DISPLAY_PENDING_DECORATIONS_KEY];
+  if (!Array.isArray(entries)) return;
   for (const entry of entries) {
-    if (!entry?.tool || typeof entry.tool !== "object") {
-      continue;
-    }
-
-    applyToolDisplayDecorationInPlace(entry.tool, api, entry.adapter);
+    const toolName = entry?.toolName ?? getTextField(entry?.tool, "name");
+    if (!toolName) continue;
+    try { api.registerAdapter(toProducerAdapter(toolName, entry.adapter)); }
+    catch (error) { logToolDisplayDebug("Tool display Adapter registration failed.", error); }
   }
+  entries.length = 0;
 }
 
-function installToolDisplayApi(getConfig: ConfigGetter): ToolDisplayApi {
-  const adapters = new Map<string, ToolDisplayAdapter>();
-  let nextAdapterId = 0;
-
-  const resolveAdapter = (tool: RuntimeToolDefinition, adapter?: ToolDisplayAdapter): ToolDisplayAdapter => {
-    if (adapter) {
-      return adapter;
-    }
-    const toolName = getTextField(tool, "name");
-    if (toolName) {
-      return adapters.get(toolName) ?? {};
-    }
-    return {};
-  };
-
+function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
+  const disposers = new Set<() => void>();
   const api: ToolDisplayApi = {
     version: 1,
+    registerAdapter(adapter) {
+      const disposeRegistration = registerProducerRendererAdapter(adapter);
+      let disposed = false;
+      const dispose = () => {
+        if (disposed) return;
+        disposed = true;
+        disposers.delete(dispose);
+        disposeRegistration();
+      };
+      disposers.add(dispose);
+      return dispose;
+    },
     decorateTool<T extends RuntimeToolDefinition>(tool: T, adapter?: ToolDisplayAdapter): T {
-      const resolvedAdapter = resolveAdapter(tool, adapter);
-      const kind = getAdapterKind(tool, resolvedAdapter);
-      const overrideExisting = resolvedAdapter.overrideExistingRenderers === true;
-      const decorated: RuntimeToolDefinition = { ...tool };
-
-      if (resolvedAdapter.renderCall && (overrideExisting || typeof decorated.renderCall !== "function")) {
-        decorated.renderCall = resolvedAdapter.renderCall;
-      } else if (kind === "read" && (overrideExisting || typeof decorated.renderCall !== "function")) {
-        decorated.renderCall = (args: unknown, theme: RenderTheme) => renderReadDisplayCall(args, theme, resolvedAdapter);
-
-      } else if (kind === "mcp" && (overrideExisting || typeof decorated.renderCall !== "function")) {
-        decorated.renderCall = (args: unknown, theme: RenderTheme) => {
-          const toolName = getTextField(decorated, "name") ?? "mcp";
-          const toolLabel = getTextField(decorated, "label") ?? (toolName === "mcp" ? "MCP Proxy" : `MCP ${toolName}`);
-          return formatMcpCallLine(toolName, toolLabel, toRecord(args), theme);
-        };
-      }
-
-      if (resolvedAdapter.renderResult && (overrideExisting || typeof decorated.renderResult !== "function")) {
-        decorated.renderResult = resolvedAdapter.renderResult;
-      } else if (kind === "read" && (overrideExisting || typeof decorated.renderResult !== "function")) {
-        decorated.renderResult = (result: ToolRenderInput, options: ToolRenderResultOptions, theme: RenderTheme) =>
-          renderReadDisplayResult(result, options, getConfig(), theme);
-
-      } else if (kind === "mcp" && (overrideExisting || typeof decorated.renderResult !== "function")) {
-        decorated.renderResult = (result: ToolRenderInput, options: ToolRenderResultOptions, theme: RenderTheme) =>
-          renderMcpResult(result, options, getConfig(), theme);
-      }
-
-
-      return decorated as T;
-    },
-    registerAdapter(adapter: ToolDisplayAdapter): string {
-      const id = adapter.id || adapter.toolName || `adapter-${++nextAdapterId}`;
-      adapters.set(id, { ...adapter, id });
-      if (adapter.toolName) {
-        adapters.set(adapter.toolName, { ...adapter, id });
-      }
-      return id;
-    },
-    unregisterAdapter(id: string): boolean {
-      const adapter = adapters.get(id);
-      const removed = adapters.delete(id);
-      if (adapter?.toolName) {
-        adapters.delete(adapter.toolName);
-      }
-      return removed;
+      const toolName = getTextField(tool, "name");
+      if (!toolName) throw new Error("Tool display compatibility registration requires tool.name");
+      api.registerAdapter(toProducerAdapter(toolName, adapter));
+      return tool;
     },
   };
-
   (globalThis as GlobalWithToolDisplayApi)[TOOL_DISPLAY_API_KEY] = api;
   drainPendingToolDisplayDecorations(api);
+  registerCleanup(() => { for (const dispose of [...disposers]) dispose(); });
   return api;
 }
 
@@ -1605,7 +1500,6 @@ export function registerToolDisplayOverrides(
   clearBuiltInToolCache();
   const toolDisplayApi = installToolDisplayApi(getConfig);
   registerCleanup(() => {
-    restoreToolPropertyDescriptors(decoratedToolDescriptors, decoratedTools);
     const globalWithApi = globalThis as GlobalWithToolDisplayApi;
     if (globalWithApi[TOOL_DISPLAY_API_KEY] === toolDisplayApi) {
       delete globalWithApi[TOOL_DISPLAY_API_KEY];
