@@ -86,15 +86,33 @@ for (const entry of matrix) {
     assert.match(cold, /3 matches/);
     assert.doesNotMatch(cold, /contract fixture first line|contract folded (?:second|third) line/);
     assert.match(plain(observation.present.tuiOutput.reload), /3 matches/);
-    assert.match(plain(observation.present.tuiOutput.newCall), /grep/);
-    const hidden = await runPureDisplayContract(runtimeRoot, "hidden");
-    const preview = await runPureDisplayContract(runtimeRoot, "preview");
-    for (const frame of [hidden.firstCollapsedOutput, hidden.present.tuiOutput.reload, hidden.present.tuiOutput.newCall])
-      assert.doesNotMatch(plain(frame), /contract fixture first line|contract final output/);
-    for (const frame of [preview.firstCollapsedOutput, preview.present.tuiOutput.reload])
+    assert.doesNotMatch(plain(observation.present.tuiOutput.reload), /contract fixture first line/);
+    assert.match(plain(observation.present.tuiOutput.newCall), /1 match/);
+    assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /contract final output/);
+    for (const frame of [observation.present.tuiOutput.expandedCold, observation.present.tuiOutput.expandedReload]) {
       assert.match(plain(frame), /contract fixture first line/);
-    assert.match(plain(observation.present.tuiOutput.expandedCold), /contract fixture first line/);
-    assert.match(plain(observation.present.tuiOutput.expandedCold), /contract folded third line/);
+      assert.match(plain(frame), /contract folded third line/);
+    }
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract final output/);
+
+    const hidden = await runPureDisplayContract(runtimeRoot, "hidden");
+    for (const frame of [hidden.firstCollapsedOutput, hidden.present.tuiOutput.reload, hidden.present.tuiOutput.newCall,
+      hidden.present.tuiOutput.expandedCold, hidden.present.tuiOutput.expandedReload, hidden.present.tuiOutput.expandedNewCall]) {
+      const text = plain(frame);
+      assert.match(text, /grep/);
+      assert.doesNotMatch(text, /contract fixture first line|contract folded (?:second|third) line|contract final output|matches? returned/);
+    }
+
+    const preview = await runPureDisplayContract(runtimeRoot, "preview");
+    for (const frame of [preview.firstCollapsedOutput, preview.present.tuiOutput.reload]) {
+      const text = plain(frame);
+      assert.match(text, /contract fixture first line/);
+      assert.doesNotMatch(text, /contract folded (?:second|third) line/);
+    }
+    assert.match(plain(preview.present.tuiOutput.newCall), /contract final output/);
+    for (const frame of [preview.present.tuiOutput.expandedCold, preview.present.tuiOutput.expandedReload])
+      assert.match(plain(frame), /contract folded third line/);
+    assert.match(plain(preview.present.tuiOutput.expandedNewCall), /contract final output/);
 
     assert.ok(observation.present.loadedExtensionPaths.some((path) => path.endsWith("index.ts")));
     assert.ok(observation.absent.loadedExtensionPaths.every((path) => !path.endsWith("index.ts")));

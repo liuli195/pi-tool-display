@@ -30,7 +30,7 @@ interface RunObservation {
     };
   };
   sessionSerializationAfterDispose: string;
-  tuiOutput: { cold: string; expandedCold: string; reload: string; newCall: string };
+  tuiOutput: { cold: string; expandedCold: string; reload: string; expandedReload: string; newCall: string; expandedNewCall: string };
 }
 
 export interface PureDisplayContractObservation {
@@ -374,8 +374,13 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     pristineProducers.push(snapshotCallbackProducer(runtime.session.agent));
     await mode.handleReloadCommand();
     initializedProducers.push(snapshotCallbackProducer(runtime.session.agent));
-    await tick();
+    await waitForOutput(terminal, withExtension && outputMode === "count" ? "3 matches" : outputMode === "hidden" ? "grep" : "contract fixture first line");
     const reload = terminal.take();
+    mode.toggleToolOutputExpansion();
+    await waitForOutput(terminal, outputMode === "hidden" ? "grep" : "contract folded third line");
+    const expandedReload = terminal.take();
+    mode.toggleToolOutputExpansion();
+    terminal.take();
 
     const toolCallId = "contract-new-call";
     const args = { pattern: "contract", path: "." };
@@ -408,9 +413,12 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     } finally {
       Date.now = realNow;
     }
-    await waitForOutput(terminal, "grep");
+    await waitForOutput(terminal, withExtension && outputMode === "count" ? "1 match" : outputMode === "hidden" ? "grep" : "contract final output");
     unsubscribe();
     const newCall = terminal.take();
+    mode.toggleToolOutputExpansion();
+    await waitForOutput(terminal, outputMode === "hidden" ? "grep" : "contract final output");
+    const expandedNewCall = terminal.take();
     const callbackKeys = Object.keys(callbackInvocations[0] ?? {}).sort();
     const callbackContract = await probeGeneratedCallbacks(agentCore.Agent, pristineProducers[0], callbackKeys);
 
@@ -485,7 +493,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
         },
       },
       sessionSerializationAfterDispose: completeSerializedSessionBytes,
-      tuiOutput: { cold, expandedCold, reload, newCall },
+      tuiOutput: { cold, expandedCold, reload, expandedReload, newCall, expandedNewCall },
       actionsBeforeFirstOutput: actionsAtFirstOutput,
     };
     return observation;

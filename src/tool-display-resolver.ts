@@ -7,9 +7,9 @@ export interface ToolDisplayResolver {
 
 function failOpen(custom: ToolRenderer | undefined, native: ToolRenderer | undefined): ToolRenderer | undefined {
   if (!custom || custom === native || !native) return custom ?? native;
-  return (...args: any[]) => {
-    try { return custom(...args); }
-    catch { return native(...args); }
+  return function (this: unknown, ...args: any[]) {
+    try { return custom.apply(this, args); }
+    catch { return native.apply(this, args); }
   };
 }
 

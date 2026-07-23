@@ -1,6 +1,6 @@
 import type { ToolDisplayResolver } from "./tool-display-resolver.js";
 
-type RendererSelector = (this: ToolRowHost) => ((...args: any[]) => any) | undefined;
+type RendererSelector = (this: ToolRowHost, ...args: any[]) => ((...args: any[]) => any) | undefined;
 interface ToolRowHost {
   toolName?: string;
   args?: Record<string, unknown>;
@@ -8,7 +8,6 @@ interface ToolRowHost {
   builtInToolDefinition?: Record<string, unknown>;
 }
 interface Installation {
-  owner: object;
   call: PropertyDescriptor;
   result: PropertyDescriptor;
   patchedCall: RendererSelector;
@@ -19,18 +18,23 @@ type HostPrototype = ToolRowHost & { getCallRenderer?: RendererSelector; getResu
 export interface PiHostAdapterInstallation { readonly installed: boolean; dispose(): void }
 
 const supportedVersion = (version: string) => /^0\.(?:74|75|77|78|79|80|81)\./.test(version);
+const noopInstallation = (): PiHostAdapterInstallation => ({ installed: false, dispose() {} });
 
 export function installPiHostAdapter(host: object, resolver: ToolDisplayResolver, piVersion: string): PiHostAdapterInstallation {
-  const prototype = host as HostPrototype;
-  const existing = prototype[STATE];
-  if (existing && prototype.getCallRenderer === existing.patchedCall && prototype.getResultRenderer === existing.patchedResult) {
+  try { return install(host as HostPrototype, resolver, piVersion); }
+  catch { return noopInstallation(); }
+}
+
+function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVersion: string): PiHostAdapterInstallation {
+  const existing = ownState(prototype);
+  if (existing && ownValue(prototype, "getCallRenderer") === existing.patchedCall && ownValue(prototype, "getResultRenderer") === existing.patchedResult) {
     return { installed: true, dispose: () => dispose(prototype, existing) };
   }
   const call = Object.getOwnPropertyDescriptor(prototype, "getCallRenderer");
   const result = Object.getOwnPropertyDescriptor(prototype, "getResultRenderer");
-  if (!supportedVersion(piVersion) || !call || !result || !("value" in call) || !("value" in result) ||
+  if (!supportedVersion(piVersion) || !Object.isExtensible(prototype) || !call || !result || !("value" in call) || !("value" in result) ||
       typeof call.value !== "function" || typeof result.value !== "function" || !call.configurable || !result.configurable ||
-      !call.writable || !result.writable || existing) return { installed: false, dispose() {} };
+      !call.writable || !result.writable || existing) return noopInstallation();
 
   const originalCall = call.value as RendererSelector;
   const originalResult = result.value as RendererSelector;
@@ -40,25 +44,50 @@ export function installPiHostAdapter(host: object, resolver: ToolDisplayResolver
     label: typeof instance.toolDefinition?.label === "string" ? instance.toolDefinition.label : undefined,
     builtIn: instance.builtInToolDefinition?.name === (instance.toolDefinition?.name ?? instance.toolName),
   });
-  const patchedCall: RendererSelector = function () {
-    const native = originalCall.call(this);
+  const patchedCall: RendererSelector = function (...args: any[]) {
+    const native = originalCall.apply(this, args);
     return resolver.resolve(row(this), { call: native }).call;
   };
-  const patchedResult: RendererSelector = function () {
-    const native = originalResult.call(this);
+  const patchedResult: RendererSelector = function (...args: any[]) {
+    const native = originalResult.apply(this, args);
     return resolver.resolve(row(this), { result: native }).result;
   };
-  const state: Installation = { owner: {}, call, result, patchedCall, patchedResult };
-  Object.defineProperties(prototype, {
-    getCallRenderer: { ...call, value: patchedCall },
-    getResultRenderer: { ...result, value: patchedResult },
-    [STATE]: { value: state, configurable: true },
-  });
+  const state: Installation = { call, result, patchedCall, patchedResult };
+
+  try {
+    Object.defineProperty(prototype, STATE, { value: state, configurable: true });
+    Object.defineProperty(prototype, "getCallRenderer", { ...call, value: patchedCall });
+    Object.defineProperty(prototype, "getResultRenderer", { ...result, value: patchedResult });
+  } catch {
+    rollback(prototype, state);
+    return { installed: false, dispose: () => dispose(prototype, state) };
+  }
   return { installed: true, dispose: () => dispose(prototype, state) };
 }
 
+function ownState(prototype: HostPrototype): Installation | undefined {
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, STATE);
+  return descriptor && "value" in descriptor ? descriptor.value : undefined;
+}
+
+function ownValue(prototype: HostPrototype, key: "getCallRenderer" | "getResultRenderer"): unknown {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, key);
+    return descriptor && "value" in descriptor ? descriptor.value : undefined;
+  } catch { return undefined; }
+}
+
+function rollback(prototype: HostPrototype, state: Installation): void {
+  try {
+    if (ownValue(prototype, "getResultRenderer") === state.patchedResult) Object.defineProperty(prototype, "getResultRenderer", state.result);
+  } catch {}
+  try {
+    if (ownValue(prototype, "getCallRenderer") === state.patchedCall) Object.defineProperty(prototype, "getCallRenderer", state.call);
+  } catch {}
+  if (ownValue(prototype, "getCallRenderer") === state.patchedCall || ownValue(prototype, "getResultRenderer") === state.patchedResult) return;
+  try { if (ownState(prototype) === state) delete prototype[STATE]; } catch {}
+}
+
 function dispose(prototype: HostPrototype, state: Installation): void {
-  if (prototype.getCallRenderer === state.patchedCall) Object.defineProperty(prototype, "getCallRenderer", state.call);
-  if (prototype.getResultRenderer === state.patchedResult) Object.defineProperty(prototype, "getResultRenderer", state.result);
-  if (prototype[STATE] === state) delete prototype[STATE];
+  rollback(prototype, state);
 }
