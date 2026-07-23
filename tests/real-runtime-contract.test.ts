@@ -80,6 +80,13 @@ for (const entry of matrix) {
     const packagePath = runtimeRoot.endsWith("package.json") ? runtimeRoot : resolve(runtimeRoot.endsWith(".js") ? dirname(dirname(runtimeRoot)) : runtimeRoot, "package.json");
     const packageVersion = JSON.parse(readFileSync(packagePath, "utf8")).version;
     if (entry.version) assert.equal(packageVersion, entry.version, `${entry.env} must point to Pi ${entry.version}`);
+    if (entry.name === "development") {
+      const setIntervalBeforeFailure = globalThis.setInterval;
+      const clearIntervalBeforeFailure = globalThis.clearInterval;
+      await assert.rejects(runBashDisplayContract(runtimeRoot, "preview", true), /injected failure after interval instrumentation/);
+      assert.strictEqual(globalThis.setInterval, setIntervalBeforeFailure);
+      assert.strictEqual(globalThis.clearInterval, clearIntervalBeforeFailure);
+    }
 
     const observation = await runPureDisplayContract(runtimeRoot, "count");
     const cold = plain(observation.firstCollapsedOutput);
