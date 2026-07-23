@@ -15,7 +15,6 @@ import {
 import { registerToolDisplayOverrides } from "./tool-overrides.js";
 import { registerToolExecutionPatch } from "./tool-execution-patch.js";
 import { disposeAll, resetDisposed } from "./disposable.js";
-import { registerThinkingLabeling } from "./thinking-label.js";
 import registerNativeUserMessageBox from "./user-message-box-native.js";
 import {
   BUILT_IN_TOOL_OVERRIDE_NAMES,
@@ -87,7 +86,6 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   registerToolDisplayOverrides(pi, getEffectiveConfig);
   registerToolExecutionPatch(pi, getEffectiveConfig);
   registerNativeUserMessageBox(pi, getConfig);
-  registerThinkingLabeling(pi, () => config.enableThinkingLabels);
 
   pi.registerCommand("tool-display", {
     description: "Configure tool output rendering (OpenCode-style)",

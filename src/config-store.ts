@@ -231,10 +231,6 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 			source.enableNativeUserMessageBox,
 			DEFAULT_TOOL_DISPLAY_CONFIG.enableNativeUserMessageBox,
 		),
-		enableThinkingLabels: toBoolean(
-			source.enableThinkingLabels,
-			DEFAULT_TOOL_DISPLAY_CONFIG.enableThinkingLabels,
-		),
 		readOutputMode: toReadOutputMode(source.readOutputMode),
 		searchOutputMode: toSearchOutputMode(source.searchOutputMode),
 		mcpOutputMode: toMcpOutputMode(source.mcpOutputMode),

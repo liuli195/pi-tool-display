@@ -24,7 +24,6 @@
     }
   },
   "enableNativeUserMessageBox": true,
-  "enableThinkingLabels": true,
   "readOutputMode": "hidden",
   "searchOutputMode": "hidden",
   "mcpOutputMode": "hidden",

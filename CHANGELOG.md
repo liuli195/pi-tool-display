@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added `overrideCallRenderer` for custom tool overrides; native third-party call renderers are preserved by default and can be explicitly replaced.
 
+### Changed
+- Removed thinking-label message and context mutation; legacy configuration is ignored without rewriting config files or historical sessions (#6).
+
 ### Fixed
 - Defer built-in renderer registration until tool ownership is settled, and register only currently active built-ins, preventing inactive `find`/`ls` activation and duplicate-name conflicts with later-loaded tool extensions (#26, #29, PR #34, PR #35).
 - Strengthened lifecycle, reload, and restored-history renderer regression coverage.

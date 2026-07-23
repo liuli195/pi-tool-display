@@ -10,7 +10,7 @@
 
 OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mariozechner/pi).
 
-`pi-tool-display` keeps tool calls compact by default, adds richer diff rendering for file edits, and improves a few core chat UI details such as thinking labels and the native user prompt box.
+`pi-tool-display` keeps tool calls compact by default, adds richer diff rendering for file edits, and improves the native user prompt box.
 
 <img width="1360" height="752" alt="image" src="https://github.com/user-attachments/assets/777944a2-18b2-4642-b035-2c703a5abb1b" />
 
@@ -31,7 +31,6 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 - **Progressive collapsed diff hints** that shorten automatically on small terminal widths instead of overflowing
 - **Hashline-anchor diff gutters** that preserve `LINE#HASH` labels from anchored read/edit output when those lines are rendered in diffs
 - **Three presets**: `opencode`, `balanced`, and `verbose`
-- **Thinking labels** during streaming and final message rendering, with context sanitization to avoid leaking presentation labels back into future model turns
 - **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
 - **Per-tool ownership toggles** so this extension can coexist with other renderer extensions
 - **Capability-aware settings** that keep MCP and RTK-specific controls aligned with the current environment
@@ -145,7 +144,6 @@ A starter template is included at `config/config.example.json`.
 | `registerToolOverrides` | object | all `true` | Built-in tool ownership flags |
 | `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
 | `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
-| `enableThinkingLabels` | boolean | `true` | Prefix thinking blocks with `Thinking:`; set `false` for pi-compact-thinking 0.2.0 compatibility (historical label/ANSI cleanup remains active) |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
 | `mcpOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
@@ -262,7 +260,6 @@ Notes:
     }
   },
   "enableNativeUserMessageBox": true,
-  "enableThinkingLabels": true,
   "readOutputMode": "summary",
   "searchOutputMode": "count",
   "mcpOutputMode": "summary",
@@ -301,10 +298,6 @@ When diff input includes Pi anchored read lines such as `12#AB:content`, the ren
 ### Write summaries
 
 When content is available, `write` call summaries include line count and byte size information inline so you can quickly see the size of the pending write before expanding the result.
-
-### Thinking labels
-
-Thinking blocks are labeled during streaming and on final messages. Before the next model turn, the extension sanitizes those presentation labels out of the stored assistant context so they do not accumulate or pollute future prompts.
 
 ### Native user message box
 
@@ -367,7 +360,6 @@ pi-tool-display/
 │   ├── pending-diff-preview.ts      # Partial edit/write preview projection helpers
 │   ├── presets.ts                   # Preset definitions and matching
 │   ├── render-utils.ts              # Shared rendering helpers
-│   ├── thinking-label.ts            # Thinking label formatting and context sanitization
 │   ├── tool-overrides.ts            # Built-in, MCP, and opt-in custom renderer overrides
 │   ├── types.ts                     # Shared config and type definitions
 │   ├── user-message-box-markdown.ts # Markdown extraction for user message rendering

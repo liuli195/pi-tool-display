@@ -54,6 +54,20 @@ test("config normalization clamps invalid values and migrates legacy read overri
   assert.equal(config.diffWordWrap, false);
 });
 
+test("legacy thinking-label config is ignored without rewriting the file", () => {
+  withTempDir("pi-tool-display-legacy-thinking-", (dir) => {
+    const configFile = join(dir, "config.json");
+    const original = '{\n  "enableThinkingLabels": false,\n  "previewLines": 7\n}\n';
+    writeFileSync(configFile, original, "utf8");
+
+    const result = loadToolDisplayConfig(configFile);
+
+    assert.equal("enableThinkingLabels" in result.config, false);
+    assert.equal(result.config.previewLines, 7);
+    assert.equal(readFileSync(configFile, "utf8"), original);
+  });
+});
+
 test("config load reports parse errors and falls back to defaults", () => {
   withTempDir("pi-tool-display-config-load-", (dir) => {
     const configFile = join(dir, "config.json");

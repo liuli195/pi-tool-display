@@ -75,10 +75,9 @@ test("entry point registers expected lifecycle handlers", () => {
   toolDisplayExtension(api);
 
   const eventNames = capturedHandlers.map((h) => h.event);
-  // Thinking-label handlers
-  assert.ok(eventNames.includes("message_update"), "message_update handler registered");
-  assert.ok(eventNames.includes("message_end"), "message_end handler registered");
-  assert.ok(eventNames.includes("context"), "context handler registered");
+  assert.equal(eventNames.includes("message_update"), false, "message_update remains untouched");
+  assert.equal(eventNames.includes("message_end"), false, "message_end remains untouched");
+  assert.equal(eventNames.includes("context"), false, "model context remains untouched");
   // Lifecycle handlers from index.ts directly
   assert.ok(eventNames.includes("session_start"), "session_start handler registered");
   assert.ok(eventNames.includes("before_agent_start"), "before_agent_start handler registered");
@@ -228,10 +227,6 @@ test("lifecycle events fire in expected order during a session lifecycle", async
   // Manually invoke handlers in expected lifecycle order
   const beforeHandler = capturedHandlers.find((h) => h.event === "before_agent_start")?.handler;
   const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
-  const messageUpdateHandler = capturedHandlers.find((h) => h.event === "message_update")?.handler;
-  const messageEndHandler = capturedHandlers.find((h) => h.event === "message_end")?.handler;
-  const contextHandler = capturedHandlers.find((h) => h.event === "context")?.handler;
-
   assert.ok(beforeHandler, "before_agent_start handler found");
   assert.ok(sessionHandler, "session_start handler found");
 
@@ -241,47 +236,6 @@ test("lifecycle events fire in expected order during a session lifecycle", async
     {},
     { ui: { theme: { fg: (_c: string, t: string) => t }, notify: () => {} } },
   );
-
-  // Simulate message lifecycle for thinking labels
-  if (messageUpdateHandler) {
-    await messageUpdateHandler(
-      {
-        message: {
-          role: "assistant",
-          api: "anthropic-messages",
-          content: [{ type: "thinking", thinking: "test" }],
-        },
-      },
-      { ui: { theme: { fg: (_c: string, t: string) => `[${_c}]${t}` } } },
-    );
-  }
-
-  if (messageEndHandler) {
-    await messageEndHandler(
-      {
-        message: {
-          role: "assistant",
-          api: "openai-chat",
-          content: [{ type: "thinking", thinking: "done" }],
-        },
-      },
-      {},
-    );
-  }
-
-  if (contextHandler) {
-    await contextHandler(
-      {
-        messages: [
-          {
-            role: "assistant",
-            content: [{ type: "thinking", thinking: "\x1b[31mThinking: \x1b[0mcontext" }],
-          },
-        ],
-      },
-      {},
-    );
-  }
 
   // All handlers executed without throwing - this is the main assertion
   assert.ok(true, "lifecycle handlers completed without error");

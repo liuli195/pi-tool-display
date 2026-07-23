@@ -54,7 +54,6 @@ export interface ToolDisplayConfig {
 	registerToolOverrides: ToolOverrideOwnership;
 	customToolOverrides: Record<string, CustomToolOverrideConfig>;
 	enableNativeUserMessageBox: boolean;
-	enableThinkingLabels: boolean;
 	readOutputMode: ReadOutputMode;
 	searchOutputMode: SearchOutputMode;
 	mcpOutputMode: McpOutputMode;
@@ -88,7 +87,6 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	},
 	customToolOverrides: {},
 	enableNativeUserMessageBox: true,
-	enableThinkingLabels: true,
 	readOutputMode: "hidden",
 	searchOutputMode: "hidden",
 	mcpOutputMode: "hidden",
