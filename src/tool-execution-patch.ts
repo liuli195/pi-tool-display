@@ -10,7 +10,6 @@ import {
   formatMcpCallLine,
   getRuntimeBuiltInToolOverride,
   getRuntimeCustomToolOverride,
-  isRuntimeBuiltInToolOverride,
   renderCustomToolResult,
   type RenderTheme,
 } from "./tool-overrides.js";
@@ -70,11 +69,7 @@ export function registerToolExecutionPatch(
 
   const getBuiltInRenderer = (instance: ToolExecutionLike, field: "renderCall" | "renderResult") => {
     const name = instance.toolDefinition?.name ?? instance.builtInToolDefinition?.name ?? instance.toolName;
-    if (
-      typeof name !== "string" ||
-      instance.builtInToolDefinition?.name !== name ||
-      (instance.toolDefinition !== undefined && !isRuntimeBuiltInToolOverride(instance.toolDefinition))
-    ) return undefined;
+    if (typeof name !== "string" || instance.builtInToolDefinition?.name !== name) return undefined;
     const renderer = getRuntimeBuiltInToolOverride(pi, name)?.[field];
     return typeof renderer === "function" ? renderer as Renderer : undefined;
   };

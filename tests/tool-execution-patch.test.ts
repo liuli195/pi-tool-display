@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { initTheme, ToolExecutionComponent, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  createBashTool,
+  createEditTool,
+  createGrepTool,
+  createWriteTool,
+  initTheme,
+  ToolExecutionComponent,
+  type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import { disposeAll, resetDisposed } from "../src/disposable.ts";
 import { registerToolExecutionPatch } from "../src/tool-execution-patch.ts";
 import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
@@ -98,7 +106,77 @@ test("unconfigured third-party and built-in tools retain their original renderer
   }
 });
 
-test("historical built-in rows redraw through current renderers while third-party provenance wins", async () => {
+test("pre-upgrade built-in rows without runtime provenance redraw through current renderers", async () => {
+  const handlers: Record<string, (event?: unknown) => unknown> = {};
+  let owners: Record<string, unknown>[] = [];
+  const api = {
+    on: (event: string, handler: (event?: unknown) => unknown) => { handlers[event] = handler; },
+    getActiveTools: () => ["bash", "grep", "write", "edit"],
+    getAllTools: () => owners,
+    registerTool: (tool: Record<string, unknown>) => {
+      owners = [
+        ...owners.filter((owner) => owner.name !== tool.name),
+        { name: tool.name, sourceInfo: { source: "local", path: "pi-tool-display.ts" } },
+      ];
+    },
+  } as unknown as ExtensionAPI;
+  const currentConfig = {
+    ...DEFAULT_TOOL_DISPLAY_CONFIG,
+    bashCommandMode: "preview" as const,
+    bashCommandPreviewLines: 2,
+    searchOutputMode: "count" as const,
+    diffViewMode: "unified" as const,
+    diffCollapsedLines: 4,
+  };
+  const ui = { requestRender() {} } as any;
+  const preUpgradeRow = (oldDefinition: { name: string }, args: Record<string, unknown>, toolResult: Record<string, unknown>) => {
+    const name = oldDefinition.name;
+    assert.equal((oldDefinition as unknown as Record<PropertyKey, unknown>)[Symbol.for("pi-tool-display.runtimeBuiltInOverride.v1")], undefined);
+    const row = new ToolExecutionComponent(name, `old-${name}`, args, {}, oldDefinition as any, ui, process.cwd());
+    row.updateResult({ isError: false, details: {}, ...toolResult } as any);
+    return row;
+  };
+  const bash = preUpgradeRow(createBashTool(process.cwd()), { command: "printf one\nprintf two\nprintf three\nprintf four" }, { content: [{ type: "text", text: "done" }] });
+  const grep = preUpgradeRow(createGrepTool(process.cwd()), { pattern: "needle", path: "." }, { content: [{ type: "text", text: "a:1\nb:2\nc:3" }] });
+  const write = preUpgradeRow(createWriteTool(process.cwd()), { path: "file.txt", content: "one\ntwo\nthree\nfour\nfive\nsix" }, { content: [{ type: "text", text: "Wrote file.txt" }] });
+  const edit = preUpgradeRow(createEditTool(process.cwd()), { path: "file.ts", edits: [] }, {
+    content: [{ type: "text", text: "Done" }],
+    details: { diff: "@@ -1,3 +1,3 @@\n-old one\n-old two\n-old three\n+new one\n+new two\n+new three" },
+  });
+
+  registerToolDisplayOverrides(api, () => currentConfig);
+  registerToolExecutionPatch(api, () => currentConfig);
+  await handlers.session_start?.();
+  try {
+    assert.deepEqual(owners.map((owner) => owner.name).sort(), ["bash", "edit", "grep", "write"]);
+    edit.setExpanded(false);
+    assert.doesNotMatch(plainRender(edit), /new three/);
+    edit.setExpanded(true);
+    assert.match(plainRender(edit), /new three/);
+
+    bash.setExpanded(false);
+    assert.match(plainRender(bash), /printf one/);
+    assert.match(plainRender(bash), /more visual lines/);
+    bash.setExpanded(true);
+    assert.match(plainRender(bash), /printf four/);
+
+    grep.setExpanded(false);
+    assert.match(plainRender(grep), /3 matches/);
+    grep.setExpanded(true);
+    assert.match(plainRender(grep), /c:3/);
+
+    write.setExpanded(false);
+    assert.doesNotMatch(plainRender(write), /six/);
+    write.setExpanded(true);
+    assert.match(plainRender(write), /six/);
+  } finally {
+    handlers.session_shutdown?.({ reason: "reload" });
+    disposeAll();
+    resetDisposed();
+  }
+});
+
+test("historical rows follow current built-in ownership and stop refreshing for third-party owners", async () => {
   const makeRuntime = (outputMode: "preview" | "summary") => {
     const handlers: Record<string, (event?: unknown) => unknown> = {};
     const registered: Record<string, unknown>[] = [];
@@ -168,12 +246,15 @@ test("historical built-in rows redraw through current renderers while third-part
     const thirdPartyRow = new ToolExecutionComponent("bash", "third-party-call", {}, {}, thirdPartyDefinition, ui, process.cwd());
     thirdPartyRow.updateResult({ ...result, isError: false });
     thirdPartyRow.setExpanded(false);
-    assert.match(plainRender(thirdPartyRow), /third-party bash/);
-    assert.match(plainRender(thirdPartyRow), /third-party result/);
+    assert.doesNotMatch(plainRender(thirdPartyRow), /third-party bash|third-party result/);
+    assert.match(plainRender(thirdPartyRow), /↳ 2 lines returned .*Ctrl\+O to expand/);
 
     second.setOwners([{ name: "bash", sourceInfo: { source: "local", path: "third-party.ts" } }]);
     historical.setExpanded(false);
     assert.doesNotMatch(plainRender(historical), /↳ 2 lines returned .*Ctrl\+O to expand/);
+    thirdPartyRow.setExpanded(false);
+    assert.match(plainRender(thirdPartyRow), /third-party bash/);
+    assert.match(plainRender(thirdPartyRow), /third-party result/);
   } finally {
     second.handlers.session_shutdown?.({ reason: "reload" });
     disposeAll();
