@@ -69,6 +69,9 @@ export function registerToolExecutionPatch(
     const matched = getOverride(this);
     if (!matched) return originalCall.call(this);
 
+    const nativeRenderer = originalCall.call(this);
+    if (nativeRenderer && !matched.override.overrideCallRenderer) return nativeRenderer;
+
     return (args: unknown, theme: RenderTheme) => matched.override.kind === "mcp"
       ? formatMcpCallLine(
           matched.name,

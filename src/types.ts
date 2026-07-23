@@ -46,6 +46,7 @@ export interface CustomToolOverrideConfig {
 	enabled: boolean;
 	kind: CustomToolOverrideKind;
 	outputMode: CustomToolOutputMode;
+	overrideCallRenderer: boolean;
 }
 
 export interface ToolDisplayConfig {

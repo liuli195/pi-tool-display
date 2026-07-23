@@ -25,7 +25,7 @@ function component(toolDefinition: Record<string, unknown>, builtInToolDefinitio
   return Object.assign(Object.create(ToolExecutionComponent.prototype), { toolDefinition, builtInToolDefinition });
 }
 
-test("configured third-party tools are overridden at final renderer selection", () => {
+test("configured third-party tools preserve native calls and override results at final renderer selection", () => {
   const { api, handlers } = apiStub();
   const instance = component({
     name: "ordinary_tool",
@@ -34,8 +34,24 @@ test("configured third-party tools are overridden at final renderer selection", 
   });
   registerToolExecutionPatch(api, () => config({ ordinary_tool: { enabled: true, kind: "generic", outputMode: "summary" } }));
   try {
-    assert.equal(render(instance.getCallRenderer()({ value: 1 }, theme)), "ordinary_tool (1 arg)");
+    assert.equal(render(instance.getCallRenderer()({ value: 1 }, theme)), "original call");
     assert.equal(render(instance.getResultRenderer()(result, options, theme)), "↳ 2 lines returned • Ctrl+O to expand");
+  } finally {
+    handlers.session_shutdown?.({ reason: "reload" });
+  }
+});
+
+test("overrideCallRenderer opts into replacing a third-party call renderer", () => {
+  const { api, handlers } = apiStub();
+  const instance = component({
+    name: "ordinary_tool",
+    renderCall: () => ({ render: () => ["original call"] }),
+  });
+  registerToolExecutionPatch(api, () => config({
+    ordinary_tool: { enabled: true, kind: "generic", outputMode: "summary", overrideCallRenderer: true },
+  }));
+  try {
+    assert.equal(render(instance.getCallRenderer()({ value: 1 }, theme)), "ordinary_tool (1 arg)");
   } finally {
     handlers.session_shutdown?.({ reason: "reload" });
   }

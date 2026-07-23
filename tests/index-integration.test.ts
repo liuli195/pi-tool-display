@@ -323,9 +323,11 @@ test("session_start handler tolerates being called multiple times", async () => 
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
 });
 
-test("overridden tools include renderCall and renderResult functions", () => {
-  const { api, capturedTools } = createApiStub();
+test("overridden tools include renderCall and renderResult functions", async () => {
+  const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
+  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} } });
+  assert.equal(capturedTools.length, 7);
 
   for (const tool of capturedTools) {
     assert.ok(

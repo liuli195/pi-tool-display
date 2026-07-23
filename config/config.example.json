@@ -13,12 +13,14 @@
     "ide_find_symbol": {
       "enabled": false,
       "kind": "generic",
-      "outputMode": "summary"
+      "outputMode": "summary",
+      "overrideCallRenderer": false
     },
     "custom_mcp_gateway": {
       "enabled": false,
       "kind": "mcp",
-      "outputMode": "summary"
+      "outputMode": "summary",
+      "overrideCallRenderer": false
     }
   },
   "enableNativeUserMessageBox": true,

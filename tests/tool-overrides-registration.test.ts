@@ -154,6 +154,24 @@ test("registerToolDisplayOverrides registers only active built-in renderers afte
 	assert.equal(byName.has("ls"), false);
 });
 
+test("restored history can use built-in renderers after session startup", async () => {
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub([], ["read"]);
+	registerToolDisplayOverrides(api, () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, readOutputMode: "summary" }));
+	await eventHandlers.session_start?.();
+
+	const read = registeredTools.find((tool) => tool.name === "read");
+	assert.ok(read?.renderCall && read.renderResult);
+	const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
+	const call = read.renderCall({ path: "historic.txt" }, theme) as { render(width: number): string[] };
+	const result = read.renderResult(
+		{ content: [{ type: "text", text: "historic content" }], details: {} },
+		{ expanded: false, isPartial: false },
+		theme,
+	) as { render(width: number): string[] };
+	assert.match(call.render(80).join("\n"), /historic\.txt/);
+	assert.ok(result.render(80).length > 0);
+});
+
 test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI keeps extension renderers active", async () => {
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 

@@ -161,31 +161,20 @@ test("2: built-in tool overrides are re-registered on reload", async () => {
   assert.ok(capturedTools.length >= countBeforeReload + 7);
 });
 
-test("2: re-registered tools have renderCall and renderResult functions after reload", () => {
-  const { api, capturedTools } = createApiStub();
+test("2: re-registered tools have renderCall and renderResult functions after reload", async () => {
+  const { api, capturedTools, capturedHandlers } = createApiStub();
 
   toolDisplayExtension(api);
+  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
+  const firstCount = capturedTools.length;
+
   toolDisplayExtension(api);
-
-  // Collect tools registered in the SECOND call only
-  const allTools = capturedTools;
-  const midPoint = Math.floor(allTools.length / 2);
-  const secondCallTools = allTools.slice(midPoint);
-
-  if (secondCallTools.length > 0) {
-    for (const tool of secondCallTools) {
-      if (tool.name === "read" || tool.name === "edit" || tool.name === "grep") {
-        continue; // Deferred - not registered immediately
-      }
-      assert.ok(
-        typeof tool.renderCall === "function",
-        `${tool.name} from reload has renderCall`,
-      );
-      assert.ok(
-        typeof tool.renderResult === "function",
-        `${tool.name} from reload has renderResult`,
-      );
-    }
+  for (const { event, handler } of capturedHandlers.slice()) if (event === "before_agent_start") await handler();
+  const secondCallTools = capturedTools.slice(firstCount);
+  assert.equal(secondCallTools.length, 7);
+  for (const tool of secondCallTools) {
+    assert.equal(typeof tool.renderCall, "function", `${tool.name} from reload has renderCall`);
+    assert.equal(typeof tool.renderResult, "function", `${tool.name} from reload has renderResult`);
   }
 });
 
