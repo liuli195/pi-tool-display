@@ -145,6 +145,7 @@ A starter template is included at `config/config.example.json`.
 | `registerToolOverrides` | object | all `true` | Built-in tool ownership flags |
 | `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
 | `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
+| `enableThinkingLabels` | boolean | `true` | Prefix thinking blocks with `Thinking:`; set `false` for pi-compact-thinking 0.2.0 compatibility (historical label/ANSI cleanup remains active) |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
 | `mcpOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
@@ -256,6 +257,7 @@ Notes:
     }
   },
   "enableNativeUserMessageBox": true,
+  "enableThinkingLabels": true,
   "readOutputMode": "summary",
   "searchOutputMode": "count",
   "mcpOutputMode": "summary",

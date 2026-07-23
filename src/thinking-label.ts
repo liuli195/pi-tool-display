@@ -319,7 +319,10 @@ function handleThinkingContextEvent(event: unknown, ctx: ExtensionContext | unde
   }
 }
 
-export function registerThinkingLabeling(pi: ExtensionAPI): void {
+export function registerThinkingLabeling(
+  pi: ExtensionAPI,
+  areLabelsEnabled: () => boolean = () => true,
+): void {
   if (registeredThinkingApis.has(pi)) {
     return;
   }
@@ -330,11 +333,15 @@ export function registerThinkingLabeling(pi: ExtensionAPI): void {
   });
 
   pi.on("message_update", async (event, ctx) => {
-    handleThinkingMessageUpdateEvent(event, ctx);
+    if (areLabelsEnabled()) {
+      handleThinkingMessageUpdateEvent(event, ctx);
+    }
   });
 
   pi.on("message_end", async (event, ctx) => {
-    handleThinkingMessageEndEvent(event, ctx);
+    if (areLabelsEnabled()) {
+      handleThinkingMessageEndEvent(event, ctx);
+    }
   });
 
   pi.on("context", async (event, ctx) => {
