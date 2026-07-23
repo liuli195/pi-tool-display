@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
 	createBashTool,
@@ -11,6 +12,7 @@ import {
 	createLsTool,
 	createReadTool,
 	createWriteTool,
+	ToolExecutionComponent,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
@@ -154,22 +156,26 @@ test("registerToolDisplayOverrides registers only active built-in renderers afte
 	assert.equal(byName.has("ls"), false);
 });
 
-test("restored history can use built-in renderers after session startup", async () => {
+test("Pi registers renderers before constructing restored-history tool rows", async () => {
+	const piEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
+	const interactiveMode = readFileSync(join(dirname(piEntry), "modes", "interactive", "interactive-mode.js"), "utf8");
+	assert.ok(
+		interactiveMode.indexOf("await this.rebindCurrentSession()") < interactiveMode.indexOf("this.renderInitialMessages()"),
+		"installed Pi must await session_start handlers before restoring history",
+	);
+
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub([], ["read"]);
 	registerToolDisplayOverrides(api, () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, readOutputMode: "summary" }));
 	await eventHandlers.session_start?.();
 
 	const read = registeredTools.find((tool) => tool.name === "read");
 	assert.ok(read?.renderCall && read.renderResult);
-	const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
-	const call = read.renderCall({ path: "historic.txt" }, theme) as { render(width: number): string[] };
-	const result = read.renderResult(
-		{ content: [{ type: "text", text: "historic content" }], details: {} },
-		{ expanded: false, isPartial: false },
-		theme,
-	) as { render(width: number): string[] };
-	assert.match(call.render(80).join("\n"), /historic\.txt/);
-	assert.ok(result.render(80).length > 0);
+	const row = Object.assign(Object.create(ToolExecutionComponent.prototype), {
+		builtInToolDefinition: {},
+		toolDefinition: read,
+	}) as { getCallRenderer(): unknown; getResultRenderer(): unknown };
+	assert.equal(row.getCallRenderer(), read.renderCall);
+	assert.equal(row.getResultRenderer(), read.renderResult);
 });
 
 test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI keeps extension renderers active", async () => {
@@ -232,6 +238,18 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 	assert.equal(registeredNames.has("write"), true);
 });
 
+test("tools with matching third-party owners but missing provenance are not shadowed", async () => {
+	for (const owner of [{ name: "read" }, { name: "read", sourceInfo: {} }]) {
+		const { api, registeredTools, eventHandlers } = createExtensionApiStub([owner], ["read", "edit"]);
+		registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+		await eventHandlers.session_start?.();
+
+		const names = new Set(registeredTools.map((tool) => tool.name));
+		assert.equal(names.has("read"), false);
+		assert.equal(names.has("edit"), true, "a built-in with no matching owner remains ownerless");
+	}
+});
+
 test("later-loaded read and bash owners are not shadowed", async () => {
 	const allTools: unknown[] = [];
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub(allTools);
@@ -239,14 +257,16 @@ test("later-loaded read and bash owners are not shadowed", async () => {
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
 	allTools.push(
 		{ name: "read", sourceInfo: { source: "local", path: "pi-hashline-edit-pro" } },
+		{ name: "edit", sourceInfo: { source: "local", path: "pi-hashline-edit-pro" } },
 		{ name: "bash", sourceInfo: { source: "local", path: "pi-patty-bg-tasks" } },
 	);
 	await eventHandlers.session_start?.();
 
 	const names = new Set(registeredTools.map((tool) => tool.name));
 	assert.equal(names.has("read"), false);
+	assert.equal(names.has("edit"), false);
 	assert.equal(names.has("bash"), false);
-	assert.equal(names.has("edit"), true, "active ownerless built-ins still receive renderers");
+	assert.equal(names.has("write"), true, "active ownerless built-ins still receive renderers");
 });
 
 test("bash override uses shellPath from Pi settings", async () => {
