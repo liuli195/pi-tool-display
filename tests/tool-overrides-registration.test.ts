@@ -104,11 +104,12 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 	await eventHandlers.session_start?.();
 	assert.deepEqual(
 		registeredTools.map((tool) => tool.name).sort(),
-		["bash", "edit", "find", "grep", "ls", "read", "write"],
+		["bash", "edit", "find", "ls", "read", "write"],
 	);
 	await eventHandlers.before_agent_start?.();
 
-	assert.equal(registeredTools.length, 7);
+	assert.equal(registeredTools.length, 6);
+	assert.equal(registeredTools.some((tool) => tool.name === "grep"), false);
 
 	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
 	const cwd = process.cwd();
@@ -124,6 +125,7 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
+		if (name === "grep") { assert.equal(registeredTool, undefined); continue; }
 		const builtInMetadata = builtInTool as unknown as RegisteredToolLike;
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
 		assert.equal(registeredTool.promptSnippet, builtInMetadata.promptSnippet);
@@ -198,6 +200,7 @@ test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI k
 
 	for (const [name, builtInTool] of Object.entries(builtInTools)) {
 		const registeredTool = byName.get(name);
+		if (name === "grep") { assert.equal(registeredTool, undefined); continue; }
 		assert.ok(registeredTool, `expected '${name}' to be registered`);
 		assert.notEqual(
 			registeredTool.parameters,

@@ -1108,7 +1108,7 @@ function renderBashErrorResult(
   return container;
 }
 
-function renderSearchResult(
+export function renderSearchResult(
   result: ToolRenderInput,
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
@@ -1654,6 +1654,7 @@ export function registerToolDisplayOverrides(
     register: () => void,
   ): void => {
     if (
+      toolName === "grep" ||
       registeredBuiltInToolOverrides.has(toolName) ||
       !activeTools.has(toolName) ||
       !getConfig().registerToolOverrides[toolName] ||

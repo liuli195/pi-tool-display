@@ -281,7 +281,8 @@ test("overridden tools include renderCall and renderResult functions", async () 
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} } });
-  assert.equal(capturedTools.length, 7);
+  assert.equal(capturedTools.length, 6);
+  assert.equal(capturedTools.some((tool) => tool.name === "grep"), false);
 
   for (const tool of capturedTools) {
     assert.ok(

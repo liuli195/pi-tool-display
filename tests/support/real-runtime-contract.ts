@@ -288,7 +288,7 @@ async function probeGeneratedCallbacks(Agent: new () => any, producer: ProducerS
   return { behavior: JSON.stringify(snapshotValue(observations, "callback observations", new Set())), unsupported };
 }
 
-async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, createTools: (probe: { updates: string[]; arguments?: unknown }) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
+async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview", createTools: (probe: { updates: string[]; arguments?: unknown }) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-contract-"));
@@ -297,7 +297,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
   try {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
-    await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({ readOutputMode: "preview", previewLines: 1 }));
+    await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({ searchOutputMode: outputMode, previewLines: 1 }));
     const observerPath = join(agentDir, "thinking-observer.js");
     await writeFile(observerPath, `export default function (pi) {
   for (const type of ["message_update", "message_end", "context"])
@@ -361,14 +361,16 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       track("theme", mode.themeController, "preview");
     }
     await mode.init();
-    await waitForOutput(terminal, "contract.txt");
-    const cold = terminal.frames.find((frame) => frame.includes("contract.txt")) ?? "";
+    await waitForOutput(terminal, withExtension && outputMode === "count" ? "3 matches" : "contract fixture first line");
+    const cold = terminal.output;
     terminal.take();
     const actionsAtFirstOutput = [...actionsBeforeFirstOutput];
     mode.toggleToolOutputExpansion();
     await waitForOutput(terminal, "contract fixture first line");
     const expandedCold = terminal.take();
 
+    mode.toggleToolOutputExpansion();
+    terminal.take();
     pristineProducers.push(snapshotCallbackProducer(runtime.session.agent));
     await mode.handleReloadCommand();
     initializedProducers.push(snapshotCallbackProducer(runtime.session.agent));
@@ -376,7 +378,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     const reload = terminal.take();
 
     const toolCallId = "contract-new-call";
-    const args = { path: "contract.txt" };
+    const args = { pattern: "contract", path: "." };
     const observedEvents: any[] = [];
     const unsubscribe = runtime.session.subscribe((event: any) => {
       if (event.toolCallId === toolCallId) observedEvents.push(event);
@@ -387,7 +389,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     let response = 0;
     installDeterministicStream(runtime.session.agent, () => {
       const stream = new ai.AssistantMessageEventStream();
-      const toolCall = { type: "toolCall", id: toolCallId, name: "contract_probe", arguments: args };
+      const toolCall = { type: "toolCall", id: toolCallId, name: "grep", arguments: args };
       const message = {
         role: "assistant", content: response++ === 0 ? [toolCall] : [{ type: "text", text: "done" }],
         api: "contract", provider: "contract", model: "contract", stopReason: response === 1 ? "toolUse" : "stop",
@@ -406,7 +408,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
     } finally {
       Date.now = realNow;
     }
-    await waitForOutput(terminal, "contract_probe");
+    await waitForOutput(terminal, "grep");
     unsubscribe();
     const newCall = terminal.take();
     const callbackKeys = Object.keys(callbackInvocations[0] ?? {}).sort();
@@ -494,7 +496,7 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
   }
 }
 
-export async function runPureDisplayContract(runtimeRoot: string): Promise<PureDisplayContractObservation> {
+export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden" | "count" | "preview" = "count"): Promise<PureDisplayContractObservation> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const seed = pi.SessionManager.inMemory(process.cwd(), { id: "contract-session" });
@@ -507,22 +509,22 @@ export async function runPureDisplayContract(runtimeRoot: string): Promise<PureD
   });
   seed.appendMessage({
     role: "assistant",
-    content: [{ type: "toolCall", id: "contract-cold-read", name: "read", arguments: { path: "contract.txt" } }],
+    content: [{ type: "toolCall", id: "contract-cold-grep", name: "grep", arguments: { pattern: "contract", path: "." } }],
     api: "contract", provider: "contract", model: "contract", stopReason: "toolUse",
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
     timestamp: 1,
   });
   seed.appendMessage({
-    role: "toolResult", toolCallId: "contract-cold-read", toolName: "read",
-    content: [{ type: "text", text: "contract fixture first line\ncontract folded second line\ncontract folded third line" }], isError: false, timestamp: 2,
+    role: "toolResult", toolCallId: "contract-cold-grep", toolName: "grep",
+    content: [{ type: "text", text: "contract.txt:1:contract fixture first line\ncontract.txt:2:contract folded second line\ncontract.txt:3:contract folded third line" }], isError: false, timestamp: 2,
   });
   seed.appendThinkingLevelChange("medium");
   const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
-  const createTools = (probe: { updates: string[]; arguments?: unknown }) => [...pi.createCodingTools(process.cwd()), {
-    name: "contract_probe",
-    label: "Contract probe",
-    description: "Deterministic contract tool",
-    parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"], additionalProperties: false },
+  const createTools = (probe: { updates: string[]; arguments?: unknown }) => [...pi.createCodingTools(process.cwd()).filter((tool: any) => tool.name !== "grep"), {
+    name: "grep",
+    label: "Third-party grep",
+    description: "Deterministic same-name grep contract tool",
+    parameters: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" } }, required: ["pattern", "path"], additionalProperties: false },
     execute: async (_id: string, args: unknown, _signal: unknown, onUpdate: (result: unknown) => void) => {
       probe.arguments = args;
       probe.updates.push("contract streaming output");
@@ -530,8 +532,8 @@ export async function runPureDisplayContract(runtimeRoot: string): Promise<PureD
       return { content: [{ type: "text", text: "contract final output" }], details: {} };
     },
   }];
-  const absent = await run(runtimeRoot, false, sessionJsonl, createTools);
-  const present = await run(runtimeRoot, true, sessionJsonl, createTools);
+  const absent = await run(runtimeRoot, false, sessionJsonl, mode, createTools);
+  const present = await run(runtimeRoot, true, sessionJsonl, mode, createTools);
   return {
     paths: ["cold", "reload", "new-call"],
     firstCollapsedOutput: present.tuiOutput.cold,
