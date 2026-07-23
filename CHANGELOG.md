@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-23
+
+### Added
+- Added `bashCommandMode` (`full`, `summary`, or `preview`) and `bashCommandPreviewLines` settings so long bash commands can be visually compacted and expanded with Ctrl+O alongside their output.
+- Added the bash command display controls to the configuration modal, presets, example configuration, and usage documentation.
+
 ## [0.5.0] - 2026-07-03
 
 ### Added

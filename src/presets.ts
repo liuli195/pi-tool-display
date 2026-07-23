@@ -16,6 +16,7 @@ const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> 
 		searchOutputMode: "count",
 		mcpOutputMode: "summary",
 		bashOutputMode: "summary",
+		bashCommandMode: "summary",
 	},
 	verbose: {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
@@ -26,6 +27,7 @@ const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> 
 		bashOutputMode: "preview",
 		previewLines: 12,
 		bashCollapsedLines: 20,
+		bashCommandMode: "full",
 	},
 };
 
@@ -71,6 +73,8 @@ function configsEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
 		a.expandedPreviewMaxLines === b.expandedPreviewMaxLines &&
 		a.bashOutputMode === b.bashOutputMode &&
 		a.bashCollapsedLines === b.bashCollapsedLines &&
+		a.bashCommandMode === b.bashCommandMode &&
+		a.bashCommandPreviewLines === b.bashCommandPreviewLines &&
 		a.diffViewMode === b.diffViewMode &&
 		a.diffIndicatorMode === b.diffIndicatorMode &&
 		a.diffSplitMinWidth === b.diffSplitMinWidth &&

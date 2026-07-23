@@ -277,7 +277,7 @@ test("3: bash spinner interval is created during partial execution and cleared o
       stubTheme,
       context as unknown as Parameters<typeof renderBashCall>[2],
     );
-    assert.ok(result1 instanceof Text, "renderBashCall returns a Text");
+    assert.equal(typeof result1.render, "function", "renderBashCall returns a component");
     assert.ok(
       createdIntervals.length > 0,
       "spinner interval was created during partial execution",
@@ -285,12 +285,13 @@ test("3: bash spinner interval is created during partial execution and cleared o
 
     // Simulate execution completing (reload-like: context becomes non-partial)
     context.isPartial = false;
+    context.lastComponent = result1;
     const result2 = renderBashCall(
       { command: "sleep 5" },
       stubTheme,
       context as unknown as Parameters<typeof renderBashCall>[2],
     );
-    assert.ok(result2 instanceof Text, "renderBashCall still returns Text");
+    assert.equal(result2, result1, "renderBashCall reuses its component");
     assert.ok(
       clearedIntervals.length > 0,
       "spinner interval was cleared on execution completion",

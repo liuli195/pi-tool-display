@@ -1,4 +1,5 @@
-import { Text } from "@earendil-works/pi-tui";
+import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "./types.js";
 import { registerCleanup, registerTimer } from "./disposable.js";
 
 const BASH_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
@@ -32,6 +33,7 @@ interface BashSpinnerStateCarrier {
 interface BashCallRenderContextLike {
 	executionStarted: boolean;
 	isPartial: boolean;
+	expanded?: boolean;
 	invalidate?: () => void;
 	lastComponent?: unknown;
 	state?: unknown;
@@ -136,6 +138,39 @@ function buildCommandDisplay(args: BashCallArgs): string {
 	return prefix ? `${prefix} ${command}` : command;
 }
 
+class BashCallComponent implements Component {
+	private text = new Text("", 0, 0);
+
+	constructor(
+		private mode: ToolDisplayConfig["bashCommandMode"],
+		private previewLines: number,
+		private expanded: boolean,
+		private theme: BashCallRenderTheme,
+	) {}
+
+	setDisplay(text: string, mode: ToolDisplayConfig["bashCommandMode"], previewLines: number, expanded: boolean): void {
+		this.text.setText(text);
+		this.mode = mode;
+		this.previewLines = previewLines;
+		this.expanded = expanded;
+	}
+
+	render(width: number): string[] {
+		const lines = this.text.render(width);
+		if (this.expanded || this.mode === "full") return lines;
+
+		const limit = this.mode === "summary" ? 1 : this.previewLines;
+		if (lines.length <= limit) return lines;
+
+		const hint = this.theme.fg("muted", `... (${lines.length - limit} more visual lines • Ctrl+O to expand)`);
+		return [...lines.slice(0, limit), truncateToWidth(hint, width)];
+	}
+
+	invalidate(): void {
+		this.text.invalidate();
+	}
+}
+
 function buildBashCallText(
 	args: BashCallArgs,
 	theme: BashCallRenderTheme,
@@ -165,8 +200,17 @@ export function renderBashCall(
 	args: BashCallArgs,
 	theme: BashCallRenderTheme,
 	context: BashCallRenderContextLike,
-): Text {
-	const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
+	config: Pick<ToolDisplayConfig, "bashCommandMode" | "bashCommandPreviewLines"> = DEFAULT_TOOL_DISPLAY_CONFIG,
+): Component {
+	const text = context.lastComponent instanceof BashCallComponent
+		? context.lastComponent
+		: new BashCallComponent(config.bashCommandMode, config.bashCommandPreviewLines, context.expanded === true, theme);
+	const setDisplay = (content: string): void => text.setDisplay(
+		content,
+		config.bashCommandMode,
+		config.bashCommandPreviewLines,
+		context.expanded === true,
+	);
 	const carrier = toStateCarrier(context.state);
 	const toolCallId = getToolCallId(context);
 	const spinnerState = getOrCreateSpinnerState(toolCallId, carrier);
@@ -174,7 +218,7 @@ export function renderBashCall(
 
 	if (!shouldSpin) {
 		stopSpinner(toolCallId, spinnerState);
-		text.setText(buildBashCallText(args, theme));
+		setDisplay(buildBashCallText(args, theme));
 		return text;
 	}
 
@@ -183,7 +227,7 @@ export function renderBashCall(
 		if (!spinnerState.timer && typeof context.invalidate === "function") {
 			const timer = setInterval(() => {
 				spinnerState.frameIndex = (spinnerState.frameIndex + 1) % BASH_SPINNER_FRAMES.length;
-				text.setText(
+				setDisplay(
 					buildBashCallText(
 						args,
 						theme,
@@ -207,6 +251,6 @@ export function renderBashCall(
 	const elapsedMs = spinnerState?.startedAt !== undefined
 		? Date.now() - spinnerState.startedAt
 		: undefined;
-	text.setText(buildBashCallText(args, theme, spinnerFrame, elapsedMs));
+	setDisplay(buildBashCallText(args, theme, spinnerFrame, elapsedMs));
 	return text;
 }

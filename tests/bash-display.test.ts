@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Text } from "@earendil-works/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
 import { renderBashCall } from "../src/bash-display.ts";
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
@@ -15,6 +15,7 @@ interface BashCallRenderTheme {
 interface BashCallRenderContextLike {
 	executionStarted: boolean;
 	isPartial: boolean;
+	expanded?: boolean;
 	invalidate(): void;
 	lastComponent?: unknown;
 	state?: unknown;
@@ -46,8 +47,8 @@ function makeContext(overrides: Partial<BashCallRenderContextLike> = {}): BashCa
 	};
 }
 
-function renderedText(component: Text): string {
-	return component.render(120).map((line) => line.trimEnd()).join("\n").trim();
+function renderedText(component: Component, width = 120): string {
+	return component.render(width).map((line) => line.trimEnd()).join("\n").trim();
 }
 
 /**
@@ -58,7 +59,7 @@ function createSpinningBashCall(
 	args: { command?: string; timeout?: number },
 	state: Record<string, unknown>,
 	extra?: Partial<BashCallRenderContextLike>,
-): { text: Text; stop(): void } {
+): { text: Component; stop(): void } {
 	const text = renderBashCall(
 		args,
 		createPassThroughTheme(),
@@ -119,6 +120,51 @@ test("renderBashCall handles very long commands without crashing", () => {
 	assert.ok(output.includes("node"), "command text should appear");
 	// The rendered output should contain the command text
 	assert.ok(output.length > 10, "output should have content");
+});
+
+test("renderBashCall previews long commands by visual line", () => {
+	const text = renderBashCall(
+		{ command: "echo " + "word ".repeat(30) },
+		createPassThroughTheme(),
+		makeContext(),
+		{ bashCommandMode: "preview", bashCommandPreviewLines: 2 },
+	);
+	const lines = text.render(60);
+	assert.equal(lines.length, 3);
+	assert.match(lines[2] ?? "", /more visual lines.*Ctrl\+O to expand/);
+});
+
+test("renderBashCall expands the complete command", () => {
+	const command = "echo " + "word ".repeat(30);
+	const text = renderBashCall(
+		{ command },
+		createPassThroughTheme(),
+		makeContext({ expanded: true }),
+		{ bashCommandMode: "preview", bashCommandPreviewLines: 2 },
+	);
+	assert.doesNotMatch(renderedText(text, 30), /more visual lines/);
+	assert.ok(text.render(30).length > 3);
+});
+
+test("renderBashCall summary mode keeps one visual command line", () => {
+	const text = renderBashCall(
+		{ command: "echo " + "word ".repeat(30) },
+		createPassThroughTheme(),
+		makeContext(),
+		{ bashCommandMode: "summary", bashCommandPreviewLines: 10 },
+	);
+	assert.equal(text.render(30).length, 2);
+});
+
+test("renderBashCall full mode never folds the command", () => {
+	const text = renderBashCall(
+		{ command: "echo " + "word ".repeat(30) },
+		createPassThroughTheme(),
+		makeContext(),
+		{ bashCommandMode: "full", bashCommandPreviewLines: 1 },
+	);
+	assert.doesNotMatch(renderedText(text, 30), /more visual lines/);
+	assert.ok(text.render(30).length > 2);
 });
 
 test("renderBashCall displays multiline command", () => {
@@ -401,7 +447,7 @@ test("renderBashCall handles repeated calls without creating multiple timers", (
 
 // ─── lastComponent Preservation ──────────────────────────────────────────────
 
-test("renderBashCall preserves the same Text component reference when lastComponent is a Text", () => {
+test("renderBashCall preserves the same component reference", () => {
 	const initialState: Record<string, unknown> = {};
 	const { text: first, stop } = createSpinningBashCall({ command: "npm test" }, initialState);
 
@@ -416,7 +462,7 @@ test("renderBashCall preserves the same Text component reference when lastCompon
 		}),
 	);
 
-	assert.equal(first, second, "should return the same Text instance via lastComponent");
+	assert.equal(first, second, "should return the same component instance via lastComponent");
 	stop();
 });
 
