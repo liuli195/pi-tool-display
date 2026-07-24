@@ -581,6 +581,20 @@ test("unregister leaves a later foreign render patch intact", () => {
   assert.equal(prototype.__piUserMessagePatchOwner, undefined);
 });
 
+test("user-message patch disposers restore only their owned installation", () => {
+  const originalRender = (width: number) => [`orig:${width}`];
+  const prototype: PatchableUserMessagePrototype = { render: originalRender };
+  const first = patchUserMessageRenderPrototype(prototype, 7, base => width => [`first:${base(width)}`]);
+  const second = patchUserMessageRenderPrototype(prototype, 7, base => width => [`second:${base(width)}`]);
+  const secondRender = prototype.render;
+
+  first();
+  assert.strictEqual(prototype.render, secondRender);
+  assert.deepEqual(prototype.render(5), ["second:orig:5"]);
+  second();
+  assert.strictEqual(prototype.render, originalRender);
+});
+
 test("unregister restores the original render descriptor", () => {
   const originalRender = (width: number) => [`orig:${width}`];
   const prototype = {} as PatchableUserMessagePrototype;

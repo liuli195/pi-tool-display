@@ -3,7 +3,7 @@ import test from "node:test";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 import { createToolDisplayResolver } from "../src/tool-display-resolver.ts";
 import { createRendererCatalog } from "../src/renderer-catalog.ts";
-import { installPiHostAdapter } from "../src/pi-host-adapter.ts";
+import { installPiHostAdapter, invalidatePiHostAdapterRows } from "../src/pi-host-adapter.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const output = { content: [{ type: "text", text: "a:1\nb:2\nc:3" }], details: {} };
@@ -65,7 +65,7 @@ test("Pi Host Adapter is transactional, idempotent, receiver-safe, and conflict-
   const pristine = Object.getOwnPropertyDescriptors(host);
   let installation: ReturnType<typeof installPiHostAdapter> | undefined;
   try {
-    installation = installPiHostAdapter(host, config("count"), "0.80.3");
+    installation = installPiHostAdapter(host, config("count"), "0.81.1");
     assert.equal(installation.installed, true);
     const installed = Object.getOwnPropertyDescriptors(host);
     assert.notStrictEqual(installed.getCallRenderer.value, pristine.getCallRenderer.value);
@@ -84,7 +84,7 @@ test("Pi Host Adapter is transactional, idempotent, receiver-safe, and conflict-
     assert.strictEqual(callRenderer.apply(rendererReceiver, [1]).receiver, rendererReceiver);
     assert.strictEqual(resultRenderer.apply(rendererReceiver, [2]).receiver, rendererReceiver);
 
-    const second = installPiHostAdapter(host, config("preview"), "0.80.3");
+    const second = installPiHostAdapter(host, config("preview"), "0.81.1");
     assert.equal(second.installed, true);
     assert.strictEqual(host.getResultRenderer, installed.getResultRenderer.value);
     const grepRow = { toolName: "grep", args: { pattern: "x" }, builtInToolDefinition: { name: "grep" } };
@@ -105,6 +105,52 @@ test("Pi Host Adapter is transactional, idempotent, receiver-safe, and conflict-
   }
 });
 
+test("Pi Host Adapter invalidates rows already resolved through the display seam", () => {
+  const { host } = syntheticHost();
+  const installation = installPiHostAdapter(host, config("count"), "0.81.1");
+  let invalidations = 0;
+  const row = { toolName: "grep", args: {}, builtInToolDefinition: { name: "grep" }, invalidate() { invalidations++; } };
+  host.getResultRenderer.call(row);
+
+  invalidatePiHostAdapterRows(host);
+  assert.equal(invalidations, 1);
+  installation.dispose();
+  invalidatePiHostAdapterRows(host);
+  assert.equal(invalidations, 1);
+});
+
+test("Pi Host Adapter disposal deactivates its wrapper beneath a later foreign wrapper", () => {
+  const { host } = syntheticHost();
+  const installation = installPiHostAdapter(host, config("count"), "0.81.1");
+  const installedSelector = host.getResultRenderer;
+  host.getResultRenderer = function (this: unknown, ...args: unknown[]) {
+    return installedSelector.apply(this, args);
+  };
+  let invalidations = 0;
+  const row = { toolName: "grep", args: { pattern: "x" }, builtInToolDefinition: { name: "grep" }, invalidate() { invalidations++; } };
+
+  assert.match(render(host.getResultRenderer.call(row)(output, { expanded: false, isPartial: false }, theme)), /3 matches/);
+  installation.dispose();
+  assert.equal(invalidations, 0);
+  assert.equal(render(host.getResultRenderer.call(row)(output, { expanded: false, isPartial: false }, theme)), "native result");
+  invalidatePiHostAdapterRows(host);
+  assert.equal(invalidations, 0);
+});
+
+test("Pi Host Adapter disposers affect only their own resolver attachment", () => {
+  const { host } = syntheticHost();
+  const first = installPiHostAdapter(host, config("count"), "0.81.1");
+  const second = installPiHostAdapter(host, config("preview"), "0.81.1");
+  const patchedResult = host.getResultRenderer;
+
+  first.dispose();
+  assert.strictEqual(host.getResultRenderer, patchedResult);
+  assert.match(render(host.getResultRenderer.call({ toolName: "grep", args: { pattern: "x" }, builtInToolDefinition: { name: "grep" } })(output, { expanded: false, isPartial: false }, theme)), /a:1/);
+
+  second.dispose();
+  assert.notStrictEqual(host.getResultRenderer, patchedResult);
+});
+
 test("Pi Host Adapter retains ownership tracking until an interrupted mixed disposal can finish", () => {
   const target = syntheticHost().host;
   const pristineCall = Object.getOwnPropertyDescriptor(target, "getCallRenderer")!;
@@ -115,7 +161,7 @@ test("Pi Host Adapter retains ownership tracking until an interrupted mixed disp
       return Reflect.defineProperty(object, property, descriptor);
     },
   });
-  const installation = installPiHostAdapter(host, config("count"), "0.80.3");
+  const installation = installPiHostAdapter(host, config("count"), "0.81.1");
   assert.equal(installation.installed, true);
   const patchedCall = target.getCallRenderer;
   const foreignResult = function () { return "foreign"; };
@@ -124,15 +170,15 @@ test("Pi Host Adapter retains ownership tracking until an interrupted mixed disp
   installation.dispose();
   assert.strictEqual(target.getCallRenderer, patchedCall);
   assert.strictEqual(target.getResultRenderer, foreignResult);
-  assert.equal(installPiHostAdapter(host, config("count"), "0.80.3").installed, false);
+  assert.equal(installPiHostAdapter(host, config("count"), "0.81.1").installed, false);
   blockCallRestore = false;
   installation.dispose();
   assert.deepEqual(Object.getOwnPropertyDescriptor(target, "getCallRenderer"), pristineCall);
   assert.strictEqual(target.getResultRenderer, foreignResult);
 });
 
-test("Pi Host Adapter accepts stable Pi versions from 0.81.1 onward", () => {
-  for (const version of ["0.81.1", "0.82.0", "1.0.0"]) {
+test("Pi Host Adapter accepts Pi 0.81.1 and later stable versions", () => {
+  for (const version of ["0.81.1", "0.82.0", "0.83.7", "1.0.0"]) {
     const { host } = syntheticHost();
     const installation = installPiHostAdapter(host, config("count"), version);
     assert.equal(installation.installed, true);
@@ -142,17 +188,17 @@ test("Pi Host Adapter accepts stable Pi versions from 0.81.1 onward", () => {
 
 test("Pi Host Adapter rejects unsupported and non-extensible hosts without descriptor changes", () => {
   for (const [host, version] of [
-    [Object.preventExtensions(syntheticHost().host), "0.80.3"],
+    [Object.preventExtensions(syntheticHost().host), "0.81.1"],
     [syntheticHost().host, "0.81.0"],
     [syntheticHost().host, "0.82.0-beta.1"],
-    [{ getCallRenderer() {} }, "0.80.3"],
+    [{ getCallRenderer() {} }, "0.81.1"],
   ] as const) {
     const before = Object.getOwnPropertyDescriptors(host);
     assert.equal(installPiHostAdapter(host, config("count"), version).installed, false);
     assert.deepEqual(Object.getOwnPropertyDescriptors(host), before);
   }
   const hostile = new Proxy({}, { getOwnPropertyDescriptor() { throw new Error("hostile shape"); } });
-  assert.equal(installPiHostAdapter(hostile, config("count"), "0.80.3").installed, false);
+  assert.equal(installPiHostAdapter(hostile, config("count"), "0.81.1").installed, false);
 });
 
 test("Pi Host Adapter rolls back exact descriptors when a patch step fails", () => {
@@ -168,6 +214,6 @@ test("Pi Host Adapter rolls back exact descriptors when a patch step fails", () 
       return Reflect.defineProperty(object, property, descriptor);
     },
   });
-  assert.equal(installPiHostAdapter(host, config("count"), "0.80.3").installed, false);
+  assert.equal(installPiHostAdapter(host, config("count"), "0.81.1").installed, false);
   assert.deepEqual(Object.getOwnPropertyDescriptors(target), pristine);
 });

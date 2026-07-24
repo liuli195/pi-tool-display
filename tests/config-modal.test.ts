@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { applySetting, buildInspectorSettings } from "../src/config-modal.ts";
-import { registerToolDisplayCommand } from "../src/config-command.ts";
+import { applySetting, buildInspectorSettings, createSettingMutation } from "../src/config-modal.ts";
+import { registerToolDisplayCommand, type ToolDisplayConfigMutation } from "../src/config-command.ts";
+import { mergeProjectConfig } from "../src/config-store.ts";
+import { getToolDisplayPresetConfig } from "../src/presets.ts";
 import {
 	DEFAULT_TOOL_DISPLAY_CONFIG,
 	type ToolDisplayConfig,
@@ -62,10 +64,10 @@ function createControllerStub(
 ): {
 	controller: {
 		getConfig: () => ToolDisplayConfig;
-		setConfig: (next: ToolDisplayConfig, ctx: ExtensionCommandContext) => void;
+		mutateConfig: (mutation: ToolDisplayConfigMutation, ctx: ExtensionCommandContext) => void;
 		getCapabilities: () => ToolDisplayCapabilities;
 	};
-	getLastSet: () => { config: ToolDisplayConfig | null; ctx: ExtensionCommandContext | null };
+	getLastSet: () => { config: ToolDisplayConfig | null; mutation: ToolDisplayConfigMutation | null; ctx: ExtensionCommandContext | null };
 } {
 	let config: ToolDisplayConfig = {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
@@ -74,7 +76,11 @@ function createControllerStub(
 			...(initialConfig?.builtInToolDisplays ?? DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays),
 		},
 	};
-	const last = { config: null as ToolDisplayConfig | null, ctx: null as ExtensionCommandContext | null };
+	const last = {
+		config: null as ToolDisplayConfig | null,
+		mutation: null as ToolDisplayConfigMutation | null,
+		ctx: null as ExtensionCommandContext | null,
+	};
 
 	return {
 		controller: {
@@ -82,9 +88,12 @@ function createControllerStub(
 				...config,
 				builtInToolDisplays: { ...config.builtInToolDisplays },
 			}),
-			setConfig: (next: ToolDisplayConfig, ctx: ExtensionCommandContext) => {
-				config = { ...next, builtInToolDisplays: { ...next.builtInToolDisplays } };
+			mutateConfig: (mutation: ToolDisplayConfigMutation, ctx: ExtensionCommandContext) => {
+				config = mutation.type === "patch"
+					? mergeProjectConfig(config, mutation.patch)
+					: getToolDisplayPresetConfig(mutation.type === "preset" ? mutation.preset : "opencode");
 				last.config = config;
+				last.mutation = mutation;
 				last.ctx = ctx;
 			},
 			getCapabilities: () => capabilities ?? { hasRtkOptimizer: false },
@@ -104,6 +113,22 @@ test("registerToolDisplayCommand registers a handler for 'tool-display'", () => 
 	registerToolDisplayCommand(api, controller);
 
 	assert.ok(getHandler(), "expected handler to be registered");
+});
+
+test("settings and direct commands submit explicit patch, preset, and reset intents", async () => {
+	assert.deepEqual(
+		createSettingMutation(DEFAULT_TOOL_DISPLAY_CONFIG, "searchOutputMode", "count"),
+		{ type: "patch", patch: { searchOutputMode: "count" } },
+	);
+
+	const { api, getHandler } = createPiStub();
+	const { controller, getLastSet } = createControllerStub();
+	const { ctx } = createCtxStub(true);
+	registerToolDisplayCommand(api, controller);
+	await getHandler()!("preset balanced", ctx);
+	assert.deepEqual(getLastSet().mutation, { type: "preset", preset: "balanced" });
+	await getHandler()!("reset", ctx);
+	assert.deepEqual(getLastSet().mutation, { type: "reset" });
 });
 
 test("'show' argument notifies with config summary", async () => {

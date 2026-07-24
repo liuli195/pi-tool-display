@@ -18,6 +18,7 @@ import {
 	READ_OUTPUT_MODES,
 	SEARCH_OUTPUT_MODES,
 	type ToolDisplayConfig,
+	type ToolDisplayConfigOverlay,
 	type BuiltInToolDisplays,
 } from "./types.js";
 import { toRecord } from "./tool-metadata.js";
@@ -288,4 +289,97 @@ export function saveToolDisplayConfig(config: ToolDisplayConfig, configFile = CO
 
 export function getToolDisplayConfigPath(): string {
 	return CONFIG_FILE;
+}
+
+/**
+ * Extract only the top-level keys explicitly present in a raw config object.
+ * Unlike normalizeToolDisplayConfig, this does NOT fill defaults —
+ * missing keys stay absent so the caller can merge without overwriting
+ * unrelated global settings.
+ */
+function extractExplicitFields(raw: unknown): ToolDisplayConfigOverlay {
+	if (typeof raw !== "object" || raw === null) return {};
+	const result: ToolDisplayConfigOverlay = {};
+	for (const key of Object.keys(raw as Record<string, unknown>)) {
+		if (key in (raw as Record<string, unknown>)) {
+			(result as Record<string, unknown>)[key] = (raw as Record<string, unknown>)[key];
+		}
+	}
+	return result;
+}
+
+/**
+ * Read a project-local config file. Returns only the fields explicitly
+ * present in the JSON, without filling defaults. Only call this when the
+ * project is trusted.
+ */
+export function readProjectToolDisplayConfig(
+	projectConfigFile: string,
+): { config: ToolDisplayConfigOverlay | undefined; error?: string } {
+	if (!existsSync(projectConfigFile)) {
+		return { config: undefined };
+	}
+	try {
+		const rawText = readFileSync(projectConfigFile, "utf-8");
+		const rawConfig = JSON.parse(rawText) as unknown;
+		return { config: extractExplicitFields(rawConfig) };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return {
+			config: undefined,
+			error: `Failed to parse project config ${projectConfigFile}: ${message}`,
+		};
+	}
+}
+
+const NESTED_OBJECT_KEYS: ReadonlySet<string> = new Set(["builtInToolDisplays", "customToolOverrides"]);
+
+function mergeNestedConfigField(
+	key: string,
+	globalValue: unknown,
+	projectValue: Record<string, unknown>,
+): Record<string, unknown> {
+	const merged = { ...toRecord(globalValue) };
+	for (const [nestedKey, nestedValue] of Object.entries(projectValue)) {
+		if (nestedValue === undefined) continue;
+		merged[nestedKey] = key === "customToolOverrides"
+			&& nestedValue !== null
+			&& typeof nestedValue === "object"
+			&& !Array.isArray(nestedValue)
+			? { ...toRecord(merged[nestedKey]), ...nestedValue }
+			: nestedValue;
+	}
+	return merged;
+}
+
+/**
+ * Merge a project-local partial config over a global config. Only keys
+ * explicitly present in the project config override the global values.
+ * Nested objects (builtInToolDisplays, customToolOverrides) are deep-merged
+ * so project overrides of one nested field don't reset unrelated global fields.
+ * The result is re-normalized to clamp project values to valid ranges.
+ */
+export function applyToolDisplayConfigPatch(
+	baseConfig: ToolDisplayConfig,
+	patch: ToolDisplayConfigOverlay,
+): ToolDisplayConfig {
+	const merged = { ...baseConfig } as Record<string, unknown>;
+	const project = patch as Record<string, unknown>;
+	for (const key of Object.keys(project)) {
+		const projectValue = project[key];
+		if (projectValue === undefined) continue;
+		if (NESTED_OBJECT_KEYS.has(key) && typeof projectValue === "object" && projectValue !== null && !Array.isArray(projectValue)) {
+			merged[key] = mergeNestedConfigField(key, merged[key], projectValue as Record<string, unknown>);
+		} else {
+			merged[key] = projectValue;
+		}
+	}
+	return normalizeToolDisplayConfig(merged);
+}
+
+export function mergeProjectConfig(
+	globalConfig: ToolDisplayConfig,
+	projectConfig: ToolDisplayConfigOverlay,
+): ToolDisplayConfig {
+	return applyToolDisplayConfigPatch(globalConfig, projectConfig);
 }

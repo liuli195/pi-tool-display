@@ -11,10 +11,6 @@ export function registerCleanup(callback: () => void): void {
   cleanupCallbacks.push(callback);
 }
 
-export function registerTimer(timer: ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>): void {
-  registerCleanup(() => clearInterval(timer as ReturnType<typeof setInterval>));
-}
-
 export function registerSessionCleanup(callback: () => void): () => void {
   sessionCleanupCallbacks.add(callback);
   return () => sessionCleanupCallbacks.delete(callback);

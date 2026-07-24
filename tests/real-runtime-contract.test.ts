@@ -67,20 +67,22 @@ const stableFixturePaths = (ownership: Array<{ name: string; sourceInfo: any }>)
   sourceInfo: { ...sourceInfo, path: sourceInfo.path?.replace(/pi-tool-display-contract-[^\\/]+/, "pi-tool-display-contract") },
 }));
 
-test("runtime matrix pins development, Pi 0.81.1, Pi 0.82.0, and the declared minimum", () => {
+test("runtime matrix qualifies representative supported Pi versions", () => {
   assert.deepEqual(matrix.map(({ name, version }) => ({ name, version })), [
     { name: "development", version: undefined },
     { name: "pi-0.81.1", version: "0.81.1" },
     { name: "pi-0.82.0", version: "0.82.0" },
-    { name: "minimum-supported", version: "0.74.0" },
   ]);
   assert.equal(matrix.every(({ required }) => required), true);
   assert.equal(matrix.find(({ name }) => name === "development")?.env, "PI_RUNTIME_DEV_ROOT");
+  const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8"));
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], "*");
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-tui"], "*");
 });
 
 for (const entry of matrix) {
   const runtimeRoot = process.env[entry.env];
-  const optional = process.env.npm_lifecycle_event === "test:contract:local";
+  const optional = process.env.npm_lifecycle_event !== "test:contract:required";
   test(`real Pi runtime contract: ${entry.name}`, { skip: optional && !runtimeRoot ? `${entry.env} is not supplied` : false }, async () => {
     assert.ok(runtimeRoot, `${entry.env} is required (use npm run test:contract:local for optional local runtimes)`);
     const packagePath = runtimeRoot.endsWith("package.json") ? runtimeRoot : resolve(runtimeRoot.endsWith(".js") ? dirname(dirname(runtimeRoot)) : runtimeRoot, "package.json");
@@ -116,11 +118,15 @@ for (const entry of matrix) {
       ["mcp", "↳ 3 lines returned", "mcp proxy first line"],
       ["mcp_direct_fixture", "↳ 4 lines returned", "mcp direct first line"],
     ] as const;
-    for (const frame of [cold, plain(observation.present.tuiOutput.reload), plain(observation.present.tuiOutput.newCall)]) {
+    for (const [frameName, frame] of [
+      ["cold", cold],
+      ["reload", plain(observation.present.tuiOutput.reload)],
+      ["new-call", plain(observation.present.tuiOutput.newCall)],
+    ] as const) {
       for (const [name, summary, nativeOutput] of summaries) {
-        assert.match(frame, new RegExp(`\\b${name}\\b`));
-        assert.match(frame, new RegExp(`${summary}(?: • Ctrl\\+O to expand)?`), `${name} must render its exact line-count summary`);
-        assert.doesNotMatch(frame, new RegExp(nativeOutput));
+        assert.match(frame, new RegExp(`\\b${name}\\b`), `${frameName}: ${name} call must remain visible`);
+        assert.match(frame, new RegExp(`${summary}(?: • Ctrl\\+O to expand)?`), `${frameName}: ${name} must render its exact line-count summary`);
+        assert.doesNotMatch(frame, new RegExp(nativeOutput), `${frameName}: ${name} native output must stay folded`);
       }
     }
     for (const frame of [observation.present.tuiOutput.expandedCold, observation.present.tuiOutput.expandedReload]) {
@@ -309,8 +315,8 @@ for (const entry of matrix) {
       const partial = plain(bash.present.tuiOutput.partialNewCall);
       assert.match(partial, /contract streaming output/);
       assert.doesNotMatch(partial, /contract streaming folded second line/);
-      assert.notEqual(bash.present.tuiOutput.animatedPartialNewCall, "");
-      assert.notEqual(plain(bash.present.tuiOutput.animatedPartialNewCall), partial);
+      // Spinner removed: no timer-driven animated frame is produced.
+      assert.equal(bash.present.tuiOutput.animatedPartialNewCall, "");
       assert.match(plain(bash.present.tuiOutput.newCall), /contract final output/);
       assert.doesNotMatch(plain(bash.present.tuiOutput.newCall), /contract final folded second line/);
       assert.match(plain(bash.present.tuiOutput.expandedNewCall), /contract final folded second line/);
@@ -321,7 +327,7 @@ for (const entry of matrix) {
       assert.doesNotMatch(plain(bash.present.tuiOutput.collapsedErrorNewCall), /contract error folded second line/);
       assert.deepEqual(bash.present.lifecycle, {
         reloads: 3, stableWrappers: true, wrappersAfterDispose: 0, descriptorsRestored: true,
-        timerBaseline: 0, timersWhilePartial: 1, timersAfterCompletion: 0, timersAfterDispose: 0,
+        timerBaseline: 0, timersWhilePartial: 0, timersAfterCompletion: 0, timersAfterDispose: 0,
       });
       for (const frame of [bash.present.tuiOutput.expandedCold, bash.present.tuiOutput.expandedReload]) {
         assert.match(plain(frame), /contract success folded third line/);

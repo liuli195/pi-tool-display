@@ -1,20 +1,27 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
+import {
+  CONFIG_DIR_NAME,
+  createReadTool,
+  initTheme,
+  ToolExecutionComponent,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 
 const testAgentDir = mkdtempSync(join(tmpdir(), "pi-tool-display-index-"));
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 process.env.PI_CODING_AGENT_DIR = testAgentDir;
 const { default: toolDisplayExtension } = await import("../src/index.ts");
+const { createRendererCatalog } = await import("../src/renderer-catalog.ts");
+const { DEFAULT_TOOL_DISPLAY_CONFIG } = await import("../src/types.ts");
 if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
 after(() => rmSync(testAgentDir, { recursive: true, force: true }));
+initTheme(undefined, false);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,9 +105,12 @@ test("entry point registers expected lifecycle handlers", () => {
   assert.ok(beforeAgentStartCount >= 1, "at least one before_agent_start handler registered");
 });
 
-test("entry point registers tool-display command", () => {
-  const { api, capturedCommands } = createApiStub();
+test("entry point registers tool-display command on session_start", async () => {
+  const { api, capturedCommands, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
+
+  // Command registration now happens inside session_start
+  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false });
 
   const cmdNames = capturedCommands.map((c) => c.name);
   assert.ok(cmdNames.includes("tool-display"), "tool-display command registered");
@@ -111,7 +121,7 @@ test("entry point never registers tools across initialization, lifecycle, config
   toolDisplayExtension(api);
   assert.deepEqual(capturedTools, []);
 
-  const ctx = { hasUI: false, ui: { notify() {}, theme: { fg: (_c: string, text: string) => text } } } as unknown as ExtensionCommandContext;
+  const ctx = { hasUI: false, ui: { notify() {}, theme: { fg: (_c: string, text: string) => text } }, cwd: process.cwd(), isProjectTrusted: () => false } as unknown as ExtensionCommandContext;
   for (const event of ["session_start", "before_agent_start", "before_agent_start", "session_shutdown"]) {
     for (const captured of capturedHandlers.filter((entry) => entry.event === event)) {
       await captured.handler(event === "session_shutdown" ? { reason: "reload" } : {}, ctx);
@@ -137,6 +147,8 @@ test("session_start handler refreshes capabilities and notifies pending errors",
       theme: { fg: (_c: string, t: string) => t },
       notify: (_msg: string, _level: string) => { /* no-op */ },
     },
+    cwd: process.cwd(),
+    isProjectTrusted: () => false,
   };
 
   // Should not throw
@@ -160,11 +172,10 @@ test("multiple calls to toolDisplayExtension are idempotent", async () => {
   // Call twice
   toolDisplayExtension(api);
   toolDisplayExtension(api);
-  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
+  // Registration now happens inside session_start
+  const sessionCtx = { ui: { theme: {}, notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false };
+  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, sessionCtx);
 
-  // Second call should not throw. Tools may be registered again (that's up
-  // to the extension loader to deduplicate), but the extension itself must
-  // not crash.
   const toolNames = capturedTools.map((t) => t.name);
   assert.equal(toolNames.some((name) => ["read", "grep", "find", "ls", "edit", "write"].includes(name)), false);
   assert.equal(toolNames.length, 0);
@@ -197,7 +208,6 @@ test("entry point capability discovery tolerates source metadata", () => {
 });
 
 test("graceful degradation: extension throws when registerCommand is missing", () => {
-  // Simulate a minimal stub missing registerCommand
   const minimalApi = {
     registerTool(): void { /* no-op */ },
     on(): void { /* no-op */ },
@@ -205,12 +215,10 @@ test("graceful degradation: extension throws when registerCommand is missing", (
     getCommands(): Array<{ name: string }> { return []; },
   } as unknown as ExtensionAPI;
 
-  // registerToolDisplayCommand calls pi.registerCommand directly, so this
-  // is expected to throw in a peer-dep mismatch scenario.
   assert.throws(
     () => toolDisplayExtension(minimalApi),
     /registerCommand/i,
-    "missing registerCommand should propagate",
+    "missing registerCommand should propagate during extension registration",
   );
 });
 
@@ -246,7 +254,7 @@ test("lifecycle events fire in expected order during a session lifecycle", async
   await beforeHandler();
   await sessionHandler(
     {},
-    { ui: { theme: { fg: (_c: string, t: string) => t }, notify: () => {} } },
+    { ui: { theme: { fg: (_c: string, t: string) => t }, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false },
   );
 
   // All handlers executed without throwing - this is the main assertion
@@ -261,7 +269,7 @@ test("session_start handler tolerates missing ctx.ui", async () => {
   assert.ok(sessionHandler);
 
   // ctx with no ui (edge case from older pi versions)
-  await assert.doesNotReject(async () => sessionHandler({}, {}));
+  await assert.doesNotReject(async () => sessionHandler({}, { cwd: process.cwd(), isProjectTrusted: () => false }));
 });
 
 test("before_agent_start handler tolerates being called multiple times", async () => {
@@ -283,16 +291,113 @@ test("session_start handler tolerates being called multiple times", async () => 
   const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
   assert.ok(sessionHandler);
 
-  const ctx = { ui: { theme: {}, notify: () => {} } };
+  const ctx = { ui: { theme: {}, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false };
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
 });
 
+test("session transition and disabled config restore native renderer ownership", async () => {
+  const configFile = join(testAgentDir, "extensions", "pi-tool-display", "config.json");
+  mkdirSync(join(testAgentDir, "extensions", "pi-tool-display"), { recursive: true });
+  writeFileSync(configFile, JSON.stringify({ enabled: true }), "utf8");
+
+  const prototype = ToolExecutionComponent.prototype as unknown as { getCallRenderer: Function };
+  const { api, capturedHandlers } = createApiStub();
+  toolDisplayExtension(api);
+  const sessionStart = capturedHandlers.find(({ event }) => event === "session_start")?.handler;
+  const sessionShutdown = (reason: string) => {
+    for (const { event, handler } of capturedHandlers) if (event === "session_shutdown") handler({ reason });
+  };
+  const ctx = { ui: { theme: {}, notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false };
+
+  sessionShutdown("new");
+  const nativeCall = prototype.getCallRenderer;
+  await sessionStart?.({}, ctx);
+  assert.notStrictEqual(prototype.getCallRenderer, nativeCall);
+  sessionShutdown("new");
+  assert.strictEqual(prototype.getCallRenderer, nativeCall);
+
+  writeFileSync(configFile, JSON.stringify({ enabled: false }), "utf8");
+  await sessionStart?.({}, ctx);
+  assert.strictEqual(prototype.getCallRenderer, nativeCall);
+});
+
+test("reload preserves the trusted project overlay before another session_start", async () => {
+  const globalConfigFile = join(testAgentDir, "extensions", "pi-tool-display", "config.json");
+  mkdirSync(join(testAgentDir, "extensions", "pi-tool-display"), { recursive: true });
+  writeFileSync(globalConfigFile, JSON.stringify({ readOutputMode: "hidden" }), "utf8");
+  const projectDir = join(testAgentDir, "trusted-project");
+  const projectConfigDir = join(projectDir, CONFIG_DIR_NAME, "extensions", "pi-tool-display");
+  mkdirSync(projectConfigDir, { recursive: true });
+  writeFileSync(join(projectConfigDir, "config.json"), JSON.stringify({ readOutputMode: "preview" }), "utf8");
+
+  const first = createApiStub();
+  toolDisplayExtension(first.api);
+  const ctx = { ui: { theme: {}, notify() {} }, cwd: projectDir, isProjectTrusted: () => true };
+  await first.capturedHandlers.find(({ event }) => event === "session_start")?.handler({}, ctx);
+  for (const { event, handler } of first.capturedHandlers) if (event === "session_shutdown") handler({ reason: "reload" });
+
+  const second = createApiStub();
+  toolDisplayExtension(second.api);
+  const notifications: string[] = [];
+  await second.capturedCommands.find(({ name }) => name === "tool-display")?.handler?.("show", {
+    ui: { notify(message: string) { notifications.push(message); } },
+  });
+  assert.match(notifications.join("\n"), /read=preview/);
+  for (const { event, handler } of second.capturedHandlers) if (event === "session_shutdown") handler({ reason: "quit" });
+});
+
+test("public config mutation invalidates ToolExecution rows already rendered", async () => {
+  const runtime = createApiStub();
+  toolDisplayExtension(runtime.api);
+  const row = new ToolExecutionComponent(
+    "read",
+    "config-refresh",
+    { path: "fixture.txt" },
+    {},
+    createReadTool(process.cwd()),
+    { requestRender() {} } as any,
+    process.cwd(),
+  );
+  row.updateResult({ content: [{ type: "text", text: "one\ntwo" }], details: {} } as any);
+  row.render(80);
+  const originalInvalidate = row.invalidate.bind(row);
+  let invalidations = 0;
+  row.invalidate = () => { invalidations++; originalInvalidate(); };
+
+  const command = runtime.capturedCommands.find(({ name }) => name === "tool-display")?.handler;
+  await command?.("preset balanced", { ui: { notify() {} } });
+  assert.ok(invalidations > 0);
+  row.render(80);
+  const afterFirstMutation = invalidations;
+  await command?.("preset verbose", { ui: { notify() {} } });
+  assert.ok(invalidations > afterFirstMutation);
+  for (const { event, handler } of runtime.capturedHandlers) if (event === "session_shutdown") handler({ reason: "quit" });
+});
+
+test("ordinary session factory replacement preserves producer Adapter intent", () => {
+  const first = createApiStub();
+  toolDisplayExtension(first.api);
+  const apiSymbol = Symbol.for("pi-tool-display.api.v1");
+  const producerApi = (globalThis as any)[apiSymbol];
+  producerApi.registerAdapter({ id: "before-transition", toolName: "before_transition", kind: "generic" });
+  for (const { event, handler } of first.capturedHandlers) if (event === "session_shutdown") handler({ reason: "new" });
+  producerApi.registerAdapter({ id: "during-transition", toolName: "during_transition", kind: "generic" });
+
+  const second = createApiStub();
+  toolDisplayExtension(second.api);
+  assert.strictEqual((globalThis as any)[apiSymbol], producerApi);
+  const catalog = createRendererCatalog();
+  assert.ok(catalog.resolve({ toolName: "before_transition", arguments: {} }, DEFAULT_TOOL_DISPLAY_CONFIG, {}));
+  assert.ok(catalog.resolve({ toolName: "during_transition", arguments: {} }, DEFAULT_TOOL_DISPLAY_CONFIG, {}));
+  for (const { event, handler } of second.capturedHandlers) if (event === "session_shutdown") handler({ reason: "quit" });
+});
+
 test("display policy installs without registering executable definitions", async () => {
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
-  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} } });
+  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false });
   assert.equal(capturedTools.length, 0);
 
   for (const tool of capturedTools) {

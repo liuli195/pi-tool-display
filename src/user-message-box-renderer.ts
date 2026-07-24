@@ -354,11 +354,11 @@ export function patchNativeUserMessagePrototype(
   prototype: PatchableUserMessagePrototype,
   getTheme: () => UserMessageTheme | undefined,
   isEnabled: () => boolean,
-): void {
+): () => void {
   const finalOutputCache = new WeakMap<object, CachedUserMessageFinalOutput>();
   const originalBodyLineCache = new WeakMap<object, CachedUserMessageBodyLines>();
 
-  patchUserMessageRenderPrototype(
+  return patchUserMessageRenderPrototype(
     prototype,
     USER_MESSAGE_PATCH_VERSION,
     (originalRender) =>

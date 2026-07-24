@@ -18,7 +18,6 @@ import {
   extractTextOutput,
   isLikelyQuietCommand,
   pluralize,
-  previewLines,
   sanitizeAnsiForThemedOutput,
   shortenPath,
   splitLines,
@@ -69,6 +68,7 @@ interface RtkCompactionInfo {
 
 const RTK_COMPACTION_LABEL = "compacted by RTK";
 const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
+const TOOL_DISPLAY_API_STATE_KEY = Symbol.for("pi-tool-display.api-state.v1");
 const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
 
 type ToolDisplayKind = "read" | "edit" | "mcp" | "generic";
@@ -78,6 +78,8 @@ export interface ToolDisplayAdapter {
   toolName?: string;
   kind?: ToolDisplayKind;
   overrideExistingRenderers?: boolean;
+  overrideCallRenderer?: boolean;
+  outputMode?: "hidden" | "summary" | "preview";
   pathFields?: string[];
   getPath?: (args: unknown) => string | undefined;
   getEditLineCount?: (args: unknown) => number;
@@ -98,8 +100,17 @@ interface PendingToolDisplayDecoration {
   liveDispose?: () => void;
 }
 
+interface ToolDisplayApiState {
+  api: ToolDisplayApi;
+  getConfig: ConfigGetter;
+  disposers: Set<() => void>;
+  disposed: boolean;
+  dispose: () => void;
+}
+
 type GlobalWithToolDisplayApi = typeof globalThis & {
   [TOOL_DISPLAY_API_KEY]?: ToolDisplayApi;
+  [TOOL_DISPLAY_API_STATE_KEY]?: ToolDisplayApiState;
   [TOOL_DISPLAY_PENDING_DECORATIONS_KEY]?: PendingToolDisplayDecoration[];
 };
 
@@ -107,40 +118,8 @@ function formatExpandHint(theme: RenderTheme): string {
   return theme.fg("muted", " • Ctrl+O to expand");
 }
 
-function formatTruncationHint(remaining: number, expanded: boolean, theme: RenderTheme): string {
-  if (remaining <= 0) {
-    return "";
-  }
-  const hint = expanded ? "" : " • Ctrl+O to expand";
-  return `\n${theme.fg("muted", `... (${remaining} more ${pluralize(remaining, "line")}${hint})`)}`;
-}
-
-function buildPreviewText(
-  lines: string[],
-  maxLines: number,
-  theme: RenderTheme,
-  expanded: boolean,
-): string {
-  if (lines.length === 0) {
-    return theme.fg("muted", "↳ (no output)");
-  }
-
-  const { shown, remaining } = previewLines(lines, maxLines);
-  let text = shown
-    .map((line) => theme.fg("toolOutput", sanitizeAnsiForThemedOutput(line)))
-    .join("\n");
-  text += formatTruncationHint(remaining, expanded, theme);
-  return text;
-}
-
-function prepareOutputLines(
-  rawText: string,
-  options: ToolRenderResultOptions,
-): string[] {
-  return compactOutputLines(splitLines(rawText), {
-    expanded: options.expanded,
-    maxCollapsedConsecutiveEmptyLines: 1,
-  });
+function prepareOutputLines(rawText: string): string[] {
+  return splitLines(rawText);
 }
 
 function formatBashNoOutputLine(
@@ -338,11 +317,11 @@ function handlePartialResult(
   return options.isPartial ? partialResultText(theme, message) : undefined;
 }
 
-function renderSearchPreview(ctx: PreviewHintContext, expandedOnly = false): Text {
+function renderSearchPreview(ctx: PreviewHintContext, expandedOnly = false): Component {
   return renderPreviewText(ctx.lines, ctx.config, ctx.theme, ctx.options, (p) => appendPreviewHints(p, ctx), expandedOnly);
 }
 
-function renderMcpPreview(ctx: McpPreviewHintContext, expandedOnly = false): Text {
+function renderMcpPreview(ctx: McpPreviewHintContext, expandedOnly = false): Component {
   return renderPreviewText(ctx.lines, ctx.config, ctx.theme, ctx.options, (p) => appendMcpPreviewHints(p, ctx), expandedOnly);
 }
 
@@ -365,30 +344,6 @@ function formatRtkSummarySuffix(params: RtkHintParams): string {
 
     return theme.fg("warning", ` • ${segments.join(" • ")}`);
   });
-}
-
-function getExpandedPreviewLineLimit(
-  lines: string[],
-  config: ToolDisplayConfig,
-): number {
-  const limit = Math.max(0, config.expandedPreviewMaxLines);
-  if (limit === 0) {
-    return lines.length;
-  }
-  return Math.min(lines.length, limit);
-}
-
-function formatExpandedPreviewCapHint(
-  lines: string[],
-  config: ToolDisplayConfig,
-  theme: RenderTheme,
-): string {
-  const cap = Math.max(0, config.expandedPreviewMaxLines);
-  if (cap === 0 || lines.length <= cap) {
-    return "";
-  }
-
-  return `\n${theme.fg("warning", `(display capped at ${cap} lines by tool-display setting)`)}`;
 }
 
 function formatRtkPreviewHint(params: RtkHintParams): string {
@@ -421,15 +376,11 @@ function formatRtkPreviewHint(params: RtkHintParams): string {
 }
 
 function appendRtkAndExpandedHints(preview: string, ctx: PreviewHintContext): string {
-  preview += formatRtkPreviewHint(ctx);
-  if (ctx.options.expanded) {
-    preview += formatExpandedPreviewCapHint(ctx.lines, ctx.config, ctx.theme);
-  }
-  return preview;
+  return preview + formatRtkPreviewHint(ctx);
 }
 
 function appendMcpPreviewHints(preview: string, ctx: McpPreviewHintContext): string {
-  const { config, theme, details, lines, options, truncation } = ctx;
+  const { config, theme, details, truncation } = ctx;
   if (config.showTruncationHints && (truncation.truncated || truncation.fullOutputPath)) {
     const hints: string[] = [];
     if (truncation.truncated) {
@@ -451,6 +402,32 @@ function appendPreviewHints(preview: string, ctx: PreviewHintContext): string {
   return appendRtkAndExpandedHints(preview, ctx);
 }
 
+/**
+ * Wrap a VisualLinePreviewComponent with optional hint text below it.
+ * If hints is empty, returns the component directly.
+ */
+function wrapComponentWithHints(
+  component: Component,
+  hints: string,
+): Component {
+  if (!hints) return component;
+  const container = new Container();
+  container.addChild(component);
+  container.addChild(textResult(hints));
+  return container;
+}
+
+/**
+ * Visual row budget for expanded previews. Uses expandedPreviewMaxLines as
+ * a cap to prevent long single-line content from flooding the viewport.
+ * 0 means unlimited (no cap).
+ */
+function getExpandedVisualRowCap(config: ToolDisplayConfig): number {
+  const limit = config.expandedPreviewMaxLines;
+  if (limit <= 0) return Number.MAX_SAFE_INTEGER;
+  return limit;
+}
+
 function renderPreviewText(
   lines: string[],
   config: ToolDisplayConfig,
@@ -458,13 +435,16 @@ function renderPreviewText(
   options: ToolRenderResultOptions,
   appendHints: (preview: string) => string,
   expandedOnly: boolean = false,
-): Text {
-  const useExpanded = expandedOnly || options.expanded;
-  const maxLines = useExpanded
-    ? getExpandedPreviewLineLimit(lines, config)
-    : config.previewLines;
-  const preview = buildPreviewText(lines, maxLines, theme, useExpanded);
-  return textResult(appendHints(preview));
+): Component {
+  if (lines.length === 0) {
+    return textResult(theme.fg("muted", "↳ (no output)") + appendHints(""));
+  }
+
+  const expanded = expandedOnly || options.expanded;
+  const visualLimit = expanded ? getExpandedVisualRowCap(config) : config.previewLines;
+  const preview = new VisualLinePreviewComponent(visualLimit, expanded, theme);
+  preview.setDisplay(formatPreviewBody(lines, "toolOutput", theme), visualLimit, expanded);
+  return wrapComponentWithHints(preview, appendHints(""));
 }
 
 function formatReadSummary(
@@ -540,17 +520,11 @@ function formatBashTruncationHints(
 }
 
 function getBashPreviewLineLimit(
-  lines: string[],
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
 ): number {
-  if (options.expanded) {
-    return getExpandedPreviewLineLimit(lines, config);
-  }
-
-  return config.bashOutputMode === "opencode"
-    ? config.bashCollapsedLines
-    : config.previewLines;
+  if (options.expanded) return getExpandedVisualRowCap(config);
+  return config.bashOutputMode === "opencode" ? config.bashCollapsedLines : config.previewLines;
 }
 
 type ToolRenderInput = {
@@ -566,6 +540,10 @@ function partialResultText(theme: RenderTheme, label: string): Text {
   return textResult(theme.fg("warning", label));
 }
 
+function formatPreviewBody(lines: string[], color: string, theme: RenderTheme): string {
+  return theme.fg(color, sanitizeAnsiForThemedOutput(lines.join("\n")));
+}
+
 function renderBashPreviewWithHints(
   lines: string[],
   maxLines: number,
@@ -573,15 +551,13 @@ function renderBashPreviewWithHints(
   theme: RenderTheme,
   options: ToolRenderResultOptions,
   details: BashToolDetails | undefined,
-): Text {
-  let preview = buildPreviewText(lines, maxLines, theme, options.expanded);
-  if (config.showTruncationHints) {
-    preview += formatBashTruncationHints(details, theme);
-  }
-  if (options.expanded) {
-    preview += formatExpandedPreviewCapHint(lines, config, theme);
-  }
-  return textResult(preview);
+): Component {
+  const visualLimit = options.expanded ? getExpandedVisualRowCap(config) : maxLines;
+  const preview = new VisualLinePreviewComponent(visualLimit, options.expanded, theme);
+  preview.setDisplay(formatPreviewBody(lines, "toolOutput", theme), visualLimit, options.expanded);
+  let hints = "";
+  if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
+  return wrapComponentWithHints(preview, hints);
 }
 
 function renderBashVisualPreview(
@@ -592,14 +568,10 @@ function renderBashVisualPreview(
   details: BashToolDetails | undefined,
 ): Component {
   const preview = new VisualLinePreviewComponent(maxLines, false, theme);
-  preview.setDisplay(buildPreviewText(lines, lines.length, theme, false), maxLines, false);
-  const truncationHints = config.showTruncationHints ? formatBashTruncationHints(details, theme) : "";
-  if (!truncationHints) return preview;
-
-  const container = new Container();
-  container.addChild(preview);
-  container.addChild(textResult(truncationHints.slice(1)));
-  return container;
+  preview.setDisplay(formatPreviewBody(lines, "toolOutput", theme), maxLines, false);
+  let hints = "";
+  if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
+  return wrapComponentWithHints(preview, hints);
 }
 
 function prepareBashLivePreview(
@@ -607,15 +579,11 @@ function prepareBashLivePreview(
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
 ): { lines: string[]; maxLines: number } | undefined {
-  const lines = prepareOutputLines(rawOutput, options);
+  const lines = prepareOutputLines(rawOutput);
   if (lines.length === 0) {
     return undefined;
   }
-  const maxLines = getBashPreviewLineLimit(lines, options, config);
-  if (!options.expanded && maxLines === 0) {
-    return undefined;
-  }
-  return { lines, maxLines };
+  return { lines, maxLines: getBashPreviewLineLimit(options, config) };
 }
 
 function renderBashLivePreview(
@@ -642,26 +610,24 @@ function renderBashErrorResult(
   theme: RenderTheme,
   details: BashToolDetails | undefined,
 ): Component {
-  const lines = prepareOutputLines(rawOutput, options);
+  const lines = prepareOutputLines(rawOutput);
   const container = new Container();
   container.addChild(textResult(theme.fg("error", options.expanded || config.bashErrorOutputMode !== "summary"
     ? "↳ command failed"
     : `↳ command failed · ${lines.length} ${pluralize(lines.length, "line")} returned`)));
 
   if (lines.length > 0 && (options.expanded || config.bashErrorOutputMode !== "summary")) {
-    const maxLines = options.expanded ? getExpandedPreviewLineLimit(lines, config) : lines.length;
-    const { shown, remaining } = previewLines(lines, maxLines);
-    let body = shown.map((line) => theme.fg("error", sanitizeAnsiForThemedOutput(line))).join("\n");
-    body += formatTruncationHint(remaining, options.expanded, theme);
-    if (config.showTruncationHints) body += formatBashTruncationHints(details, theme);
-    if (options.expanded) body += formatExpandedPreviewCapHint(lines, config, theme);
+    const body = formatPreviewBody(lines, "error", theme);
+    let hints = "";
+    if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
 
-    if (!options.expanded && config.bashErrorOutputMode === "preview") {
-      const preview = new VisualLinePreviewComponent(config.bashErrorPreviewLines, false, theme);
-      preview.setDisplay(body, config.bashErrorPreviewLines, false);
-      container.addChild(preview);
+    if (config.bashErrorOutputMode === "preview" || options.expanded) {
+      const visualLimit = options.expanded ? getExpandedVisualRowCap(config) : config.bashErrorPreviewLines;
+      const preview = new VisualLinePreviewComponent(visualLimit, options.expanded, theme);
+      preview.setDisplay(body, visualLimit, options.expanded);
+      container.addChild(wrapComponentWithHints(preview, hints));
     } else {
-      container.addChild(textResult(body));
+      container.addChild(textResult(body + hints));
     }
   }
 
@@ -680,25 +646,20 @@ export function renderBashResult(
   if (options.isPartial) return renderBashLivePreview(rawOutput, options, config, theme, details);
   if (isToolError(result, context)) return renderBashErrorResult(rawOutput, options, config, theme, details);
 
-  const lines = prepareOutputLines(rawOutput, options);
+  const lines = prepareOutputLines(rawOutput);
   if (lines.length === 0) {
     let text = formatBashNoOutputLine(getStringField(context?.args, "command"), theme);
     if (config.showTruncationHints) text += formatBashTruncationHints(details, theme);
     return textResult(text);
   }
   if (config.bashOutputMode === "summary") {
-    if (options.expanded) return renderBashPreviewWithHints(lines, getExpandedPreviewLineLimit(lines, config), config, theme, options, details);
+    if (options.expanded) return renderBashPreviewWithHints(lines, config.previewLines, config, theme, options, details);
     let summary = formatBashSummary(lines, details, theme, config.showTruncationHints) + formatExpandHint(theme);
     if (config.showTruncationHints) summary += formatBashTruncationHints(details, theme);
     return textResult(summary);
   }
   if (config.bashOutputMode === "preview") {
-    return renderBashPreviewWithHints(lines, options.expanded ? getExpandedPreviewLineLimit(lines, config) : config.previewLines, config, theme, options, details);
-  }
-  if (!options.expanded && config.bashCollapsedLines === 0) {
-    let hidden = theme.fg("muted", "↳ output hidden");
-    if (config.showTruncationHints) hidden += formatBashTruncationHints(details, theme);
-    return textResult(hidden);
+    return renderBashPreviewWithHints(lines, config.previewLines, config, theme, options, details);
   }
   if (options.expanded) return renderBashPreviewWithHints(lines, lines.length, config, theme, options, details);
   return renderBashVisualPreview(lines, config.bashCollapsedLines, config, theme, details);
@@ -713,12 +674,12 @@ export function renderSearchResult(
   unitLabel: string,
   details: GrepToolDetails | FindToolDetails | LsToolDetails | undefined,
   pluralLabel?: string,
-): Text {
+): Component {
   if (options.isPartial) {
     return partialResultText(theme, "running...");
   }
 
-  const lines = prepareOutputLines(extractTextOutput(result), options);
+  const lines = prepareOutputLines(extractTextOutput(result));
 
   if (config.searchOutputMode === "hidden") {
     return textResult("");
@@ -825,7 +786,7 @@ function renderMcpResult(
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
   theme: RenderTheme,
-): Text {
+): Component {
   const partial = handlePartialResult(options, theme, "running...");
   if (partial) {
     return partial;
@@ -835,7 +796,7 @@ function renderMcpResult(
     return textResult("");
   }
 
-  const lines = prepareOutputLines(extractTextOutput(result), options);
+  const lines = prepareOutputLines(extractTextOutput(result));
   const truncation = getMcpTruncationDetails(result.details);
   const mcpCtx: McpPreviewHintContext = { lines, config, theme, options, details: result.details, truncation };
 
@@ -914,7 +875,7 @@ export function renderCustomToolResult(
   config: ToolDisplayConfig,
   outputMode: CustomToolOverrideConfig["outputMode"],
   theme: RenderTheme,
-): Text {
+): Component {
   return renderMcpResult(
     result as ToolRenderInput,
     options,
@@ -967,7 +928,7 @@ export function renderReadDisplayResult(
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
   theme: RenderTheme,
- ): Text {
+ ): Component {
   if (options.isPartial) {
     return partialResultText(theme, "reading...");
   }
@@ -978,7 +939,7 @@ export function renderReadDisplayResult(
 
   const details = result.details as ReadToolDetails | undefined;
   const rawOutput = extractTextOutput(result);
-  const lines = prepareOutputLines(rawOutput, options);
+  const lines = prepareOutputLines(rawOutput);
   const hintCtx: PreviewHintContext = { lines, config, theme, options, details };
 
   if (config.readOutputMode === "summary") {
@@ -1040,7 +1001,8 @@ function toProducerAdapter(toolName: string, adapter: ToolDisplayAdapter = {}, g
     id: adapter.id ?? toolName,
     toolName,
     kind: kind === "mcp" ? "mcp" : "generic",
-    overrideCallRenderer: adapter.overrideExistingRenderers,
+    outputMode: adapter.outputMode,
+    overrideCallRenderer: adapter.overrideCallRenderer ?? adapter.overrideExistingRenderers,
     renderCall: adapter.renderCall ?? (kind === "read"
       ? (args, theme) => renderReadDisplayCall(args, theme, adapter)
       : kind === "edit"
@@ -1071,21 +1033,21 @@ function drainPendingToolDisplayDecorations(api: ToolDisplayApi, getConfig: Conf
   entries.length = 0;
 }
 
-function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
-  const disposers = new Set<() => void>();
+function installToolDisplayApi(state: ToolDisplayApiState): ToolDisplayApi {
   const legacyDisposers = new Map<string, () => void>();
   const api: ToolDisplayApi = {
     version: 1,
     registerAdapter(adapter) {
+      if (state.disposed) throw new Error("Tool display API has been disposed");
       const disposeRegistration = registerProducerRendererAdapter(adapter);
       let disposed = false;
       const dispose = () => {
         if (disposed) return;
         disposed = true;
-        disposers.delete(dispose);
+        state.disposers.delete(dispose);
         disposeRegistration();
       };
-      disposers.add(dispose);
+      state.disposers.add(dispose);
       return dispose;
     },
     decorateTool<T extends RuntimeToolDefinition>(tool: T, adapter?: ToolDisplayAdapter): T {
@@ -1093,21 +1055,43 @@ function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
       if (!toolName) throw new Error("Tool display compatibility registration requires tool.name");
       const key = `${toolName}:${adapter?.id ?? toolName}`;
       legacyDisposers.get(key)?.();
-      const dispose = api.registerAdapter(toProducerAdapter(toolName, adapter, _getConfig));
+      const dispose = api.registerAdapter(toProducerAdapter(toolName, adapter, () => state.getConfig()));
       legacyDisposers.set(key, dispose);
       return tool;
     },
   };
   (globalThis as GlobalWithToolDisplayApi)[TOOL_DISPLAY_API_KEY] = api;
-  drainPendingToolDisplayDecorations(api, _getConfig);
-  registerCleanup(() => { for (const dispose of [...disposers]) dispose(); });
+  drainPendingToolDisplayDecorations(api, () => state.getConfig());
   return api;
 }
 
 export function registerToolDisplayApi(getConfig: ConfigGetter): void {
-  const toolDisplayApi = installToolDisplayApi(getConfig);
-  registerCleanup(() => {
-    const globalWithApi = globalThis as GlobalWithToolDisplayApi;
+  const globalWithApi = globalThis as GlobalWithToolDisplayApi;
+  const existing = globalWithApi[TOOL_DISPLAY_API_STATE_KEY];
+  if (existing && globalWithApi[TOOL_DISPLAY_API_KEY] === existing.api) {
+    existing.getConfig = getConfig;
+    drainPendingToolDisplayDecorations(existing.api, () => existing.getConfig());
+    registerCleanup(existing.dispose);
+    return;
+  }
+
+  const state = {
+    getConfig,
+    disposers: new Set<() => void>(),
+    disposed: false,
+    dispose: () => {},
+  } as ToolDisplayApiState;
+  const toolDisplayApi = installToolDisplayApi(state);
+  state.api = toolDisplayApi;
+  let disposed = false;
+  state.dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    state.disposed = true;
+    for (const dispose of [...state.disposers]) dispose();
     if (globalWithApi[TOOL_DISPLAY_API_KEY] === toolDisplayApi) delete globalWithApi[TOOL_DISPLAY_API_KEY];
-  });
+    if (globalWithApi[TOOL_DISPLAY_API_STATE_KEY] === state) delete globalWithApi[TOOL_DISPLAY_API_STATE_KEY];
+  };
+  globalWithApi[TOOL_DISPLAY_API_STATE_KEY] = state;
+  registerCleanup(state.dispose);
 }

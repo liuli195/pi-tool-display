@@ -1,11 +1,5 @@
-import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "./types.js";
-import { registerSessionCleanup } from "./disposable.js";
-
-const BASH_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
-const BASH_SPINNER_INTERVAL_MS = 200;
-const BASH_SPINNER_STATE_KEY = "__piToolDisplayBashSpinner";
-const BASH_SPINNER_TOOL_CALL_ID_KEY = "__piToolDisplayBashSpinnerToolCallId";
 
 interface BashCallArgs {
 	command?: string;
@@ -19,120 +13,11 @@ interface BashCallRenderTheme {
 	bold(text: string): string;
 }
 
-interface BashSpinnerState {
-	frameIndex: number;
-	startedAt?: number;
-	timer?: ReturnType<typeof setInterval>;
-	unregisterCleanup?: () => void;
-	carriers?: Set<BashSpinnerStateCarrier>;
-}
-
-interface BashSpinnerStateCarrier {
-	[BASH_SPINNER_STATE_KEY]?: BashSpinnerState;
-	[BASH_SPINNER_TOOL_CALL_ID_KEY]?: string;
-}
-
 interface BashCallRenderContextLike {
 	executionStarted: boolean;
 	isPartial: boolean;
 	expanded?: boolean;
-	invalidate?: () => void;
 	lastComponent?: unknown;
-	state?: unknown;
-	toolCallId?: string;
-}
-
-const spinnerStatesByToolCallId = new Map<string, BashSpinnerState>();
-let nextSyntheticToolCallId = 0;
-
-function toStateCarrier(value: unknown): BashSpinnerStateCarrier | undefined {
-	if (!value || typeof value !== "object") {
-		return undefined;
-	}
-	return value as BashSpinnerStateCarrier;
-}
-
-function getSyntheticToolCallId(carrier: BashSpinnerStateCarrier | undefined): string | undefined {
-	if (!carrier) {
-		return undefined;
-	}
-
-	if (!carrier[BASH_SPINNER_TOOL_CALL_ID_KEY]) {
-		carrier[BASH_SPINNER_TOOL_CALL_ID_KEY] = `state:${++nextSyntheticToolCallId}`;
-	}
-	return carrier[BASH_SPINNER_TOOL_CALL_ID_KEY];
-}
-
-function getToolCallId(context: BashCallRenderContextLike): string | undefined {
-	if (typeof context.toolCallId === "string" && context.toolCallId.trim().length > 0) {
-		return context.toolCallId;
-	}
-	return getSyntheticToolCallId(toStateCarrier(context.state));
-}
-
-function getOrCreateSpinnerState(
-	toolCallId: string | undefined,
-	carrier: BashSpinnerStateCarrier | undefined,
-): BashSpinnerState | undefined {
-	if (!toolCallId) {
-		return undefined;
-	}
-
-	let state = spinnerStatesByToolCallId.get(toolCallId);
-	if (!state) {
-		state = { frameIndex: 0 };
-		spinnerStatesByToolCallId.set(toolCallId, state);
-		const created = state;
-		created.unregisterCleanup = registerSessionCleanup(() => {
-			created.unregisterCleanup = undefined;
-			stopSpinner(toolCallId, created);
-		});
-	}
-	if (carrier) {
-		state.carriers ??= new Set();
-		state.carriers.add(carrier);
-		carrier[BASH_SPINNER_STATE_KEY] = state;
-	}
-	return state;
-}
-
-function stopSpinner(
-	toolCallId: string | undefined,
-	state: BashSpinnerState | undefined,
-	carrier?: BashSpinnerStateCarrier,
-): void {
-	if (!state) return;
-
-	state.unregisterCleanup?.();
-	state.unregisterCleanup = undefined;
-	if (state.timer) clearInterval(state.timer);
-	state.timer = undefined;
-	state.frameIndex = 0;
-	state.startedAt = undefined;
-	if (toolCallId) spinnerStatesByToolCallId.delete(toolCallId);
-	if (carrier) state.carriers?.add(carrier);
-	for (const stateCarrier of state.carriers ?? []) {
-		if (stateCarrier[BASH_SPINNER_STATE_KEY] === state) delete stateCarrier[BASH_SPINNER_STATE_KEY];
-		if (stateCarrier[BASH_SPINNER_TOOL_CALL_ID_KEY] === toolCallId) delete stateCarrier[BASH_SPINNER_TOOL_CALL_ID_KEY];
-	}
-	state.carriers?.clear();
-}
-
-function formatElapsed(elapsedMs: number): string {
-	const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
-	if (totalSeconds < 60) {
-		return `${totalSeconds}s`;
-	}
-
-	const totalMinutes = Math.floor(totalSeconds / 60);
-	const seconds = totalSeconds % 60;
-	if (totalMinutes < 60) {
-		return `${totalMinutes}m ${seconds}s`;
-	}
-
-	const hours = Math.floor(totalMinutes / 60);
-	const minutes = totalMinutes % 60;
-	return `${hours}h ${minutes}m`;
 }
 
 function isDefaultShellPath(shellPath: string): boolean {
@@ -160,6 +45,7 @@ export class VisualLinePreviewComponent implements Component {
 		private previewLines: number,
 		private expanded: boolean,
 		private theme: BashCallRenderTheme,
+		private expandedBypass: boolean = false,
 	) {}
 
 	setDisplay(text: string, previewLines: number, expanded: boolean): void {
@@ -170,10 +56,17 @@ export class VisualLinePreviewComponent implements Component {
 
 	render(width: number): string[] {
 		const lines = this.text.render(width);
-		if (this.expanded || lines.length <= this.previewLines) return lines;
+		if (this.expanded && this.expandedBypass) return lines;
+		const budget = Math.max(0, Math.floor(this.previewLines));
+		if (lines.length <= budget) return lines;
 
-		const hint = this.theme.fg("muted", `... (${lines.length - this.previewLines} more visual lines • Ctrl+O to expand)`);
-		return [...lines.slice(0, this.previewLines), truncateToWidth(hint, width)];
+		const omitted = lines.length - budget;
+		const unit = omitted === 1 ? "line" : "lines";
+		const candidates = this.expanded
+			? [`… (${omitted} more visual ${unit} • display capped)`, `… (${omitted} more visual ${unit})`, `… (+${omitted})`, "…"]
+			: [`… (${omitted} more visual ${unit} • Ctrl+O to expand)`, `… (${omitted} more visual ${unit})`, `… (+${omitted})`, "…"];
+		const hint = candidates.find((candidate) => visibleWidth(candidate) <= width) ?? truncateToWidth("…", width, "");
+		return [...lines.slice(0, budget), this.theme.fg("muted", hint)];
 	}
 
 	invalidate(): void {
@@ -186,8 +79,6 @@ class BashCallComponent extends VisualLinePreviewComponent {}
 function buildBashCallText(
 	args: BashCallArgs,
 	theme: BashCallRenderTheme,
-	spinnerFrame?: string,
-	elapsedMs?: number,
 ): string {
 	const commandDisplay = buildCommandDisplay(args);
 	const shellSuffix =
@@ -199,13 +90,8 @@ function buildBashCallText(
 	const timeoutSuffix = args.timeout
 		? theme.fg("muted", ` (timeout ${args.timeout}s)`)
 		: "";
-	const spinnerPrefix = spinnerFrame ? `${theme.fg("warning", `${spinnerFrame} `)}` : "";
-	const elapsedSuffix =
-		spinnerFrame && elapsedMs !== undefined
-			? theme.fg("muted", ` · ${formatElapsed(elapsedMs)}`)
-			: "";
 
-	return `${spinnerPrefix}${theme.fg("toolTitle", theme.bold("$"))} ${theme.fg("accent", commandDisplay)}${shellSuffix}${timeoutSuffix}${elapsedSuffix}`;
+	return `${theme.fg("toolTitle", theme.bold("$"))} ${theme.fg("accent", commandDisplay)}${shellSuffix}${timeoutSuffix}`;
 }
 
 export function renderBashCall(
@@ -218,42 +104,7 @@ export function renderBashCall(
 	const expanded = context.expanded === true || config.bashCommandMode === "full";
 	const text = context.lastComponent instanceof BashCallComponent
 		? context.lastComponent
-		: new BashCallComponent(previewLines, expanded, theme);
-	const setDisplay = (content: string): void => text.setDisplay(content, previewLines, expanded);
-	const carrier = toStateCarrier(context.state);
-	const toolCallId = getToolCallId(context);
-	const spinnerState = getOrCreateSpinnerState(toolCallId, carrier);
-	const shouldSpin = context.executionStarted && context.isPartial;
-
-	if (!shouldSpin) {
-		stopSpinner(toolCallId, spinnerState, carrier);
-		setDisplay(buildBashCallText(args, theme));
-		return text;
-	}
-
-	if (spinnerState) {
-		spinnerState.startedAt ??= Date.now();
-		if (!spinnerState.timer && typeof context.invalidate === "function") {
-			const timer = setInterval(() => {
-				spinnerState.frameIndex = (spinnerState.frameIndex + 1) % BASH_SPINNER_FRAMES.length;
-				setDisplay(
-					buildBashCallText(
-						args,
-						theme,
-						BASH_SPINNER_FRAMES[spinnerState.frameIndex],
-						Date.now() - (spinnerState.startedAt ?? Date.now()),
-					),
-				);
-				context.invalidate?.();
-			}, BASH_SPINNER_INTERVAL_MS);
-			spinnerState.timer = timer;
-		}
-	}
-
-	const spinnerFrame = spinnerState ? BASH_SPINNER_FRAMES[spinnerState.frameIndex] : undefined;
-	const elapsedMs = spinnerState?.startedAt !== undefined
-		? Date.now() - spinnerState.startedAt
-		: undefined;
-	setDisplay(buildBashCallText(args, theme, spinnerFrame, elapsedMs));
+		: new BashCallComponent(previewLines, expanded, theme, true);
+	text.setDisplay(buildBashCallText(args, theme), previewLines, expanded);
 	return text;
 }

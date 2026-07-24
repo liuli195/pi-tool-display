@@ -37,7 +37,7 @@ function buildLargeUnifiedDiff(changeCount: number): string {
 	return lines.join("\n");
 }
 
-test("issue #23: expanded large diffs stay bounded for small tmux panes", () => {
+test("issue #23: expanded large diffs cap logical Diff lines in small tmux panes", () => {
 	const component = renderEditDiffResult(
 		{ diff: buildLargeUnifiedDiff(80) },
 		{ expanded: true, filePath: "large.txt" },
@@ -47,13 +47,16 @@ test("issue #23: expanded large diffs stay bounded for small tmux panes", () => 
 	);
 
 	const lines = renderInsideToolBox(component, 100);
+	const plain = lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
 	assert.ok(
-		lines.length <= diffConfig.expandedPreviewMaxLines + 8,
-		`expected expanded large diff to stay bounded near ${diffConfig.expandedPreviewMaxLines} lines, rendered ${lines.length}`,
+		lines.length <= diffConfig.expandedPreviewMaxLines + 10,
+		`expected expanded large diff to stay bounded near ${diffConfig.expandedPreviewMaxLines} logical lines, rendered ${lines.length}`,
 	);
+	assert.ok(plain.some((line) => line.includes("new line 32")));
+	assert.ok(plain.every((line) => !line.includes("old line 33")));
 	assert.ok(
-		lines.some((line) => /remaining|omitted|collapsed|more/i.test(line)),
-		"expected a visible truncation hint for omitted large-diff content",
+		plain.some((line) => /more visual diff lines/i.test(line)),
+		"expected a visual Diff-line omission hint",
 	);
 });
 

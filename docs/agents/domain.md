@@ -1,29 +1,27 @@
 # Domain Docs
 
-Engineering skills should use this repository’s domain documentation when exploring the codebase.
+工程技能探索代码库时，应按以下规则读取领域文档。
 
-## Before exploring, read these
+## 当前结构
 
-- `CONTEXT.md` at the repository root.
-- Relevant ADRs under `docs/adr/`.
+本仓库采用 single-context 布局。
 
-If these files do not exist, proceed silently. Create them lazily through the domain-modeling workflow when terminology or architectural decisions are resolved.
+- 当前没有 `CONTEXT.md`；不存在时静默继续。
+- 规格与架构约束位于 `docs/comet/specs/`，替代 `docs/adr/`。
 
-## Layout
+## 探索前读取
 
-This is a single-context repository:
+读取与任务相关的规格：
 
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-└── src/
-```
+- `docs/comet/specs/pure-display-tool-rendering.md`
+- `docs/comet/specs/visual-preview-and-config-lifecycle-corrections.md`
 
-## Vocabulary
+以后新增规格时，也应检查 `docs/comet/specs/` 下的相关文件。
 
-Use terminology defined in `CONTEXT.md`. Avoid synonyms that the glossary explicitly rejects. If a required concept is absent, reconsider the terminology or record the gap for domain modeling.
+## 词汇
 
-## ADR conflicts
+若根目录以后出现 `CONTEXT.md`，使用其中定义的领域词汇，避免使用其明确排斥的同义词。
 
-Explicitly identify output that contradicts an existing ADR instead of silently overriding it.
+## 规格冲突
+
+如果输出与现有规格冲突，必须明确指出相关规格及冲突内容，不得静默覆盖。

@@ -35,7 +35,13 @@ export class RendererAdapterConflict extends Error {
   }
 }
 
-const producerAdapters = new Map<string, Map<string, ProducerRendererAdapter>>();
+const PRODUCER_ADAPTERS_KEY = Symbol.for("pi-tool-display.producer-adapters.v1");
+type GlobalWithProducerAdapters = typeof globalThis & {
+  [PRODUCER_ADAPTERS_KEY]?: Map<string, Map<string, ProducerRendererAdapter>>;
+};
+const globalWithProducerAdapters = globalThis as GlobalWithProducerAdapters;
+const producerAdapters = globalWithProducerAdapters[PRODUCER_ADAPTERS_KEY]
+  ??= new Map<string, Map<string, ProducerRendererAdapter>>();
 
 function detachRenderer(renderer: ToolRenderer | undefined, contextIndex: number): ToolRenderer | undefined {
   if (!renderer) return undefined;
@@ -198,8 +204,10 @@ export function createRendererCatalog(): RendererCatalog {
       };
       if (row.builtIn) return undefined;
       const configured = getRuntimeCustomToolOverride(row.toolName, config as ToolDisplayConfig);
+      const hasExplicitOverride = Object.hasOwn(config.customToolOverrides, row.toolName);
+      if (hasExplicitOverride && !configured?.enabled) return undefined;
       const producers = producerAdapters.get(row.toolName);
-      if (!configured?.enabled && producers && producers.size > 1) {
+      if (!hasExplicitOverride && producers && producers.size > 1) {
         throw new RendererAdapterConflict(
           row.toolName,
           [...producers.values()].map(({ id, kind }) => ({ id, kind })).sort((a, b) => a.id.localeCompare(b.id) || a.kind.localeCompare(b.kind)),

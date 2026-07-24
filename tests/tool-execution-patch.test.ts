@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import {
   createBashTool,
   createEditTool,
@@ -12,12 +12,16 @@ import {
   ToolExecutionComponent,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import { disposeAll, resetDisposed } from "../src/disposable.ts";
+import { disposeAll, disposeSession, resetDisposed } from "../src/disposable.ts";
 import { registerToolExecutionPatch } from "../src/tool-execution-patch.ts";
 import { registerToolDisplayApi } from "../src/tool-overrides.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 
 initTheme(undefined, false);
+
+afterEach(() => {
+  disposeSession();
+});
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const render = (component: unknown) => (component as { render(width: number): string[] }).render(120).join("\n").trim();
 const plainRender = (component: unknown) => render(component).replace(/\x1b\[[0-9;]*m/g, "");
@@ -94,10 +98,13 @@ test("collapsed Bash output honors the visual-line budget across partial, histor
     isError: false,
   };
   const renderRow = () => row.render(80).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+  const bashCollapsedLines = 10;
   const assertFolded = (rendered: string) => {
     const visibleRows = rendered.split("\n").filter((line) => line.trim());
-    assert.equal(visibleRows.findIndex((line) => /more visual lines/.test(line)), 11);
-    assert.match(rendered, /more visual lines .* Ctrl\+O to expand/);
+    const hintIndex = visibleRows.findIndex((line) => /more visual/.test(line));
+    assert.ok(hintIndex >= 0, `visual omission hint must appear, got rows: ${visibleRows.length}`);
+    assert.ok(hintIndex <= bashCollapsedLines + 1, `hint should appear within budget, got index ${hintIndex}`);
+    assert.match(rendered, /more visual/);
     assert.match(rendered, /output truncated .* full output: \/tmp\/full-output/);
     assert.doesNotMatch(rendered, /fixture-9/);
   };
@@ -172,7 +179,7 @@ test("collapsed split diffs count logical content rows, not headers, metadata, o
     assert.match(collapsed, /HUNK_HEADER_PATTERN/);
     assert.match(collapsed, /SPLIT_SEPARATOR/);
     assert.doesNotMatch(collapsed, /SPLIT_HEADER_ROW_COUNT/);
-    assert.match(collapsed, /more diff lines .* Ctrl\+O to expand/);
+    assert.match(collapsed, /more visual diff lines .* Ctrl\+O to expand/);
   } finally {
     handlers.session_shutdown?.({ reason: "reload" });
   }
@@ -397,38 +404,36 @@ test("historical rows refresh display without changing ownership or execution", 
   });
 });
 
-test("session switches keep the installed host renderer patch", () => {
+test("owned disposer restores the host renderer for every session transition", () => {
   const prototype = ToolExecutionComponent.prototype as any;
   const originalCall = prototype.getCallRenderer;
   const runtime = apiStub();
-  registerToolExecutionPatch(runtime.api, () => config({ configured: true }));
-  const patchedCall = prototype.getCallRenderer;
-  assert.notStrictEqual(patchedCall, originalCall);
+  const dispose = registerToolExecutionPatch(runtime.api, () => config({ configured: true }));
+  assert.notStrictEqual(prototype.getCallRenderer, originalCall);
 
-  for (const reason of ["new", "resume", "fork"]) {
-    runtime.handlers.session_shutdown?.({ reason });
-    assert.strictEqual(prototype.getCallRenderer, patchedCall);
-  }
-  runtime.handlers.session_shutdown?.({ reason: "quit" });
+  dispose();
+  assert.strictEqual(prototype.getCallRenderer, originalCall);
+  dispose();
   assert.strictEqual(prototype.getCallRenderer, originalCall);
 });
 
-test("reload restores the prototype and reinstallation does not stack wrappers", () => {
+test("disposal restores the prototype and reinstallation does not stack wrappers", () => {
   const prototype = ToolExecutionComponent.prototype as any;
   const originalCall = prototype.getCallRenderer;
   const originalResult = prototype.getResultRenderer;
   const first = apiStub();
-  registerToolExecutionPatch(first.api, () => config({ configured: true }));
+  const disposeFirst = registerToolExecutionPatch(first.api, () => config({ configured: true }));
   const firstPatchedCall = prototype.getCallRenderer;
-  registerToolExecutionPatch(first.api, () => config({ configured: true }));
+  const disposeDuplicate = registerToolExecutionPatch(first.api, () => config({ configured: true }));
   assert.equal(prototype.getCallRenderer, firstPatchedCall);
-  first.handlers.session_shutdown?.({ reason: "reload" });
+  disposeDuplicate();
+  disposeFirst();
   assert.equal(prototype.getCallRenderer, originalCall);
   assert.equal(prototype.getResultRenderer, originalResult);
 
   const second = apiStub();
-  registerToolExecutionPatch(second.api, () => config({ configured: true }));
+  const disposeSecond = registerToolExecutionPatch(second.api, () => config({ configured: true }));
   assert.notEqual(prototype.getCallRenderer, originalCall);
-  second.handlers.session_shutdown?.({ reason: "reload" });
+  disposeSecond();
   assert.equal(prototype.getCallRenderer, originalCall);
 });

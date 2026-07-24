@@ -24,14 +24,14 @@ test("Bash resolves call and independently folded success/error results from ori
   assert.notStrictEqual(plan.result, nativeResult);
   assert.match(render(plan.call!({ command: "echo " + "word ".repeat(30) }, theme, { executionStarted: false, isPartial: false }), 30), /more visual lines/);
   assert.match(render(plan.result!(output("alpha\nbeta\ngamma"), { expanded: false, isPartial: false }, theme, { args: { command: "echo ok" } })), /3 lines returned/);
-  assert.match(render(plan.result!(output("failure detail that wraps across the terminal width"), { expanded: false, isPartial: false }, theme, { args: { command: "false" }, isError: true }), 20), /command failed[\s\S]*more visua/);
+  assert.match(render(plan.result!(output("failure detail that wraps across the terminal width"), { expanded: false, isPartial: false }, theme, { args: { command: "false" }, isError: true }), 20), /command failed[\s\S]*(?:more visua|… \(\+\d+\))/);
 });
 
 test("Bash partial, empty, truncation, and expanded output retain presentation behavior", () => {
   const plan = resolver({ bashOutputMode: "preview", previewLines: 1, showTruncationHints: true })
     .resolve({ toolName: "bash", arguments: { command: "printf x" }, builtIn: true }, {});
   assert.equal(render(plan.result!(output(""), { expanded: false, isPartial: true }, theme, {})), "");
-  assert.match(render(plan.result!(output("first\nsecond"), { expanded: false, isPartial: true }, theme, {})), /first[\s\S]*more line/);
+  assert.match(render(plan.result!(output("first\nsecond"), { expanded: false, isPartial: true }, theme, {})), /first[\s\S]*more visual/);
   assert.match(render(plan.result!(output("", { truncation: { truncated: true }, fullOutputPath: "/tmp/full" }), { expanded: false, isPartial: false }, theme, { args: { command: "true" } })), /no output[\s\S]*truncated[\s\S]*full output/);
   assert.match(render(plan.result!(output("first\nsecond"), { expanded: true, isPartial: false }, theme, {})), /second/);
 });
@@ -48,9 +48,9 @@ test("Bash Host Adapter changes only renderer selection and does not stack on re
   const row = { toolName: "bash", args: { command: "echo ok" }, toolDefinition: definition, builtInToolDefinition: definition };
   const pristine = Object.getOwnPropertyDescriptors(definition);
 
-  const first = installPiHostAdapter(host, resolver(), "0.80.3");
+  const first = installPiHostAdapter(host, resolver(), "0.81.1");
   const patchedCall = host.getCallRenderer;
-  const second = installPiHostAdapter(host, resolver(), "0.80.3");
+  const second = installPiHostAdapter(host, resolver(), "0.81.1");
   assert.strictEqual(host.getCallRenderer, patchedCall);
   assert.match(render(host.getCallRenderer.call(row)!(row.args, theme, { executionStarted: false, isPartial: false })), /echo ok/);
   assert.deepEqual(Object.getOwnPropertyDescriptors(definition), pristine);
@@ -58,4 +58,32 @@ test("Bash Host Adapter changes only renderer selection and does not stack on re
   assert.strictEqual(host.getCallRenderer, originalCall);
   assert.strictEqual(host.getResultRenderer, originalResult);
   first.dispose();
+});
+
+test("Visual line preview limits long single-line output by visual rows, not logical lines", () => {
+  const resolver = createToolDisplayResolver(
+    () => ({
+      ...DEFAULT_TOOL_DISPLAY_CONFIG,
+      builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays, bash: true },
+      bashOutputMode: "opencode",
+      bashCollapsedLines: 2,
+    }),
+    createRendererCatalog(),
+  );
+  const plan = resolver.resolve(
+    { toolName: "bash", arguments: { command: "echo test" }, builtIn: true },
+    {},
+  );
+  // 400-char single line at width 40 wraps to ~10 visual rows
+  const longLine = "A".repeat(400);
+  const result = plan.result!(
+    { content: [{ type: "text", text: longLine }], details: {} },
+    { expanded: false, isPartial: false },
+    theme,
+    { args: { command: "echo test" } },
+  );
+  const rows = result.render(40);
+  // Should be capped at 2 (collapsedLines) + 1 (hint line) = 3
+  assert.ok(rows.length <= 3, `expected <= 3 rows but got ${rows.length}`);
+  assert.match(rows[rows.length - 1], /more visual lines/);
 });

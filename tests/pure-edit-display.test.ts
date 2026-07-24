@@ -47,10 +47,10 @@ test("pending edit diff honors the collapsed row state", () => {
   const collapsed = render(selected.call!(args, theme, { isPartial: true, argsComplete: true, expanded: false }));
   const expanded = render(selected.call!(args, theme, { isPartial: true, argsComplete: true, expanded: true }));
 
-  assert.match(collapsed, /more diff lines/);
+  assert.match(collapsed, /more visual diff lines/);
   assert.doesNotMatch(collapsed, /old 29|new 29/);
   const plainExpanded = expanded.replace(/\x1b\[[0-9;]*m/g, "");
-  assert.doesNotMatch(plainExpanded, /more diff lines/);
+  assert.doesNotMatch(plainExpanded, /more visual diff lines/);
   assert.match(plainExpanded, /old 29/);
   assert.match(plainExpanded, /new 29/);
 });

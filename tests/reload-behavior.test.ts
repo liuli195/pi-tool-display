@@ -4,7 +4,7 @@ import {
   UserMessageComponent,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+
 import toolDisplayExtension from "../src/index.ts";
 import { renderBashCall } from "../src/bash-display.ts";
 import registerNativeUserMessageBox from "../src/user-message-box-native.ts";
@@ -32,6 +32,15 @@ interface ToolLike {
   renderCall?: unknown;
   renderResult?: unknown;
   [key: string]: unknown;
+}
+
+const sessionCtx = { ui: { theme: {}, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false };
+
+/** Invoke all captured session_start handlers (simulates Pi calling the extension). */
+async function invokeSessionStart(capturedHandlers: CapturedHandler[]): Promise<void> {
+  for (const { event, handler } of capturedHandlers) {
+    if (event === "session_start") await handler({}, sessionCtx);
+  }
 }
 
 /**
@@ -115,7 +124,7 @@ test("1: after reload, new lifecycle handlers are registered", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Session cleanup and Bash spinner lifecycle
+// 3. Session cleanup and Bash command rendering
 // ---------------------------------------------------------------------------
 
 test("3: session cleanup runs once per registration and accepts the next session", () => {
@@ -130,178 +139,38 @@ test("3: session cleanup runs once per registration and accepts the next session
   assert.equal(cleanups, 2);
 });
 
-
-test("3: bash spinner interval is created during partial execution and cleared on completion", () => {
+test("3: bash renderBashCall does not create timers", () => {
   const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
-
-  const createdIntervals: ReturnType<typeof setInterval>[] = [];
-  const clearedIntervals: ReturnType<typeof setInterval>[] = [];
-
-  // Mock setInterval to track creations
+  let intervalCreated = false;
   globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
-    const id = originalSetInterval(fn as (...args: unknown[]) => unknown, ms ?? 0);
-    createdIntervals.push(id);
-    return id;
+    intervalCreated = true;
+    return originalSetInterval(fn, ms ?? 0);
   }) as typeof globalThis.setInterval;
 
-  // Mock clearInterval to track clearings
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    clearedIntervals.push(id);
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
-
-  try {
-    // Render context that triggers spinner
-    const textComponent = new Text("", 0, 0);
-    const context: Record<string, unknown> = {
-      executionStarted: true,
-      isPartial: true,
-      invalidate: () => {},
-      lastComponent: textComponent,
-      state: {},
-    };
-
-    // Create spinner
-    const result1 = renderBashCall(
-      { command: "sleep 5" },
-      stubTheme,
-      context as unknown as Parameters<typeof renderBashCall>[2],
-    );
-    assert.equal(typeof result1.render, "function", "renderBashCall returns a component");
-    assert.ok(
-      createdIntervals.length > 0,
-      "spinner interval was created during partial execution",
-    );
-
-    // Simulate execution completing (reload-like: context becomes non-partial)
-    context.isPartial = false;
-    context.lastComponent = result1;
-    const result2 = renderBashCall(
-      { command: "sleep 5" },
-      stubTheme,
-      context as unknown as Parameters<typeof renderBashCall>[2],
-    );
-    assert.equal(result2, result1, "renderBashCall reuses its component");
-    assert.ok(
-      clearedIntervals.length > 0,
-      "spinner interval was cleared on execution completion",
-    );
-
-    // Verify the created interval was also cleared
-    const allCreatedCleared = createdIntervals.every((id) =>
-      clearedIntervals.includes(id),
-    );
-    assert.ok(allCreatedCleared, "all created spinner intervals were cleared");
-  } finally {
-    globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
-    // Clean up any remaining intervals
-    for (const id of createdIntervals) {
-      if (!clearedIntervals.includes(id)) {
-        originalClearInterval(id);
-      }
-    }
-  }
-});
-
-test("3: session cleanup clears an active Bash spinner and its row state", () => {
-  const originalClearInterval = globalThis.clearInterval;
-  const clearedIntervals: ReturnType<typeof setInterval>[] = [];
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    clearedIntervals.push(id);
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
-  const state: Record<string, unknown> = {};
   try {
     renderBashCall({ command: "sleep 5" }, stubTheme, {
       executionStarted: true,
       isPartial: true,
-      invalidate: () => {},
-      state,
     });
-    disposeSession();
-    assert.ok(clearedIntervals.length > 0);
-    assert.deepEqual(state, {});
-  } finally {
-    globalThis.clearInterval = originalClearInterval;
-    disposeSession();
-  }
-});
-
-test("3: session cleanup clears Bash row state even without an animation timer", () => {
-  const state: Record<string, unknown> = {};
-  renderBashCall({ command: "sleep 5" }, stubTheme, {
-    executionStarted: true,
-    isPartial: true,
-    state,
-  });
-
-  disposeSession();
-
-  assert.deepEqual(state, {});
-});
-
-test("3: session cleanup clears every row state sharing a tool call", () => {
-  const firstState: Record<string, unknown> = {};
-  const secondState: Record<string, unknown> = {};
-  const context = { executionStarted: true, isPartial: true, toolCallId: "shared" };
-  renderBashCall({ command: "sleep 5" }, stubTheme, { ...context, state: firstState });
-  renderBashCall({ command: "sleep 5" }, stubTheme, { ...context, state: secondState });
-
-  disposeSession();
-
-  assert.deepEqual(firstState, {});
-  assert.deepEqual(secondState, {});
-});
-
-test("3: multiple consecutive bash render calls do not create duplicate timers", () => {
-  const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
-
-  const createdIntervals: ReturnType<typeof setInterval>[] = [];
-
-  globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
-    const id = originalSetInterval(fn, ms ?? 0);
-    createdIntervals.push(id);
-    return id;
-  }) as typeof globalThis.setInterval;
-
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
-
-  try {
-    const textComponent = new Text("", 0, 0);
-    const context: Record<string, unknown> = {
-      executionStarted: true,
-      isPartial: true,
-      invalidate: () => {},
-      lastComponent: textComponent,
-      state: {},
-    };
-
-    // Call renderBashCall multiple times - should only create ONE timer
-    renderBashCall({ command: "test" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
-    const afterFirst = createdIntervals.length;
-
-    renderBashCall({ command: "test" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
-    const afterSecond = createdIntervals.length;
-
-    // The timer should only be created once (guarded by spinnerState.timer check)
-    assert.equal(
-      afterSecond,
-      afterFirst,
-      "duplicate renderBashCall does not create another timer",
-    );
-
-    // Complete execution
-    context.isPartial = false;
-    renderBashCall({ command: "test" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
+    assert.equal(intervalCreated, false, "no setInterval should be called");
   } finally {
     globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
   }
+});
+
+test("3: bash renderBashCall returns consistent component for same lastComponent", () => {
+  const first = renderBashCall({ command: "sleep 5" }, stubTheme, {
+    executionStarted: true,
+    isPartial: true,
+  });
+
+  const second = renderBashCall({ command: "sleep 5" }, stubTheme, {
+    executionStarted: true,
+    isPartial: false,
+    lastComponent: first,
+  });
+
+  assert.equal(first, second, "should reuse component via lastComponent");
 });
 
 // ---------------------------------------------------------------------------
@@ -312,16 +181,17 @@ test("3: multiple consecutive bash render calls do not create duplicate timers",
 // 5. User message box cleanup
 // ---------------------------------------------------------------------------
 
-test("5: UserMessageComponent prototype is patched on first call and safe on reload", () => {
-  const { api } = createApiStub();
+test("5: UserMessageComponent prototype is patched on first call and safe on reload", async () => {
+  const { api, capturedHandlers } = createApiStub();
 
   const proto = UserMessageComponent.prototype as PatchableUserMessagePrototype;
 
   // Before any patching
   const originalRenderBefore = proto.__piUserMessageOriginalRender;
 
-  // First call patches it
+  // First call + session_start triggers patching
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   assert.ok(
     proto.__piUserMessageNativePatched,
     "prototype is marked as patched after first call",
@@ -334,7 +204,8 @@ test("5: UserMessageComponent prototype is patched on first call and safe on rel
   const firstOriginalRender = proto.__piUserMessageOriginalRender;
 
   // Reload (second call) should be safe
-  assert.doesNotThrow(() => toolDisplayExtension(api));
+  toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
 
   assert.ok(
     proto.__piUserMessageNativePatched,
@@ -347,7 +218,7 @@ test("5: UserMessageComponent prototype is patched on first call and safe on rel
   );
 });
 
-test("5: patchNativeUserMessagePrototype can be called multiple times safely", () => {
+test("5: patchNativeUserMessagePrototype can be called multiple times safely", async () => {
   const proto = UserMessageComponent.prototype as PatchableUserMessagePrototype;
 
   // Track the original render before any patching (tests share process state,
@@ -356,7 +227,9 @@ test("5: patchNativeUserMessagePrototype can be called multiple times safely", (
   const wasAlreadyPatched = !!proto.__piUserMessageNativePatched;
 
   // Patch via full extension (uses a fresh api stub each time)
-  assert.doesNotThrow(() => toolDisplayExtension(createApiStub().api));
+  const { api, capturedHandlers } = createApiStub();
+  toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
 
   // After calling, the prototype should be patched
   assert.ok(
@@ -387,9 +260,9 @@ test("5: patchNativeUserMessagePrototype can be called multiple times safely", (
   );
 
   // Re-patching via another extension call is safe (no throw)
-  assert.doesNotThrow(() => {
-    toolDisplayExtension(createApiStub().api);
-  });
+  const { api: api2, capturedHandlers: handlers2 } = createApiStub();
+  toolDisplayExtension(api2);
+  await invokeSessionStart(handlers2);
 
   // The patched flag and original render ref remain stable
   assert.ok(
@@ -406,10 +279,11 @@ test("5: patchNativeUserMessagePrototype can be called multiple times safely", (
 // 6. Command unregistration / re-registration
 // ---------------------------------------------------------------------------
 
-test("6: /tool-display command is registered on first call and re-registered on reload", () => {
-  const { api, capturedCommands } = createApiStub();
+test("6: /tool-display command is registered on first call and re-registered on reload", async () => {
+  const { api, capturedCommands, capturedHandlers } = createApiStub();
 
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const firstToolDisplayCmds = capturedCommands.filter(
     (c) => c.name === "tool-display",
   );
@@ -417,6 +291,7 @@ test("6: /tool-display command is registered on first call and re-registered on 
 
   // Reload
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const secondToolDisplayCmds = capturedCommands.filter(
     (c) => c.name === "tool-display",
   );
@@ -472,7 +347,7 @@ test("8: session_start handler can be invoked after reload without errors", asyn
 
   // Invoke it once
   await assert.doesNotReject(async () =>
-    sessionHandler!({}, { ui: { theme: {}, notify: () => {} } }),
+    sessionHandler!({}, { ui: { theme: {}, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false }),
   );
 
   // Reload
@@ -485,7 +360,7 @@ test("8: session_start handler can be invoked after reload without errors", asyn
   )?.handler;
   assert.ok(firstSessionHandler, "session_start handler exists after reload");
   await assert.doesNotReject(async () =>
-    firstSessionHandler!({}, { ui: { theme: {}, notify: () => {} } }),
+    firstSessionHandler!({}, { ui: { theme: {}, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false }),
   );
 });
 
@@ -493,19 +368,22 @@ test("8: session_start handler can be invoked after reload without errors", asyn
 // 9. Double reload safety
 // ---------------------------------------------------------------------------
 
-test("9: calling toolDisplayExtension three times (double reload) is safe", () => {
-  const { api, capturedTools, capturedCommands } = createApiStub();
+test("9: calling toolDisplayExtension three times (double reload) is safe", async () => {
+  const { api, capturedTools, capturedCommands, capturedHandlers } = createApiStub();
 
-  // First call
+  // First call + session_start
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const afterFirst = { tools: capturedTools.length, cmds: capturedCommands.length };
 
-  // First reload
+  // First reload + session_start
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const afterSecond = { tools: capturedTools.length, cmds: capturedCommands.length };
 
-  // Second reload (double reload)
-  assert.doesNotThrow(() => toolDisplayExtension(api));
+  // Second reload (double reload) + session_start
+  toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const afterThird = { tools: capturedTools.length, cmds: capturedCommands.length };
 
   // Tool registration is deferred until owners and active tools are known.
@@ -536,134 +414,62 @@ test("9: calling toolDisplayExtension three times (double reload) is safe", () =
   }
 });
 
-test("9: no duplicate setInterval across rapid reload-like scenarios", () => {
+test("9: no timers created across rapid reload-like scenarios", () => {
   const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
-
-  const createdIntervals: ReturnType<typeof setInterval>[] = [];
+  let intervalCount = 0;
 
   globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
-    const id = originalSetInterval(fn, ms ?? 0);
-    createdIntervals.push(id);
-    return id;
+    intervalCount++;
+    return originalSetInterval(fn, ms ?? 0);
   }) as typeof globalThis.setInterval;
-
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
 
   try {
     // Create two independent contexts (simulating two rapid calls)
     const ctx1: Record<string, unknown> = {
       executionStarted: true,
       isPartial: true,
-      invalidate: () => {},
-      lastComponent: new Text("", 0, 0),
-      state: {},
     };
 
     const ctx2: Record<string, unknown> = {
       executionStarted: true,
       isPartial: true,
-      invalidate: () => {},
-      lastComponent: new Text("", 0, 0),
-      state: {},
     };
 
     // Simulate two rapid render calls (like double reload)
     renderBashCall({ command: "test" }, stubTheme, ctx1 as unknown as Parameters<typeof renderBashCall>[2]);
     renderBashCall({ command: "test" }, stubTheme, ctx2 as unknown as Parameters<typeof renderBashCall>[2]);
 
-    // Each context should get its own timer
-    assert.equal(createdIntervals.length, 2, "two contexts = two timers");
-
-    // Clean up both
-    ctx1.isPartial = false;
-    ctx2.isPartial = false;
-    renderBashCall({ command: "test" }, stubTheme, ctx1 as unknown as Parameters<typeof renderBashCall>[2]);
-    renderBashCall({ command: "test" }, stubTheme, ctx2 as unknown as Parameters<typeof renderBashCall>[2]);
+    // No timers should be created since spinner is removed
+    assert.equal(intervalCount, 0, "no timers created");
   } finally {
     globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
-    for (const id of createdIntervals) {
-      originalClearInterval(id);
-    }
   }
 });
 
 // ---------------------------------------------------------------------------
-// 10. Partial reload (active bash spinner mid-animation)
+// 10. Partial reload (bash command rendering without spinner)
 // ---------------------------------------------------------------------------
 
-test("10: active bash spinner timer is cleaned up when execution transitions from partial to complete", () => {
-  const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
+test("10: bash command renders consistently across partial and complete states", () => {
+  const context: Record<string, unknown> = {
+    executionStarted: true,
+    isPartial: true,
+  };
 
-  const createdIntervals: ReturnType<typeof setInterval>[] = [];
-  const clearedIntervals: ReturnType<typeof setInterval>[] = [];
+  // Render during partial execution
+  const partial = renderBashCall({ command: "long-running-task" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
+  const partialText = partial.render(120).join("\n");
+  assert.match(partialText, /long-running-task/);
+  assert.doesNotMatch(partialText, /^⠋/, "no spinner frame");
 
-  globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
-    const id = originalSetInterval(fn, ms ?? 0);
-    createdIntervals.push(id);
-    return id;
-  }) as typeof globalThis.setInterval;
-
-  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
-    clearedIntervals.push(id);
-    originalClearInterval(id);
-  }) as typeof globalThis.clearInterval;
-
-  try {
-    const textComponent = new Text("", 0, 0);
-    const context: Record<string, unknown> = {
-      executionStarted: true,
-      isPartial: true,
-      invalidate: () => {},
-      lastComponent: textComponent,
-      state: {},
-    };
-
-    // Start spinner (mid-animation)
-    renderBashCall({ command: "long-running-task" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
-    assert.equal(createdIntervals.length, 1, "one timer created for spinner");
-
-    // Simulate partial reload: execution not started yet in new context
-    // (e.g., reload happens while bash is still running)
-    const newContext: Record<string, unknown> = {
-      executionStarted: false,
-      isPartial: false,
-      invalidate: () => {},
-      lastComponent: new Text("", 0, 0),
-      state: {},
-    };
-
-    // New render call with fresh context - no timer should be created since
-    // execution hasn't started
-    renderBashCall({ command: "long-running-task" }, stubTheme, newContext as unknown as Parameters<typeof renderBashCall>[2]);
-    assert.equal(
-      createdIntervals.length,
-      1,
-      "no new timer for non-executing context",
-    );
-
-    // Complete the original execution
-    context.isPartial = false;
-    renderBashCall({ command: "long-running-task" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
-
-    // Original timer should have been cleared
-    assert.ok(
-      clearedIntervals.length > 0,
-      "original spinner timer cleared on completion",
-    );
-  } finally {
-    globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
-    for (const id of createdIntervals) {
-      if (!clearedIntervals.includes(id)) {
-        originalClearInterval(id);
-      }
-    }
-  }
+  // Complete the execution reusing the component
+  context.isPartial = false;
+  context.lastComponent = partial;
+  const complete = renderBashCall({ command: "long-running-task" }, stubTheme, context as unknown as Parameters<typeof renderBashCall>[2]);
+  assert.equal(partial, complete, "component is reused via lastComponent");
+  const completeText = complete.render(120).join("\n");
+  assert.match(completeText, /long-running-task/);
+  assert.equal(partialText, completeText, "same output regardless of partial state");
 });
 
 // ---------------------------------------------------------------------------
@@ -786,19 +592,21 @@ test("14: open settings modal onClose callback can be invoked multiple times", (
   assert.ok(true, "onClose can be called multiple times safely");
 });
 
-test("14: extension re-initialization does not leave stale modal references", () => {
+test("14: extension re-initialization does not leave stale modal references", async () => {
   // When the extension is re-loaded, the old controller and modal closures
   // are replaced. The new extension function creates fresh closures.
   // This test verifies the old references don't interfere.
 
-  const { api: api1, capturedCommands: cmds1 } = createApiStub();
+  const { api: api1, capturedCommands: cmds1, capturedHandlers: handlers1 } = createApiStub();
   toolDisplayExtension(api1);
+  await invokeSessionStart(handlers1);
 
   const firstCommandHandler = cmds1.find((c) => c.name === "tool-display")?.handler;
 
   // Reload
-  const { api: api2, capturedCommands: cmds2 } = createApiStub();
+  const { api: api2, capturedCommands: cmds2, capturedHandlers: handlers2 } = createApiStub();
   toolDisplayExtension(api2);
+  await invokeSessionStart(handlers2);
 
   const secondCommandHandler = cmds2.find((c) => c.name === "tool-display")?.handler;
 
@@ -832,7 +640,7 @@ test("lifecycle: full session lifecycle (init→reload→invoke handlers) does n
     if (event === "message_update" || event === "message_end" || event === "context") {
       continue; // These need specific event shapes; tested separately
     }
-    const result = handler({}, { ui: { theme: {}, notify: () => {} } });
+    const result = handler({}, { ui: { theme: {}, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false });
     if (result instanceof Promise) {
       await assert.doesNotReject(
         () => result,
@@ -849,7 +657,7 @@ test("lifecycle: full session lifecycle (init→reload→invoke handlers) does n
     if (event === "message_update" || event === "message_end" || event === "context") {
       continue;
     }
-    const result = handler({}, { ui: { theme: {}, notify: () => {} } });
+    const result = handler({}, { ui: { theme: {}, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false });
     if (result instanceof Promise) {
       await assert.doesNotReject(
         () => result,

@@ -9,6 +9,7 @@ export interface WidthMeasurementOps {
 export interface CollapsedDiffHintOptions {
 	remainingLines: number;
 	hiddenHunks: number;
+	expanded?: boolean;
 }
 
 function guardSafeWidth(width: number): number | undefined {
@@ -63,19 +64,15 @@ export function buildCollapsedDiffHintText(
 	ops: WidthMeasurementOps,
 ): string {
 	return renderWithSafeWidth(width, "", (safeWidth) => {
-		const remainingText = `${options.remainingLines} more ${pluralize(options.remainingLines, "diff line")}`;
+		const remainingText = `${options.remainingLines} more ${pluralize(options.remainingLines, "visual diff line")}`;
 		const hiddenHunksText = options.hiddenHunks > 0
 			? `${options.hiddenHunks} more ${pluralize(options.hiddenHunks, "hunk")}`
 			: undefined;
-		const shortRemainingText = `${options.remainingLines} more ${pluralize(options.remainingLines, "line")}`;
-		const shortHiddenHunksText = options.hiddenHunks > 0
-			? `${options.hiddenHunks} ${pluralize(options.hiddenHunks, "hunk")}`
-			: undefined;
+		const action = options.expanded ? "display capped" : "Ctrl+O to expand";
 
 		const candidates = [
-			`… (${[remainingText, hiddenHunksText, "Ctrl+O to expand"].filter(Boolean).join(" • ")})`,
+			`… (${[remainingText, hiddenHunksText, action].filter(Boolean).join(" • ")})`,
 			`… (${[remainingText, hiddenHunksText].filter(Boolean).join(" • ")})`,
-			`… (${[shortRemainingText, shortHiddenHunksText].filter(Boolean).join(" • ")})`,
 			options.hiddenHunks > 0
 				? `… (+${options.remainingLines} • +${options.hiddenHunks}h)`
 				: `… (+${options.remainingLines})`,

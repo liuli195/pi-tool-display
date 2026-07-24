@@ -1,16 +1,15 @@
 <div align="center">
 
-# pi-tool-display
+# @plus/pi-tool-display
 
-[![npm version](https://img.shields.io/npm/v/pi-tool-display?style=for-the-badge)](https://www.npmjs.com/package/pi-tool-display)
 [![License](https://img.shields.io/github/license/liuli195/pi-tool-display?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y01PSSVR)
-
 A pure TUI display wrapper for the [Pi coding agent](https://github.com/mariozechner/pi).
 
-`pi-tool-display` keeps tool rows compact, renders trustworthy tool-provided diffs, and improves the native user prompt box without changing tools, model context, messages, or sessions.
+This extension is derived from [MasuRii/pi-tool-display](https://github.com/MasuRii/pi-tool-display).
+
+`@plus/pi-tool-display` keeps tool rows compact, renders trustworthy tool-provided diffs, and improves the native user prompt box without changing tools, model context, messages, or sessions.
 
 <img width="1360" height="752" alt="image" src="https://github.com/user-attachments/assets/777944a2-18b2-4642-b035-2c703a5abb1b" />
 
@@ -35,7 +34,7 @@ A pure TUI display wrapper for the [Pi coding agent](https://github.com/mariozec
 - **Per-tool display toggles** that never change tool ownership or execution
 - **Explicit third-party rendering** through `customToolOverrides` or producer adapters; MCP-like tools are never auto-detected for styling
 - **Capability-aware RTK settings** that appear only when the optimizer is available
-- **Adapter API for renderer consumers** through the `pi-tool-display/tool-display-api-consumer` subpath export
+- **Adapter API for renderer consumers** through the `@plus/pi-tool-display/tool-display-api-consumer` subpath export
 
 ## Installation
 
@@ -51,16 +50,10 @@ Place this folder in one of Pi's auto-discovery locations:
 .pi/extensions/pi-tool-display
 ```
 
-### npm package
-
-```bash
-pi install npm:pi-tool-display
-```
-
 ### Git repository
 
 ```bash
-pi install git:github.com/liuli195/pi-tool-display
+pi install git:github.com/liuli195/pi-tool-display@v0.1.0
 ```
 
 ## Usage
@@ -97,10 +90,10 @@ JSON-only controls include the extension master switch, debug logging, built-in 
 
 ### Tool display adapter API
 
-Other extensions can opt into `pi-tool-display` rendering without directly depending on its load order by importing the consumer helper:
+Other extensions that declare `@plus/pi-tool-display` as a direct dependency can opt into its rendering without depending on load order by importing the consumer helper:
 
 ```ts
-import { registerRendererAdapter } from "pi-tool-display/tool-display-api-consumer";
+import { registerRendererAdapter } from "@plus/pi-tool-display/tool-display-api-consumer";
 
 const dispose = registerRendererAdapter({
   id: "my-extension:mcp",
@@ -117,7 +110,11 @@ The deprecated `decorateToolForDisplay(tool, adapter)` migration facade register
 
 ## Compatibility
 
-Supported Pi versions are `0.74.0`, `0.80.3` (the repository development runtime), and stable releases from `0.81.1` onward. The release matrix exercises `0.74.0`, `0.81.1`, `0.82.0`, and the development runtime. Older, prerelease, or incompatible private TUI shapes emit one concise debug diagnostic and keep Pi's native rendering and execution.
+Supported Pi releases are `0.81.1` and later stable versions. The release matrix currently qualifies `0.81.1`, `0.82.0`, and the development runtime as representative points.
+
+Versions below `0.81.1` and prerelease version strings are **not supported**. The peer dependency range and Host Adapter gate accept stable releases from `0.81.1` onward; the qualification matrix does not limit that support range.
+
+Older, prerelease, or incompatible private TUI shapes emit one concise debug diagnostic and keep Pi's native rendering and execution.
 
 ## Presets
 
@@ -150,6 +147,18 @@ Actual global path: $PI_CODING_AGENT_DIR/extensions/pi-tool-display/config.json 
 
 A starter template is included at `config/config.example.json`.
 
+### Project-local config
+
+Trusted projects can override global display settings by placing a `config.json` in their project-local extension directory:
+
+```text
+<project>/.pi/extensions/pi-tool-display/config.json
+```
+
+Project-local config is read-only and only loaded when `isProjectTrusted()` is active (i.e., when the user has approved project-local files). It overlays the global config: any fields defined in the project config override the corresponding global values. Write operations through `/tool-display` always save to the global config.
+
+The `.pi` directory name uses Pi's `CONFIG_DIR_NAME` constant and is not hardcoded.
+
 ### Configuration options
 
 | Option | Type | Default | Description |
@@ -163,7 +172,7 @@ A starter template is included at `config/config.example.json`.
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
 | `mcpOutputMode` | string | `"hidden"` | Fallback `hidden`, `summary`, or `preview` mode for explicitly registered MCP producer adapters; it does not discover or opt tools into rendering |
 | `previewLines` | number | `8` | Lines shown in collapsed preview mode |
-| `expandedPreviewMaxLines` | number | `4000` | Max expanded source lines for read/search/MCP/Bash previews; expanded diffs use it as a rendered-row bound |
+| `expandedPreviewMaxLines` | number | `4000` | Max expanded visual rows for non-Diff previews; for Diff it caps logical Diff lines |
 | `bashOutputMode` | string | `"opencode"` | `opencode` (collapse), `summary` (line count), or `preview` (show lines) |
 | `bashCollapsedLines` | number | `10` | Visual rows shown for collapsed Bash output in opencode mode |
 | `bashCommandMode` | string | `"preview"` | Bash command display: `full`, `summary`, or `preview` |
@@ -303,7 +312,7 @@ Debug logging is disabled by default. Set `debug` to `true` in the extension roo
 
 ### Edit and write diffs
 
-`edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. Collapsed limits count logical diff content lines, so split headers, trusted omission metadata, and wrapped continuations do not consume the budget. Expanded limits still count rendered rows to keep small panes bounded.
+`edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. Collapsed and expanded limits count logical Diff content lines, so headers, trusted omission metadata, and wrapped continuations do not consume the body budget. The extra omission hint reports the omitted visual Diff lines.
 
 Partial `edit` calls can render a diff only from explicit old/new text supplied by the call. `write` calls show neutral content summaries unless the tool supplies trustworthy diff evidence. Rendering never reads the workspace to reconstruct a preimage or infer create/overwrite semantics.
 
@@ -387,7 +396,7 @@ pi-tool-display/
 │   └── config.example.json          # Starter config template
 └── tests/
     ├── ansi-utils.test.ts           # ANSI utility tests including foreground RGB preservation
-    ├── bash-display.test.ts         # Bash display and spinner tests
+    ├── bash-display.test.ts         # Deterministic Bash display tests
     ├── capabilities-edge.test.ts    # Capability detection edge cases
     ├── config-modal.test.ts         # Config modal tests
     ├── custom-tool-overrides.test.ts # Opt-in custom tool override tests
@@ -410,20 +419,18 @@ npm run build
 # Run the local real-runtime contract (missing optional runtimes are skipped)
 npm run test:contract:local
 
-# Full four-runtime matrix and complete verification
-# See docs/ownership-verification.md for required PI_RUNTIME_* roots.
-npm test
-npm run typecheck
+# Standard local verification (missing optional Pi runtimes are skipped)
+npm run check
+npm run test:contract:local
 npm run build
 git diff --check
+
+# Strict runtime qualification (requires every runtime root below)
+PI_RUNTIME_DEV_ROOT=/path/to/pi-dev \
+PI_RUNTIME_0_81_1_ROOT=/path/to/pi-0.81.1 \
+PI_RUNTIME_0_82_0_ROOT=/path/to/pi-0.82.0 \
+npm run test:contract:required
 ```
-
-## Related Pi Extensions
-
-- [pi-image-tools](https://github.com/MasuRii/pi-image-tools) — Image attachment and inline preview for the Pi TUI
-- [pi-hide-messages](https://github.com/MasuRii/pi-hide-messages) — Hide older chat messages without losing context
-- [pi-startup-redraw-fix](https://github.com/MasuRii/pi-startup-redraw-fix) — Fix terminal redraw glitches on startup
-- [pi-permission-system](https://github.com/MasuRii/pi-permission-system) — Permission enforcement for tool and command access
 
 ## License
 

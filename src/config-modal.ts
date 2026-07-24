@@ -1,7 +1,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ToolDisplayCapabilities } from "./capabilities.js";
-import type { ToolDisplayConfigController } from "./config-command.js";
-import { getToolDisplayConfigPath } from "./config-store.js";
+import type { ToolDisplayConfigController, ToolDisplayConfigMutation } from "./config-command.js";
+import { getToolDisplayConfigPath, mergeProjectConfig } from "./config-store.js";
 import {
 	detectToolDisplayPreset,
 	getToolDisplayPresetConfig,
@@ -391,84 +391,53 @@ export function buildInspectorSettings(
 	return items;
 }
 
-function applyPreset(preset: ToolDisplayPreset): ToolDisplayConfig {
-	return getToolDisplayPresetConfig(preset);
+export function createSettingMutation(
+	config: ToolDisplayConfig,
+	id: string,
+	value: string,
+): ToolDisplayConfigMutation | undefined {
+	switch (id) {
+		case "preset": {
+			const preset = parseToolDisplayPreset(value);
+			return preset ? { type: "preset", preset } : undefined;
+		}
+		case "enableNativeUserMessageBox":
+			return { type: "patch", patch: { enableNativeUserMessageBox: value === "on" } };
+		case "readOutputMode":
+			return { type: "patch", patch: { readOutputMode: value as ToolDisplayConfig["readOutputMode"] } };
+		case "searchOutputMode":
+			return { type: "patch", patch: { searchOutputMode: value as ToolDisplayConfig["searchOutputMode"] } };
+		case "previewLines":
+			return { type: "patch", patch: { previewLines: parseNumber(value, config.previewLines) } };
+		case "bashOutputMode":
+			return { type: "patch", patch: { bashOutputMode: value as ToolDisplayConfig["bashOutputMode"] } };
+		case "bashCollapsedLines":
+			return { type: "patch", patch: { bashCollapsedLines: parseNumber(value, config.bashCollapsedLines) } };
+		case "bashCommandMode":
+			return { type: "patch", patch: { bashCommandMode: value as ToolDisplayConfig["bashCommandMode"] } };
+		case "bashCommandPreviewLines":
+			return { type: "patch", patch: { bashCommandPreviewLines: parseNumber(value, config.bashCommandPreviewLines) } };
+		case "bashErrorOutputMode":
+			return { type: "patch", patch: { bashErrorOutputMode: value as ToolDisplayConfig["bashErrorOutputMode"] } };
+		case "bashErrorPreviewLines":
+			return { type: "patch", patch: { bashErrorPreviewLines: parseNumber(value, config.bashErrorPreviewLines) } };
+		case "diffViewMode":
+			return { type: "patch", patch: { diffViewMode: value as ToolDisplayConfig["diffViewMode"] } };
+		case "diffIndicatorMode":
+			return { type: "patch", patch: { diffIndicatorMode: value as ToolDisplayConfig["diffIndicatorMode"] } };
+		case "showRtkCompactionHints":
+			return { type: "patch", patch: { showRtkCompactionHints: value === "on" } };
+		default:
+			return undefined;
+	}
 }
 
 export function applySetting(config: ToolDisplayConfig, id: string, value: string): ToolDisplayConfig {
-	switch (id) {
-		case "preset": {
-			const parsed = parseToolDisplayPreset(value);
-			return parsed ? applyPreset(parsed) : config;
-		}
-		case "enableNativeUserMessageBox":
-			return {
-				...config,
-				enableNativeUserMessageBox: value === "on",
-			};
-		case "readOutputMode":
-			return {
-				...config,
-				readOutputMode: value as ToolDisplayConfig["readOutputMode"],
-			};
-		case "searchOutputMode":
-			return {
-				...config,
-				searchOutputMode: value as ToolDisplayConfig["searchOutputMode"],
-			};
-		case "previewLines":
-			return {
-				...config,
-				previewLines: parseNumber(value, config.previewLines),
-			};
-		case "bashOutputMode":
-			return {
-				...config,
-				bashOutputMode: value as ToolDisplayConfig["bashOutputMode"],
-			};
-		case "bashCollapsedLines":
-			return {
-				...config,
-				bashCollapsedLines: parseNumber(value, config.bashCollapsedLines),
-			};
-		case "bashCommandMode":
-			return {
-				...config,
-				bashCommandMode: value as ToolDisplayConfig["bashCommandMode"],
-			};
-		case "bashCommandPreviewLines":
-			return {
-				...config,
-				bashCommandPreviewLines: parseNumber(value, config.bashCommandPreviewLines),
-			};
-		case "bashErrorOutputMode":
-			return {
-				...config,
-				bashErrorOutputMode: value as ToolDisplayConfig["bashErrorOutputMode"],
-			};
-		case "bashErrorPreviewLines":
-			return {
-				...config,
-				bashErrorPreviewLines: parseNumber(value, config.bashErrorPreviewLines),
-			};
-		case "diffViewMode":
-			return {
-				...config,
-				diffViewMode: value as ToolDisplayConfig["diffViewMode"],
-			};
-		case "diffIndicatorMode":
-			return {
-				...config,
-				diffIndicatorMode: value as ToolDisplayConfig["diffIndicatorMode"],
-			};
-		case "showRtkCompactionHints":
-			return {
-				...config,
-				showRtkCompactionHints: value === "on",
-			};
-		default:
-			return config;
-	}
+	const mutation = createSettingMutation(config, id, value);
+	if (!mutation || mutation.type === "reset") return config;
+	return mutation.type === "preset"
+		? getToolDisplayPresetConfig(mutation.preset)
+		: mergeProjectConfig(config, mutation.patch);
 }
 
 function resolveResponsiveOverlayOptions(): ModalOverlayOptions {
@@ -513,8 +482,8 @@ export async function openSettingsModal(ctx: ExtensionCommandContext, controller
 				{
 					getSettings: () => buildInspectorSettings(controller.getConfig(), capabilities),
 					onChange: (id, newValue) => {
-						const next = applySetting(controller.getConfig(), id, newValue);
-						controller.setConfig(next, ctx);
+						const mutation = createSettingMutation(controller.getConfig(), id, newValue);
+						if (mutation) controller.mutateConfig(mutation, ctx);
 					},
 					onClose: () => done(),
 				},
@@ -562,7 +531,7 @@ export function handleToolDisplayArgs(args: string, ctx: ExtensionCommandContext
 	}
 
 	if (normalized === "reset") {
-		controller.setConfig(getToolDisplayPresetConfig("opencode"), ctx);
+		controller.mutateConfig({ type: "reset" }, ctx);
 		ctx.ui.notify("Tool display preset reset to opencode.", "info");
 		return true;
 	}
@@ -575,7 +544,7 @@ export function handleToolDisplayArgs(args: string, ctx: ExtensionCommandContext
 			return true;
 		}
 
-		controller.setConfig(getToolDisplayPresetConfig(preset), ctx);
+		controller.mutateConfig({ type: "preset", preset }, ctx);
 		ctx.ui.notify(`Tool display preset set to ${preset}.`, "info");
 		return true;
 	}
