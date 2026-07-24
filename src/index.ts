@@ -53,16 +53,18 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   const getEffectiveConfig = (): ToolDisplayConfig =>
     effectiveConfig ??= applyCapabilityConfigGuards(mergedConfig, capabilities);
 
+  // Track disposers for explicit cleanup when disabled.
+  let disposeRenderers: (() => void) | undefined;
+
   const setConfig = (
     next: ToolDisplayConfig,
     ctx: ExtensionCommandContext,
   ): void => {
-    // Compute delta: what changed relative to the current merged config.
-    // Then apply only those changes to globalConfig so project values
-    // don't leak to disk.
+    // Compute delta: changes relative to globalConfig (not mergedConfig)
+    // so project overlay values don't leak into global writes.
     const delta: Partial<ToolDisplayConfig> = {};
     for (const key of Object.keys(next) as Array<keyof ToolDisplayConfig>) {
-      if (JSON.stringify(next[key]) !== JSON.stringify(mergedConfig[key])) {
+      if (JSON.stringify(next[key]) !== JSON.stringify(globalConfig[key])) {
         (delta as Record<string, unknown>)[key] = next[key];
       }
     }
@@ -111,7 +113,11 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     // If the effective config (after project overlay) is disabled, skip
     // registering rendering infrastructure and dispose any existing patches.
     if (!mergedConfig.enabled) {
+      // Dispose rendering infrastructure installed in a previous enabled session.
+      disposeSession();
       disposeAll();
+      disposeRenderers?.();
+      disposeRenderers = undefined;
       return;
     }
 
@@ -119,6 +125,9 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     registerToolExecutionPatch(pi, getEffectiveConfig);
     registerNativeUserMessageBox(pi, getConfig);
     registerToolDisplayCommand(pi, { getConfig, setConfig, getCapabilities });
+    disposeRenderers = () => {
+      disposeAll();
+    };
   });
 
   pi.on("before_agent_start", async () => {
