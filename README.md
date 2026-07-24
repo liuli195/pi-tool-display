@@ -1,16 +1,15 @@
 <div align="center">
 
-# pi-tool-display
+# @plus/pi-tool-display
 
-[![npm version](https://img.shields.io/npm/v/pi-tool-display?style=for-the-badge)](https://www.npmjs.com/package/pi-tool-display)
 [![License](https://img.shields.io/github/license/liuli195/pi-tool-display?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y01PSSVR)
-
 A pure TUI display wrapper for the [Pi coding agent](https://github.com/mariozechner/pi).
 
-`pi-tool-display` keeps tool rows compact, renders trustworthy tool-provided diffs, and improves the native user prompt box without changing tools, model context, messages, or sessions.
+This extension is derived from [MasuRii/pi-tool-display](https://github.com/MasuRii/pi-tool-display).
+
+`@plus/pi-tool-display` keeps tool rows compact, renders trustworthy tool-provided diffs, and improves the native user prompt box without changing tools, model context, messages, or sessions.
 
 <img width="1360" height="752" alt="image" src="https://github.com/user-attachments/assets/777944a2-18b2-4642-b035-2c703a5abb1b" />
 
@@ -35,7 +34,7 @@ A pure TUI display wrapper for the [Pi coding agent](https://github.com/mariozec
 - **Per-tool display toggles** that never change tool ownership or execution
 - **Explicit third-party rendering** through `customToolOverrides` or producer adapters; MCP-like tools are never auto-detected for styling
 - **Capability-aware RTK settings** that appear only when the optimizer is available
-- **Adapter API for renderer consumers** through the `pi-tool-display/tool-display-api-consumer` subpath export
+- **Adapter API for renderer consumers** through the `@plus/pi-tool-display/tool-display-api-consumer` subpath export
 
 ## Installation
 
@@ -51,16 +50,10 @@ Place this folder in one of Pi's auto-discovery locations:
 .pi/extensions/pi-tool-display
 ```
 
-### npm package
-
-```bash
-pi install npm:pi-tool-display
-```
-
 ### Git repository
 
 ```bash
-pi install git:github.com/liuli195/pi-tool-display
+pi install git:github.com/liuli195/pi-tool-display@v0.1.0
 ```
 
 ## Usage
@@ -97,10 +90,10 @@ JSON-only controls include the extension master switch, debug logging, built-in 
 
 ### Tool display adapter API
 
-Other extensions can opt into `pi-tool-display` rendering without directly depending on its load order by importing the consumer helper:
+Other extensions that declare `@plus/pi-tool-display` as a direct dependency can opt into its rendering without depending on load order by importing the consumer helper:
 
 ```ts
-import { registerRendererAdapter } from "pi-tool-display/tool-display-api-consumer";
+import { registerRendererAdapter } from "@plus/pi-tool-display/tool-display-api-consumer";
 
 const dispose = registerRendererAdapter({
   id: "my-extension:mcp",
@@ -426,20 +419,18 @@ npm run build
 # Run the local real-runtime contract (missing optional runtimes are skipped)
 npm run test:contract:local
 
-# Full four-runtime matrix and complete verification
-# See docs/ownership-verification.md for required PI_RUNTIME_* roots.
-npm test
-npm run typecheck
+# Standard local verification (missing optional Pi runtimes are skipped)
+npm run check
+npm run test:contract:local
 npm run build
 git diff --check
+
+# Strict runtime qualification (requires every runtime root below)
+PI_RUNTIME_DEV_ROOT=/path/to/pi-dev \
+PI_RUNTIME_0_81_1_ROOT=/path/to/pi-0.81.1 \
+PI_RUNTIME_0_82_0_ROOT=/path/to/pi-0.82.0 \
+npm run test:contract:required
 ```
-
-## Related Pi Extensions
-
-- [pi-image-tools](https://github.com/MasuRii/pi-image-tools) — Image attachment and inline preview for the Pi TUI
-- [pi-hide-messages](https://github.com/MasuRii/pi-hide-messages) — Hide older chat messages without losing context
-- [pi-startup-redraw-fix](https://github.com/MasuRii/pi-startup-redraw-fix) — Fix terminal redraw glitches on startup
-- [pi-permission-system](https://github.com/MasuRii/pi-permission-system) — Permission enforcement for tool and command access
 
 ## License
 

@@ -1,0 +1,5 @@
+/cache/
+/runs/
+/backups/
+__pycache__/
+*.py[cod]

@@ -1,6 +1,6 @@
 {
-  "name": "pi-tool-display",
-  "version": "0.7.1",
+  "name": "@plus/pi-tool-display",
+  "version": "0.1.0",
   "description": "Pure TUI display wrapper for compact Pi tool rows and trustworthy tool-provided diffs, without changing tool execution or model/session data.",
   "type": "module",
   "main": "./index.ts",
@@ -11,24 +11,14 @@
       "default": "./tool-display-api-consumer.js"
     }
   },
-  "files": [
-    "index.ts",
-    "tool-display-api-consumer.js",
-    "tool-display-api-consumer.d.ts",
-    "src",
-    "config/config.example.json",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
-  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "npm run typecheck",
     "test": "tsx --test tests/*.test.ts",
     "test:contract:local": "tsx --test tests/real-runtime-contract.test.ts",
+    "test:contract:required": "tsx --test tests/real-runtime-contract.test.ts",
     "check": "npm run lint && npm run test",
-    "typecheck": "tsc -p tsconfig.json",
-    "postinstall": "node -e \"const fs=require('fs'),cp=require('child_process'),p=require('path');const cwd=process.cwd();const normalized=cwd.split(p.sep).join('/');if(!normalized.includes('/.pi/agent/extensions/'))process.exit(0);const s=p.resolve(cwd,'../../scripts/patch-vulnerable-deps.mjs');if(!fs.existsSync(s))process.exit(0);const r=cp.spawnSync(process.execPath,[s,'--target',cwd,'--quiet'],{stdio:'inherit'});process.exit(r.status||0)\""
+    "typecheck": "tsc -p tsconfig.json"
   },
   "keywords": [
     "pi-package",
@@ -62,17 +52,14 @@
   "engines": {
     "node": ">=20"
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "pi": {
     "extensions": [
       "./index.ts"
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.81.1",
-    "@earendil-works/pi-tui": ">=0.81.1"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   },
   "overrides": {
     "file-type": ">=21.3.1",

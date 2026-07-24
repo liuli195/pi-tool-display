@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "build": {
+    "checks": [
+      {
+        "id": "build.node",
+        "command": "npm run build",
+        "inputs": [
+          "package.json",
+          "package-lock.json",
+          "tsconfig.json",
+          "index.ts",
+          "src",
+          "tests"
+        ]
+      }
+    ]
+  },
+  "verify": {
+    "maxParallel": 1,
+    "timeoutSeconds": 300,
+    "checks": [
+      {
+        "id": "verify.node-check",
+        "command": "npm run check",
+        "paths": [
+          "index.ts",
+          "src/**",
+          "tests/**",
+          "tool-display-api-consumer.*",
+          "package.json",
+          "package-lock.json",
+          "tsconfig.json"
+        ],
+        "inputs": [
+          "index.ts",
+          "src",
+          "tests",
+          "tool-display-api-consumer.js",
+          "tool-display-api-consumer.d.ts",
+          "package.json",
+          "package-lock.json",
+          "tsconfig.json"
+        ]
+      },
+      {
+        "id": "verify.node-contract-local",
+        "command": "npm run test:contract:local",
+        "paths": [
+          "index.ts",
+          "src/**",
+          "tests/real-runtime-contract.test.ts",
+          "tests/support/**",
+          "tests/runtime-matrix.json",
+          "package.json",
+          "package-lock.json",
+          "tsconfig.json"
+        ],
+        "inputs": [
+          "index.ts",
+          "src",
+          "tests/real-runtime-contract.test.ts",
+          "tests/support",
+          "tests/runtime-matrix.json",
+          "package.json",
+          "package-lock.json",
+          "tsconfig.json"
+        ]
+      }
+    ]
+  }
+}

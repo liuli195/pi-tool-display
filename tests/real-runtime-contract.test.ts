@@ -76,13 +76,13 @@ test("runtime matrix qualifies representative supported Pi versions", () => {
   assert.equal(matrix.every(({ required }) => required), true);
   assert.equal(matrix.find(({ name }) => name === "development")?.env, "PI_RUNTIME_DEV_ROOT");
   const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8"));
-  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], ">=0.81.1");
-  assert.equal(packageJson.peerDependencies["@earendil-works/pi-tui"], ">=0.81.1");
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], "*");
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-tui"], "*");
 });
 
 for (const entry of matrix) {
   const runtimeRoot = process.env[entry.env];
-  const optional = process.env.npm_lifecycle_event === "test:contract:local";
+  const optional = process.env.npm_lifecycle_event !== "test:contract:required";
   test(`real Pi runtime contract: ${entry.name}`, { skip: optional && !runtimeRoot ? `${entry.env} is not supplied` : false }, async () => {
     assert.ok(runtimeRoot, `${entry.env} is required (use npm run test:contract:local for optional local runtimes)`);
     const packagePath = runtimeRoot.endsWith("package.json") ? runtimeRoot : resolve(runtimeRoot.endsWith(".js") ? dirname(dirname(runtimeRoot)) : runtimeRoot, "package.json");
