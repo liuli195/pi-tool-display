@@ -115,26 +115,16 @@ function formatTruncationHint(remaining: number, expanded: boolean, theme: Rende
   return `\n${theme.fg("muted", `... (${remaining} more ${pluralize(remaining, "line")}${hint})`)}`;
 }
 
-function buildPreviewText(
-  lines: string[],
-  maxLines: number,
-  theme: RenderTheme,
-  expanded: boolean,
-): string {
-  const { text } = buildPreviewContent(lines, maxLines, theme, expanded);
-  return text;
-}
-
 /**
- * Build preview text content and remaining line count without embedding the
- * logical-line truncation hint. Used when rendering through
- * `VisualLinePreviewComponent`, which handles its own visual-row omission hint.
+ * Build preview text content and remaining line count. Never embeds the
+ * logical-line truncation hint in the returned text — the caller adds it
+ * separately (via buildPreviewHints or directly). This prevents duplicate
+ * omission hints when the text is passed to VisualLinePreviewComponent.
  */
 function buildPreviewContent(
   lines: string[],
   maxLines: number,
   theme: RenderTheme,
-  expanded: boolean,
 ): { text: string; remaining: number } {
   if (lines.length === 0) {
     return { text: theme.fg("muted", "↳ (no output)"), remaining: 0 };
@@ -144,9 +134,6 @@ function buildPreviewContent(
   const text = shown
     .map((line) => theme.fg("toolOutput", sanitizeAnsiForThemedOutput(line)))
     .join("\n");
-  if (expanded) {
-    return { text: text + formatTruncationHint(remaining, expanded, theme), remaining: 0 };
-  }
   return { text, remaining };
 }
 
@@ -483,24 +470,28 @@ function wrapComponentWithHints(
   return container;
 }
 
-function buildPreviewHints(
+function buildCollapsedPreviewHints(
   lines: string[],
   config: ToolDisplayConfig,
   theme: RenderTheme,
-  options: ToolRenderResultOptions,
   appendHints: (preview: string) => string,
   remaining: number,
-  expanded: boolean,
 ): string {
   let hints = "";
-  if (!expanded && remaining > 0) {
+  if (remaining > 0) {
     hints += formatTruncationHint(remaining, false, theme);
   }
   hints = appendHints(hints);
-  if (expanded) {
-    hints += formatExpandedPreviewCapHint(lines, config, theme);
-  }
   return hints;
+}
+
+function buildExpandedPreviewHints(
+  lines: string[],
+  config: ToolDisplayConfig,
+  theme: RenderTheme,
+  appendHints: (preview: string) => string,
+): string {
+  return appendHints("") + formatExpandedPreviewCapHint(lines, config, theme);
 }
 
 function renderPreviewText(
@@ -517,15 +508,16 @@ function renderPreviewText(
     : config.previewLines;
 
   if (!useExpanded) {
-    const { text, remaining } = buildPreviewContent(lines, maxLines, theme, false);
+    const { text, remaining } = buildPreviewContent(lines, maxLines, theme);
     const preview = new VisualLinePreviewComponent(config.previewLines, false, theme);
     preview.setDisplay(text, config.previewLines, false);
-    const hints = buildPreviewHints(lines, config, theme, options, appendHints, remaining, false);
+    const hints = buildCollapsedPreviewHints(lines, config, theme, appendHints, remaining);
     return wrapComponentWithHints(preview, hints);
   }
 
-  const preview = buildPreviewText(lines, maxLines, theme, true);
-  return textResult(appendHints(preview));
+  const { text } = buildPreviewContent(lines, maxLines, theme);
+  const hints = buildExpandedPreviewHints(lines, config, theme, appendHints);
+  return textResult(text + hints);
 }
 
 function formatReadSummary(
@@ -635,19 +627,15 @@ function renderBashPreviewWithHints(
   options: ToolRenderResultOptions,
   details: BashToolDetails | undefined,
 ): Component {
-  if (!options.expanded) {
-    const { text, remaining } = buildPreviewContent(lines, maxLines, theme, false);
-    const preview = new VisualLinePreviewComponent(maxLines, false, theme);
-    preview.setDisplay(text, maxLines, false);
-    let hints = "";
-    if (remaining > 0) hints += formatTruncationHint(remaining, false, theme);
-    if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
-    return wrapComponentWithHints(preview, hints);
-  }
-  let preview = buildPreviewText(lines, maxLines, theme, true);
-  if (config.showTruncationHints) preview += formatBashTruncationHints(details, theme);
-  preview += formatExpandedPreviewCapHint(lines, config, theme);
-  return textResult(preview);
+  const { text, remaining } = buildPreviewContent(lines, maxLines, theme);
+  const previewLinesLimit = options.expanded ? maxLines : maxLines;
+  const preview = new VisualLinePreviewComponent(previewLinesLimit, options.expanded, theme);
+  preview.setDisplay(text, previewLinesLimit, options.expanded);
+  let hints = "";
+  if (!options.expanded && remaining > 0) hints += formatTruncationHint(remaining, false, theme);
+  if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
+  if (options.expanded) hints += formatExpandedPreviewCapHint(lines, config, theme);
+  return wrapComponentWithHints(preview, hints);
 }
 
 function renderBashVisualPreview(
@@ -657,15 +645,13 @@ function renderBashVisualPreview(
   theme: RenderTheme,
   details: BashToolDetails | undefined,
 ): Component {
+  const { text, remaining } = buildPreviewContent(lines, lines.length, theme);
   const preview = new VisualLinePreviewComponent(maxLines, false, theme);
-  preview.setDisplay(buildPreviewText(lines, lines.length, theme, false), maxLines, false);
-  const truncationHints = config.showTruncationHints ? formatBashTruncationHints(details, theme) : "";
-  if (!truncationHints) return preview;
-
-  const container = new Container();
-  container.addChild(preview);
-  container.addChild(textResult(truncationHints.slice(1)));
-  return container;
+  preview.setDisplay(text, maxLines, false);
+  let hints = "";
+  if (remaining > 0) hints += formatTruncationHint(remaining, false, theme);
+  if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
+  return wrapComponentWithHints(preview, hints);
 }
 
 function prepareBashLivePreview(
@@ -717,17 +703,19 @@ function renderBashErrorResult(
   if (lines.length > 0 && (options.expanded || config.bashErrorOutputMode !== "summary")) {
     const maxLines = options.expanded ? getExpandedPreviewLineLimit(lines, config) : lines.length;
     const { shown, remaining } = previewLines(lines, maxLines);
-    let body = shown.map((line) => theme.fg("error", sanitizeAnsiForThemedOutput(line))).join("\n");
-    body += formatTruncationHint(remaining, options.expanded, theme);
-    if (config.showTruncationHints) body += formatBashTruncationHints(details, theme);
-    if (options.expanded) body += formatExpandedPreviewCapHint(lines, config, theme);
+    const body = shown.map((line) => theme.fg("error", sanitizeAnsiForThemedOutput(line))).join("\n");
+
+    let hints = "";
+    if (!options.expanded && remaining > 0) hints += formatTruncationHint(remaining, false, theme);
+    if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
+    if (options.expanded) hints += formatExpandedPreviewCapHint(lines, config, theme);
 
     if (!options.expanded && config.bashErrorOutputMode === "preview") {
       const preview = new VisualLinePreviewComponent(config.bashErrorPreviewLines, false, theme);
       preview.setDisplay(body, config.bashErrorPreviewLines, false);
-      container.addChild(preview);
+      container.addChild(wrapComponentWithHints(preview, hints));
     } else {
-      container.addChild(textResult(body));
+      container.addChild(textResult(body + hints));
     }
   }
 

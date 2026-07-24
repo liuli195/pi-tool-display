@@ -291,10 +291,28 @@ export function getToolDisplayConfigPath(): string {
 }
 
 /**
- * Load a project-local config file. Returns a partial config that can be
- * merged over the global config. Only call this when the project is trusted.
+ * Extract only the top-level keys explicitly present in a raw config object.
+ * Unlike normalizeToolDisplayConfig, this does NOT fill defaults —
+ * missing keys stay absent so the caller can merge without overwriting
+ * unrelated global settings.
  */
-export function loadProjectToolDisplayConfig(
+function extractExplicitFields(raw: unknown): Partial<ToolDisplayConfig> {
+	if (typeof raw !== "object" || raw === null) return {};
+	const result: Partial<ToolDisplayConfig> = {};
+	for (const key of Object.keys(raw as Record<string, unknown>)) {
+		if (key in (raw as Record<string, unknown>)) {
+			(result as Record<string, unknown>)[key] = (raw as Record<string, unknown>)[key];
+		}
+	}
+	return result;
+}
+
+/**
+ * Read a project-local config file. Returns only the fields explicitly
+ * present in the JSON, without filling defaults. Only call this when the
+ * project is trusted.
+ */
+export function readProjectToolDisplayConfig(
 	projectConfigFile: string,
 ): { config: Partial<ToolDisplayConfig> | undefined; error?: string } {
 	if (!existsSync(projectConfigFile)) {
@@ -303,7 +321,7 @@ export function loadProjectToolDisplayConfig(
 	try {
 		const rawText = readFileSync(projectConfigFile, "utf-8");
 		const rawConfig = JSON.parse(rawText) as unknown;
-		return { config: normalizeToolDisplayConfig(rawConfig) };
+		return { config: extractExplicitFields(rawConfig) };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
@@ -314,22 +332,20 @@ export function loadProjectToolDisplayConfig(
 }
 
 /**
- * Merge a project-local partial config over a global config. Only defined
- * fields in the project config override the global values.
+ * Merge a project-local partial config over a global config. Only keys
+ * explicitly present in the project config override the global values.
+ * The result is re-normalized to clamp project values to valid ranges.
  */
 export function mergeProjectConfig(
 	globalConfig: ToolDisplayConfig,
 	projectConfig: Partial<ToolDisplayConfig>,
 ): ToolDisplayConfig {
-	const merged = { ...globalConfig };
-	// Only copy defined top-level fields from project config; skip re-normalization
-	// to preserve global defaults for fields the project config intentionally omits.
-	for (const key of Object.keys(projectConfig) as Array<keyof ToolDisplayConfig>) {
-		const value = projectConfig[key];
-		if (value !== undefined) {
-			// @ts-expect-error — safe: key is a valid ToolDisplayConfig field
-			merged[key] = value;
+	const merged = { ...globalConfig } as Record<string, unknown>;
+	const project = projectConfig as Record<string, unknown>;
+	for (const key of Object.keys(project)) {
+		if (project[key] !== undefined) {
+			merged[key] = project[key];
 		}
 	}
-	return merged;
+	return normalizeToolDisplayConfig(merged);
 }
