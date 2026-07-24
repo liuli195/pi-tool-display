@@ -20,9 +20,20 @@ export interface PiHostAdapterInstallation { readonly installed: boolean; dispos
 const supportedVersion = (version: string) => /^0\.(?:74|75|77|78|79|80|81)\./.test(version);
 const noopInstallation = (): PiHostAdapterInstallation => ({ installed: false, dispose() {} });
 
-export function installPiHostAdapter(host: object, resolver: ToolDisplayResolver, piVersion: string): PiHostAdapterInstallation {
-  try { return install(host as HostPrototype, resolver, piVersion); }
-  catch { return noopInstallation(); }
+export function installPiHostAdapter(
+  host: object,
+  resolver: ToolDisplayResolver,
+  piVersion: string,
+  diagnose: (message: string) => void = () => {},
+): PiHostAdapterInstallation {
+  try {
+    const installation = install(host as HostPrototype, resolver, piVersion);
+    if (!installation.installed) diagnose(`pi-tool-display: unsupported Pi ${piVersion} tool-row renderer shape; using native rendering`);
+    return installation;
+  } catch {
+    diagnose(`pi-tool-display: unsupported Pi ${piVersion} tool-row renderer shape; using native rendering`);
+    return noopInstallation();
+  }
 }
 
 function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVersion: string): PiHostAdapterInstallation {

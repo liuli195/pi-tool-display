@@ -1,6 +1,7 @@
 import { ToolExecutionComponent, VERSION, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createPiToolDisplayResolver } from "./tool-display-runtime.js";
 import { installPiHostAdapter } from "./pi-host-adapter.js";
+import { logToolDisplayDebug } from "./debug-logger.js";
 import type { ToolDisplayConfig } from "./types.js";
 
 export function registerToolExecutionPatch(pi: ExtensionAPI, getConfig: () => ToolDisplayConfig): void {
@@ -8,6 +9,7 @@ export function registerToolExecutionPatch(pi: ExtensionAPI, getConfig: () => To
     ToolExecutionComponent.prototype,
     createPiToolDisplayResolver(pi, getConfig),
     VERSION,
+    message => logToolDisplayDebug(message),
   );
   pi.on("session_shutdown", installation.dispose);
 }
