@@ -32,7 +32,7 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 - **Hashline-anchor diff gutters** that preserve `LINE#HASH` labels from anchored read/edit output when those lines are rendered in diffs
 - **Three presets**: `opencode`, `balanced`, and `verbose`
 - **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
-- **Per-tool ownership toggles** so this extension can coexist with other renderer extensions
+- **Per-tool display toggles** that never change tool ownership or execution
 - **Capability-aware settings** that keep MCP and RTK-specific controls aligned with the current environment
 - **Adapter API for renderer consumers** through the `pi-tool-display/tool-display-api-consumer` subpath export
 
@@ -151,7 +151,7 @@ A starter template is included at `config/config.example.json`.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `debug` | boolean | `false` | Opt-in file logging for extension diagnostics; missing values are treated as `false` |
-| `registerToolOverrides` | object | all `true` | Built-in tool ownership flags |
+| `builtInToolDisplays` | object | all `true` | Enable display formatting for each built-in tool |
 | `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
 | `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
@@ -173,13 +173,13 @@ A starter template is included at `config/config.example.json`.
 | `showTruncationHints` | boolean | `false` | Show truncation indicators for compacted output |
 | `showRtkCompactionHints` | boolean | `false` | Show RTK compaction hints when RTK metadata exists |
 
-### Tool ownership
+### Built-in display selection
 
-Use `registerToolOverrides` to control which built-in tools this extension owns:
+Use `builtInToolDisplays` to select which built-in rows this extension formats:
 
 ```json
 {
-  "registerToolOverrides": {
+  "builtInToolDisplays": {
     "read": true,
     "grep": true,
     "find": true,
@@ -191,9 +191,7 @@ Use `registerToolOverrides` to control which built-in tools this extension owns:
 }
 ```
 
-Set any entry to `false` if another extension should handle that tool instead.
-
-> Changes to tool ownership take effect after `/reload`.
+Set an entry to `false` to keep Pi's native renderer. Changes apply immediately and never change tool ownership, activation, definitions, or execution. Legacy `registerToolOverrides` input remains supported and is not rewritten merely by loading it.
 
 ### Custom tool overrides
 
@@ -238,7 +236,7 @@ Boolean shorthand is also accepted:
 
 Notes:
 
-- Built-in tool names (`read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`) are ignored here; use `registerToolOverrides` for those.
+- Built-in tool names (`read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`) are ignored here; use `builtInToolDisplays` for those.
 - With `overrideCallRenderer: true`, `generic` call rendering shows the tool name and argument count.
 - With `overrideCallRenderer: true`, `mcp` call rendering understands MCP proxy-style arguments such as `tool`, `server`, `search`, `describe`, and `connect`.
 - Overrides are selected at render time, so they work regardless of tool registration or extension load order.
@@ -248,7 +246,7 @@ Notes:
 ```json
 {
   "debug": false,
-  "registerToolOverrides": {
+  "builtInToolDisplays": {
     "read": true,
     "grep": true,
     "find": true,
@@ -301,7 +299,7 @@ Debug logging is disabled by default. Set `debug` to `true` in the extension roo
 
 `edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. On narrow panes it clamps rendered lines and shortens collapsed hint text so the diff stays readable instead of spilling past the terminal width.
 
-While tool arguments are still streaming, partial `edit` and `write` calls can show projected pending previews. Deterministic edits render as `pending edit` diffs against current file contents, writes render as `pending overwrite` or `pending create`, and unresolved projections show a clear preview notice instead of guessing. Preview file reads are scoped to the active workspace so pending previews avoid reading paths outside the current project.
+Partial `edit` calls can render a diff only from explicit old/new text supplied by the call. `write` calls show neutral content summaries unless the tool supplies trustworthy diff evidence. Rendering never reads the workspace to reconstruct a preimage or infer create/overwrite semantics.
 
 When diff input includes Pi anchored read lines such as `12#AB:content`, the renderer treats the anchor as line metadata and displays the `LINE#HASH` label in the gutter while keeping the content aligned for split, unified, and compact diff layouts.
 
@@ -326,17 +324,11 @@ This keeps the UI aligned with the current environment while still allowing dyna
 
 ### Reload safety
 
-`/reload` is fully supported. On reload, the extension cleans up all tool overrides, prototype patches, timers, and event handlers through its built-in disposal registry, then re-registers everything on the next session lifecycle event. No manual cleanup is needed.
+`/reload` is fully supported. On reload, the extension removes its display patches, timers, and Adapter registrations before reinstalling the current display policy. It never re-registers tools. No manual cleanup is needed.
 
-### Tool ownership conflicts
+### Display conflicts
 
-If another extension is already rendering one of the built-in tools:
-
-1. Set `registerToolOverrides.<tool>` to `false`
-2. Run `/reload`
-3. Use `/tool-display show` to confirm the effective ownership state
-
-Built-in tool overrides (including `bash`) are registered with deferred ownership discovery — the extension discovers which tools it owns via `pi.getAllTools()` during `before_agent_start` before overriding, preventing conflicts with other extensions that also register overrides.
+Set `builtInToolDisplays.<tool>` to `false` to retain Pi's native renderer for that built-in. Display selection is independent of the executable tool's owner and applies immediately; use `/tool-display show` to inspect the effective display state.
 
 ### Config not loading
 
@@ -364,13 +356,13 @@ pi-tool-display/
 │   ├── capabilities.ts              # MCP/RTK capability detection
 │   ├── config-modal.ts              # /tool-display settings UI and command handling
 │   ├── config-store.ts              # Config load/save and normalization
-│   ├── disposable.ts                # Reload-safe cleanup registry for tool overrides, patches, and timers
+│   ├── disposable.ts                # Reload-safe cleanup registry for display patches and timers
 │   ├── diff-renderer.ts             # Edit/write diff rendering engine
 │   ├── line-width-safety.ts         # Width clamping helpers for narrow panes
 │   ├── pending-diff-preview.ts      # Partial edit/write preview projection helpers
 │   ├── presets.ts                   # Preset definitions and matching
 │   ├── render-utils.ts              # Shared rendering helpers
-│   ├── tool-overrides.ts            # Built-in, MCP, and opt-in custom renderer overrides
+│   ├── tool-overrides.ts            # Built-in, MCP, and custom display renderers plus Adapter API
 │   ├── types.ts                     # Shared config and type definitions
 │   ├── user-message-box-markdown.ts # Markdown extraction for user message rendering
 │   ├── user-message-box-native.ts   # Native user message box registration
@@ -394,8 +386,6 @@ pi-tool-display/
     ├── index-integration.test.ts    # Integration tests for extension lifecycle
     ├── presets-edge.test.ts         # Preset edge case tests
     ├── reload-behavior.test.ts      # Reload-safe cleanup and re-registration tests
-    ├── tool-overrides-config.test.ts    # Tool override config tests
-    ├── tool-overrides-registration.test.ts # Tool override registration tests
     └── tool-ui-utils.test.ts        # Utility tests for user message and diff helpers
 ```
 

@@ -1,6 +1,6 @@
 {
   "debug": false,
-  "registerToolOverrides": {
+  "builtInToolDisplays": {
     "read": true,
     "grep": true,
     "find": true,
