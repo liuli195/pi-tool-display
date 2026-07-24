@@ -6,11 +6,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import toolDisplayExtension from "../src/index.ts";
-import { registerToolDisplayApi } from "../src/tool-overrides.ts";
 import { renderBashCall } from "../src/bash-display.ts";
 import registerNativeUserMessageBox from "../src/user-message-box-native.ts";
 import { createToolDisplayDebugLogger } from "../src/debug-logger.ts";
-import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 import type { PatchableUserMessagePrototype } from "../src/user-message-box-patch.ts";
 
 // ---------------------------------------------------------------------------
@@ -85,35 +83,6 @@ function createApiStub(
   return { api, capturedTools, capturedCommands, capturedHandlers };
 }
 
-/**
- * Create a stub for registerToolDisplayApi tests that need event-driven
- * deferred registration (read/edit/grep deferral).
- */
-function createExtensionApiStub(allTools: unknown[] = []): {
-  api: ExtensionAPI;
-  registeredTools: ToolLike[];
-  eventHandlers: Record<string, () => Promise<void> | void>;
-} {
-  const registeredTools: ToolLike[] = [];
-  const eventHandlers: Record<string, () => Promise<void> | void> = {};
-  const api = {
-    registerTool(tool: ToolLike): void {
-      registeredTools.push(tool);
-    },
-    on(event: string, handler: () => Promise<void> | void): void {
-      eventHandlers[event] = handler;
-    },
-    getAllTools(): unknown[] {
-      return allTools;
-    },
-    getActiveTools(): string[] {
-      return ["read", "grep", "find", "ls", "bash", "edit", "write"];
-    },
-  } as unknown as ExtensionAPI;
-
-  return { api, registeredTools, eventHandlers };
-}
-
 /** Minimal theme stub for render calls. */
 const stubTheme = {
   fg: (_color: string, text: string) => text,
@@ -142,75 +111,6 @@ test("1: after reload, new lifecycle handlers are registered", () => {
   toolDisplayExtension(api);
   const afterSecondCount = capturedHandlers.length;
   assert.ok(afterSecondCount > afterFirstCount, "handlers accumulate on reload");
-});
-
-// ---------------------------------------------------------------------------
-// 2. Tool override restoration
-// ---------------------------------------------------------------------------
-
-test("2: built-in tool overrides are re-registered on reload", async () => {
-  const { api, capturedTools, capturedHandlers } = createApiStub();
-
-  toolDisplayExtension(api);
-  assert.equal(capturedTools.length, 0);
-  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
-  const countBeforeReload = capturedTools.length;
-
-  toolDisplayExtension(api);
-  for (const { event, handler } of capturedHandlers.slice()) if (event === "before_agent_start") await handler();
-  assert.equal(capturedTools.length, countBeforeReload);
-});
-
-test("2: re-registered tools have renderCall and renderResult functions after reload", async () => {
-  const { api, capturedTools, capturedHandlers } = createApiStub();
-
-  toolDisplayExtension(api);
-  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
-  const firstCount = capturedTools.length;
-
-  toolDisplayExtension(api);
-  for (const { event, handler } of capturedHandlers.slice()) if (event === "before_agent_start") await handler();
-  const secondCallTools = capturedTools.slice(firstCount);
-  assert.equal(secondCallTools.length, 0);
-  for (const tool of secondCallTools) {
-    assert.equal(typeof tool.renderCall, "function", `${tool.name} from reload has renderCall`);
-    assert.equal(typeof tool.renderResult, "function", `${tool.name} from reload has renderResult`);
-  }
-});
-
-test("2: reload shuts down the old runtime before the new runtime registers current owners", async () => {
-  const first = createApiStub();
-  toolDisplayExtension(first.api);
-  for (const { event, handler } of first.capturedHandlers) {
-    if (event === "session_start") await handler({ reason: "startup" }, {});
-  }
-  assert.equal(first.capturedTools.length, 0);
-
-  for (const { event, handler } of first.capturedHandlers) {
-    if (event === "session_shutdown") await handler({ reason: "reload" }, {});
-  }
-
-  const second = createApiStub({
-    getActiveTools: () => ["read", "bash", "edit"],
-    getAllTools: () => [{ name: "read", sourceInfo: { source: "local", path: "pi-hashline-edit-pro" } }],
-  });
-  toolDisplayExtension(second.api);
-  for (const { event, handler } of second.capturedHandlers) {
-    if (event === "session_start") await handler({ reason: "reload" }, {});
-  }
-
-  assert.deepEqual(second.capturedTools, []);
-});
-
-test("2: built-in tool overrides wait for lifecycle ownership discovery", async () => {
-  const { api, registeredTools, eventHandlers } = createExtensionApiStub();
-
-  registerToolDisplayApi(() => DEFAULT_TOOL_DISPLAY_CONFIG);
-  assert.equal(registeredTools.length, 0);
-  await eventHandlers.session_start?.();
-  assert.equal(registeredTools.length, 0);
-  await eventHandlers.before_agent_start?.();
-  assert.equal(registeredTools.length, 0, "lifecycle retries do not register executable tools");
 });
 
 // ---------------------------------------------------------------------------
@@ -698,53 +598,6 @@ test("10: active bash spinner timer is cleaned up when execution transitions fro
       if (!clearedIntervals.includes(id)) {
         originalClearInterval(id);
       }
-    }
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 11. State isolation between reloads
-// ---------------------------------------------------------------------------
-
-test("11: each tool override call clones parameters independently", () => {
-  const { api, registeredTools, eventHandlers } = createExtensionApiStub();
-
-  // First call
-  registerToolDisplayApi(() => DEFAULT_TOOL_DISPLAY_CONFIG);
-  const firstParamRefs = new Map(
-    registeredTools.map((t) => [t.name, t.parameters]),
-  );
-
-  // Trigger deferred registration
-  eventHandlers.before_agent_start?.();
-
-  const firstAllParamRefs = new Map(
-    registeredTools.map((t) => [t.name, t.parameters]),
-  );
-
-  // Second call
-  const { api: api2, registeredTools: tools2, eventHandlers: handlers2 } = createExtensionApiStub();
-  registerToolDisplayApi(() => DEFAULT_TOOL_DISPLAY_CONFIG);
-  handlers2.before_agent_start?.();
-
-  const secondParamRefs = new Map(
-    tools2.map((t) => [t.name, t.parameters]),
-  );
-
-  // Parameters from first and second calls should be different objects
-  for (const [name, firstParams] of firstAllParamRefs) {
-    const secondParams = secondParamRefs.get(name);
-    if (secondParams) {
-      assert.notEqual(
-        firstParams,
-        secondParams,
-        `${name} parameters are different objects across calls`,
-      );
-      assert.deepEqual(
-        firstParams,
-        secondParams,
-        `${name} parameters are structurally equal`,
-      );
     }
   }
 });

@@ -33,7 +33,7 @@ const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> 
 	},
 };
 
-function toolOverrideOwnershipEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
+function builtInToolDisplaysEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
 	return (
 		a.builtInToolDisplays.read === b.builtInToolDisplays.read &&
 		a.builtInToolDisplays.grep === b.builtInToolDisplays.grep &&
@@ -65,7 +65,7 @@ function customToolOverridesEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): b
 
 function configsEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
 	return (
-		toolOverrideOwnershipEqual(a, b) &&
+		builtInToolDisplaysEqual(a, b) &&
 		customToolOverridesEqual(a, b) &&
 		a.enableNativeUserMessageBox === b.enableNativeUserMessageBox &&
 		a.readOutputMode === b.readOutputMode &&

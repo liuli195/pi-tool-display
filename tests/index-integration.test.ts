@@ -96,14 +96,23 @@ test("entry point registers tool-display command", () => {
   assert.ok(cmdNames.includes("tool-display"), "tool-display command registered");
 });
 
-test("entry point registers built-in tool overrides after loading", async () => {
-  const { api, capturedTools, capturedHandlers } = createApiStub();
+test("entry point never registers tools across initialization, lifecycle, config commands, and turns", async () => {
+  const { api, capturedTools, capturedHandlers, capturedCommands } = createApiStub();
   toolDisplayExtension(api);
-  assert.equal(capturedTools.length, 0);
-  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
+  assert.deepEqual(capturedTools, []);
 
-  const toolNames = capturedTools.map((t) => t.name);
-  assert.deepEqual(toolNames, []);
+  const ctx = { hasUI: false, ui: { notify() {}, theme: { fg: (_c: string, text: string) => text } } } as unknown as ExtensionCommandContext;
+  for (const event of ["session_start", "before_agent_start", "before_agent_start", "session_shutdown"]) {
+    for (const captured of capturedHandlers.filter((entry) => entry.event === event)) {
+      await captured.handler(event === "session_shutdown" ? { reason: "reload" } : {}, ctx);
+    }
+    assert.deepEqual(capturedTools, [], `zero tool registrations after ${event}`);
+  }
+
+  const command = capturedCommands.find(({ name }) => name === "tool-display");
+  await command?.handler?.("preset balanced", ctx);
+  await command?.handler?.("reset", ctx);
+  assert.deepEqual(capturedTools, [], "configuration changes remain presentation-only");
 });
 
 test("session_start handler refreshes capabilities and notifies pending errors", async () => {
@@ -164,7 +173,7 @@ test("entry point tolerates empty getAllTools and getCommands results", () => {
   assert.doesNotThrow(() => toolDisplayExtension(api));
 });
 
-test("entry point tolerates tools with existing owners in getAllTools", () => {
+test("entry point capability discovery tolerates source metadata", () => {
   const { api } = createApiStub({
     getAllTools: () => [
       { name: "read", sourceInfo: { source: "local", path: "/ext/read.ts" } },
@@ -270,7 +279,7 @@ test("session_start handler tolerates being called multiple times", async () => 
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
 });
 
-test("overridden tools include renderCall and renderResult functions", async () => {
+test("display policy installs without registering executable definitions", async () => {
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} } });
@@ -288,7 +297,7 @@ test("overridden tools include renderCall and renderResult functions", async () 
   }
 });
 
-test("display overrides do not replace built-in definitions", async () => {
+test("display policy does not replace built-in definitions", async () => {
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();

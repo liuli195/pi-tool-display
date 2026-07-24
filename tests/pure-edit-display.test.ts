@@ -4,6 +4,7 @@ import { createRequire, syncBuiltinESMExports } from "node:module";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 import { createToolDisplayResolver } from "../src/tool-display-resolver.ts";
 import { createRendererCatalog } from "../src/renderer-catalog.ts";
+import { buildPendingEditPreviewData } from "../src/pending-diff-preview.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const render = (component: any, width = 120) => component.render(width).join("\n");
@@ -96,7 +97,6 @@ test("pending edit evidence performs zero node:fs and node:fs/promises workspace
   }
   syncBuiltinESMExports();
   try {
-    const { buildPendingEditPreviewData } = await import(`../src/pending-diff-preview.ts?no-edit-read=${Date.now()}`);
     const preview = buildPendingEditPreviewData({ path: "a.ts", oldText: "old", newText: "new" }, process.cwd());
     assert.equal(reads, 0);
     assert.equal(preview?.previousContent, "old");
