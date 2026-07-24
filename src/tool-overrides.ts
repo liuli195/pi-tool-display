@@ -473,12 +473,12 @@ function wrapComponentWithHints(
 /**
  * Visual row budget for expanded previews. Uses expandedPreviewMaxLines as
  * a cap to prevent long single-line content from flooding the viewport.
- * 0 means unlimited (no cap); positive values are clamped to at least 50.
+ * 0 means unlimited (no cap).
  */
 function getExpandedVisualRowCap(config: ToolDisplayConfig): number {
   const limit = config.expandedPreviewMaxLines;
   if (limit <= 0) return Number.MAX_SAFE_INTEGER;
-  return Math.max(50, limit);
+  return limit;
 }
 
 function buildCollapsedPreviewHints(
@@ -500,13 +500,16 @@ function renderPreviewText(
   appendHints: (preview: string) => string,
   expandedOnly: boolean = false,
 ): Component {
+  if (lines.length === 0) {
+    return textResult(theme.fg("muted", "↳ (no output)") + appendHints(""));
+  }
+
   const useExpanded = expandedOnly || options.expanded;
   const maxLines = useExpanded
     ? getExpandedPreviewLineLimit(lines, config)
     : config.previewLines;
 
   if (!useExpanded) {
-    // Pass full content to component so it can detect visual truncation.
     const fullText = lines.map((line) => theme.fg("toolOutput", sanitizeAnsiForThemedOutput(line))).join("\n");
     const preview = new VisualLinePreviewComponent(config.previewLines, false, theme);
     preview.setDisplay(fullText, config.previewLines, false);

@@ -198,4 +198,3 @@ PR review 结果：绝大多数 PR 没有 review body 或 inline review comment�
 - 当前 HEAD 验证：637/637 non-real-runtime tests passed；typecheck/build/`git diff --check` passed；真实 Pi 0.82.0 contract passed。development、Pi 0.81.1 与 minimum-supported runtime 因缺少对应 `PI_RUNTIME_*_ROOT` 而 skipped。
 - 因此：0.82.0 生命周期 contract 有真实运行时证据；仍不能据此证明 0.74.0/0.81.1、交互滚动 viewport、真实 tmux 或所有第三方包共存组合已解决。
 - 报告中的“已由重构解决（runtime caveat）”表示当前源码已移除上游报告的旧根因，并非声称所有声明版本和组合均已验收。
-

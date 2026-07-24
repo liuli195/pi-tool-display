@@ -363,5 +363,3 @@ export function mergeProjectConfig(
 	}
 	return normalizeToolDisplayConfig(merged);
 }
-
-

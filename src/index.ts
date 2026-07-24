@@ -109,8 +109,9 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     }
 
     // If the effective config (after project overlay) is disabled, skip
-    // registering rendering infrastructure.
+    // registering rendering infrastructure and dispose any existing patches.
     if (!mergedConfig.enabled) {
+      disposeAll();
       return;
     }
 
