@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-07-25
+
+### Changed
+- Apply non-Diff collapsed and expanded preview budgets to terminal visual rows, with one extra omission-hint row reporting the exact omitted visual rows.
+- Keep Diff body budgets in logical Diff lines while reporting omitted visual Diff lines.
+- Limit supported Pi peers to the verified `0.81.1` and `0.82.0` releases, matching the Host Adapter and runtime matrix.
+
+### Fixed
+- Pass complete Bash, Read, Search, MCP, and custom-tool output to the final visual renderer instead of pre-truncating logical lines.
+- Persist explicit global configuration mutations without leaking trusted project overlays, and merge nested custom-tool fields without resetting siblings.
+- Dispose owned Host Adapter and native user-message patches on disablement and session transitions, while reinstalling immediately across `/reload`.
+- Update real-runtime spinner assertions for deterministic, timer-free Bash partial output.
+
 ## [0.7.0] - 2026-07-24
 
 ### Added

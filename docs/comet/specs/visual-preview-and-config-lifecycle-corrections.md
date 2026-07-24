@@ -1,6 +1,6 @@
 # Spec: Visual Preview and Configuration Lifecycle Corrections
 
-> Status: Ready for implementation
+> Status: Implemented in v0.7.1
 >
 > Scope: Complete the surviving upstream feedback work without violating the pure-display rendering contract.
 

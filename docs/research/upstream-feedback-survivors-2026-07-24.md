@@ -1,27 +1,21 @@
 # 上游 `MasuRii/pi-tool-display` 反馈在当前重构后的残留审计
 
 - **审计对象**：上游仓库 [`MasuRii/pi-tool-display`](https://github.com/MasuRii/pi-tool-display) 的全部 Issue、PR、Issue/PR 评论、PR review 与 inline review comment。
-- **当前仓库**：`liuli195/pi-tool-display`，`main@4be77657339311093ef07b647d52004221e75416`。
-- **当前 commit 时间**：`2026-07-24T16:15:24+08:00`。
-- **报告日期**：2026-07-24。
-- **结论范围**：主表只列仍可能影响当前用户的项目；完整覆盖矩阵见附录。
+- **原始审计基线**：`main@4be77657339311093ef07b647d52004221e75416`，2026-07-24。
+- **实施复核日期**：2026-07-25。
 
-## 结论摘要
+## 实施复核结论
 
-确认仍存在或存在明确兼容缺口的项目有 4 类：
+| 上游反馈 | 最终状态 | 验证结果 |
+| --- | --- | --- |
+| #36 超长单行绕过预览限制 | **已解决** | 非 Diff 完整正文在最终组件按视觉行预算；Diff 按逻辑 Diff 行预算并报告省略视觉 Diff 行 |
+| #14/#19 Bash 滚动跳底/闪烁 | **已解决** | 删除 spinner、elapsed tick、`setInterval` 和历史行定时 `invalidate()`；真实 runtime 断言无 animated frame |
+| #20/PR #31 Pi 版本兼容 | **已明确支持边界** | peer、Host gate、README 与矩阵统一为已验证的 `0.81.1`、`0.82.0`；两者及 development contract 通过 |
+| PR #27 project-local config | **已解决（只读 overlay）** | 仅 trusted project 读取；显式 global mutation 不持久化 overlay；嵌套 custom 字段保留 siblings |
 
+验证结果：647 个非真实运行时测试通过；development、Pi 0.81.1、Pi 0.82.0 的真实 runtime contract 全部通过。扩展禁用、session transition 与 reload 使用 owned disposer 恢复或重装 native display seam。
 
-| 优先级    | 上游反馈                                                                                                                                 | 当前结论                                                                  | 主要影响                                      | 推荐方案                                                                                             |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **P1** | [#36](https://github.com/MasuRii/pi-tool-display/issues/36) 超长单行绕过预览限制                                                               | **确认仍存在**：read/search/custom/MCP 的 1 行预览在宽度 40 下可渲染为 10 个 visual rows | 输出淹没 viewport，折叠配置失效                      | 复用并泛化现有 `VisualLinePreviewComponent`，在最终组件边界统一按 visual rows 限制                                   |
-| **P1** | [#14](https://github.com/MasuRii/pi-tool-display/issues/14)、[#19](https://github.com/MasuRii/pi-tool-display/issues/19) Bash 滚动跳底/闪烁 | **触发机制仍存在**：每个活动 Bash 仍有 200ms timer 并调用 `invalidate()`；本次未直接复现屏幕症状   | 历史行持续重绘，可能打断滚动并造成 flicker                 | 删除行内动画和 elapsed live tick，依赖 Pi 原生 working indicator；仅在真实工具更新/结束时刷新                              |
-| **P2** | [#20](https://github.com/MasuRii/pi-tool-display/issues/20)、[PR #31](https://github.com/MasuRii/pi-tool-display/pull/31) Pi 版本兼容     | **安装缺口仍存在**：peer range 排除 `0.74.1` 与 `0.80.6`–`0.80.x`                | 使用这些历史版本时可能在 native fallback 前 `ERESOLVE` | 先补对应真实 runtime matrix，再按实测结果扩宽 range；不支持则明确文档化                                                   |
-| **P3** | [PR #27](https://github.com/MasuRii/pi-tool-display/pull/27) project-local config                                                    | **确认未实现**：当前只有单一 global config path                                   | 团队/项目无法覆盖全局显示策略                           | 先做 trusted project read-only overlay；使用 `CONFIG_DIR_NAME` + `ctx.isProjectTrusted()`，写入 scope 后置 |
-
-
-其他上游问题主要已由纯显示重构解决、被移出产品范围，或原反馈本身已被作者放弃。独立验证中 637/637 个非真实运行时测试通过，真实 Pi 0.82.0 contract 也通过；Pi 0.74.0、0.81.1 与 development runtime 因缺少对应 `PI_RUNTIME_*_ROOT` 而跳过，因此不把未运行版本视为已验证。
-
-## 仍存在项目（按优先级）
+## 原始审计发现（历史基线）
 
 ### P1 — 预览预算按逻辑行计数，超长单行仍能填满 viewport（#36）
 

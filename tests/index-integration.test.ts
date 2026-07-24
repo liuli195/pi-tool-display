@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
+import {
+  ToolExecutionComponent,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 
 const testAgentDir = mkdtempSync(join(tmpdir(), "pi-tool-display-index-"));
@@ -200,24 +201,18 @@ test("entry point capability discovery tolerates source metadata", () => {
   assert.doesNotThrow(() => toolDisplayExtension(api));
 });
 
-test("graceful degradation: extension throws when registerCommand is missing", async () => {
-  // Simulate a minimal stub missing registerCommand
-  const capturedHandlers: Array<{ event: string; handler: Function }> = [];
+test("graceful degradation: extension throws when registerCommand is missing", () => {
   const minimalApi = {
     registerTool(): void { /* no-op */ },
-    on(event: string, handler: Function): void { capturedHandlers.push({ event, handler }); },
+    on(): void { /* no-op */ },
     getAllTools(): unknown[] { return []; },
     getCommands(): Array<{ name: string }> { return []; },
   } as unknown as ExtensionAPI;
 
-  // Initialization succeeds (registration deferred to session_start)
-  toolDisplayExtension(minimalApi);
-  // session_start triggers registerCommand which is missing
-  const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
-  await assert.rejects(
-    async () => sessionHandler?.({}, { ui: { notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false }),
+  assert.throws(
+    () => toolDisplayExtension(minimalApi),
     /registerCommand/i,
-    "missing registerCommand should propagate on session_start",
+    "missing registerCommand should propagate during extension registration",
   );
 });
 
@@ -294,6 +289,32 @@ test("session_start handler tolerates being called multiple times", async () => 
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
+});
+
+test("session transition and disabled config restore native renderer ownership", async () => {
+  const configFile = join(testAgentDir, "extensions", "pi-tool-display", "config.json");
+  mkdirSync(join(testAgentDir, "extensions", "pi-tool-display"), { recursive: true });
+  writeFileSync(configFile, JSON.stringify({ enabled: true }), "utf8");
+
+  const prototype = ToolExecutionComponent.prototype as unknown as { getCallRenderer: Function };
+  const { api, capturedHandlers } = createApiStub();
+  toolDisplayExtension(api);
+  const sessionStart = capturedHandlers.find(({ event }) => event === "session_start")?.handler;
+  const sessionShutdown = (reason: string) => {
+    for (const { event, handler } of capturedHandlers) if (event === "session_shutdown") handler({ reason });
+  };
+  const ctx = { ui: { theme: {}, notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false };
+
+  sessionShutdown("new");
+  const nativeCall = prototype.getCallRenderer;
+  await sessionStart?.({}, ctx);
+  assert.notStrictEqual(prototype.getCallRenderer, nativeCall);
+  sessionShutdown("new");
+  assert.strictEqual(prototype.getCallRenderer, nativeCall);
+
+  writeFileSync(configFile, JSON.stringify({ enabled: false }), "utf8");
+  await sessionStart?.({}, ctx);
+  assert.strictEqual(prototype.getCallRenderer, nativeCall);
 });
 
 test("display policy installs without registering executable definitions", async () => {

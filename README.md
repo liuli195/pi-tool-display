@@ -117,9 +117,9 @@ The deprecated `decorateToolForDisplay(tool, adapter)` migration facade register
 
 ## Compatibility
 
-Supported Pi versions are stable releases from `0.81.1` onward. The release matrix exercises `0.81.1`, `0.82.0`, and the development runtime.
+Supported Pi releases are exactly `0.81.1` and `0.82.0`; the release matrix also exercises the development runtime. Other versions use native rendering when installation is otherwise possible.
 
-Versions `0.74.0` and `0.75.x`–`0.80.x` are **not supported**. While earlier versions may load the extension through native fallback, they are not tested or qualified, and npm installation may fail with `ERESOLVE` if the peer dependency range does not match. Use Pi `0.81.1` or later for a supported experience.
+Versions below `0.81.1` and unverified releases after `0.82.0` are **not supported**. The peer dependency range, Host Adapter gate, and release matrix intentionally match this verified set.
 
 Older, prerelease, or incompatible private TUI shapes emit one concise debug diagnostic and keep Pi's native rendering and execution.
 
@@ -179,7 +179,7 @@ The `.pi` directory name uses Pi's `CONFIG_DIR_NAME` constant and is not hardcod
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
 | `mcpOutputMode` | string | `"hidden"` | Fallback `hidden`, `summary`, or `preview` mode for explicitly registered MCP producer adapters; it does not discover or opt tools into rendering |
 | `previewLines` | number | `8` | Lines shown in collapsed preview mode |
-| `expandedPreviewMaxLines` | number | `4000` | Max expanded source lines for read/search/MCP/Bash previews; expanded diffs use it as a rendered-row bound |
+| `expandedPreviewMaxLines` | number | `4000` | Max expanded visual rows for non-Diff previews; for Diff it caps logical Diff lines |
 | `bashOutputMode` | string | `"opencode"` | `opencode` (collapse), `summary` (line count), or `preview` (show lines) |
 | `bashCollapsedLines` | number | `10` | Visual rows shown for collapsed Bash output in opencode mode |
 | `bashCommandMode` | string | `"preview"` | Bash command display: `full`, `summary`, or `preview` |
@@ -319,7 +319,7 @@ Debug logging is disabled by default. Set `debug` to `true` in the extension roo
 
 ### Edit and write diffs
 
-`edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. Collapsed limits count logical diff content lines, so split headers, trusted omission metadata, and wrapped continuations do not consume the budget. Expanded limits still count rendered rows to keep small panes bounded.
+`edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. Collapsed and expanded limits count logical Diff content lines, so headers, trusted omission metadata, and wrapped continuations do not consume the body budget. The extra omission hint reports the omitted visual Diff lines.
 
 Partial `edit` calls can render a diff only from explicit old/new text supplied by the call. `write` calls show neutral content summaries unless the tool supplies trustworthy diff evidence. Rendering never reads the workspace to reconstruct a preimage or infer create/overwrite semantics.
 
@@ -403,7 +403,7 @@ pi-tool-display/
 │   └── config.example.json          # Starter config template
 └── tests/
     ├── ansi-utils.test.ts           # ANSI utility tests including foreground RGB preservation
-    ├── bash-display.test.ts         # Bash display and spinner tests
+    ├── bash-display.test.ts         # Deterministic Bash display tests
     ├── capabilities-edge.test.ts    # Capability detection edge cases
     ├── config-modal.test.ts         # Config modal tests
     ├── custom-tool-overrides.test.ts # Opt-in custom tool override tests

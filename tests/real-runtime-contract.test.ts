@@ -75,6 +75,9 @@ test("runtime matrix pins development, Pi 0.81.1, and Pi 0.82.0", () => {
   ]);
   assert.equal(matrix.every(({ required }) => required), true);
   assert.equal(matrix.find(({ name }) => name === "development")?.env, "PI_RUNTIME_DEV_ROOT");
+  const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8"));
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], "0.81.1 || 0.82.0");
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-tui"], "0.81.1 || 0.82.0");
 });
 
 for (const entry of matrix) {
@@ -115,11 +118,15 @@ for (const entry of matrix) {
       ["mcp", "↳ 3 lines returned", "mcp proxy first line"],
       ["mcp_direct_fixture", "↳ 4 lines returned", "mcp direct first line"],
     ] as const;
-    for (const frame of [cold, plain(observation.present.tuiOutput.reload), plain(observation.present.tuiOutput.newCall)]) {
+    for (const [frameName, frame] of [
+      ["cold", cold],
+      ["reload", plain(observation.present.tuiOutput.reload)],
+      ["new-call", plain(observation.present.tuiOutput.newCall)],
+    ] as const) {
       for (const [name, summary, nativeOutput] of summaries) {
-        assert.match(frame, new RegExp(`\\b${name}\\b`));
-        assert.match(frame, new RegExp(`${summary}(?: • Ctrl\\+O to expand)?`), `${name} must render its exact line-count summary`);
-        assert.doesNotMatch(frame, new RegExp(nativeOutput));
+        assert.match(frame, new RegExp(`\\b${name}\\b`), `${frameName}: ${name} call must remain visible`);
+        assert.match(frame, new RegExp(`${summary}(?: • Ctrl\\+O to expand)?`), `${frameName}: ${name} must render its exact line-count summary`);
+        assert.doesNotMatch(frame, new RegExp(nativeOutput), `${frameName}: ${name} native output must stay folded`);
       }
     }
     for (const frame of [observation.present.tuiOutput.expandedCold, observation.present.tuiOutput.expandedReload]) {
@@ -308,9 +315,8 @@ for (const entry of matrix) {
       const partial = plain(bash.present.tuiOutput.partialNewCall);
       assert.match(partial, /contract streaming output/);
       assert.doesNotMatch(partial, /contract streaming folded second line/);
-      assert.notEqual(bash.present.tuiOutput.animatedPartialNewCall, "");
-      // Spinner removed: animated partial should be identical to partial (deterministic)
-      assert.equal(plain(bash.present.tuiOutput.animatedPartialNewCall), partial);
+      // Spinner removed: no timer-driven animated frame is produced.
+      assert.equal(bash.present.tuiOutput.animatedPartialNewCall, "");
       assert.match(plain(bash.present.tuiOutput.newCall), /contract final output/);
       assert.doesNotMatch(plain(bash.present.tuiOutput.newCall), /contract final folded second line/);
       assert.match(plain(bash.present.tuiOutput.expandedNewCall), /contract final folded second line/);

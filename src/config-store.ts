@@ -359,12 +359,12 @@ function mergeNestedConfigField(
  * so project overrides of one nested field don't reset unrelated global fields.
  * The result is re-normalized to clamp project values to valid ranges.
  */
-export function mergeProjectConfig(
-	globalConfig: ToolDisplayConfig,
-	projectConfig: ToolDisplayConfigOverlay,
+export function applyToolDisplayConfigPatch(
+	baseConfig: ToolDisplayConfig,
+	patch: ToolDisplayConfigOverlay,
 ): ToolDisplayConfig {
-	const merged = { ...globalConfig } as Record<string, unknown>;
-	const project = projectConfig as Record<string, unknown>;
+	const merged = { ...baseConfig } as Record<string, unknown>;
+	const project = patch as Record<string, unknown>;
 	for (const key of Object.keys(project)) {
 		const projectValue = project[key];
 		if (projectValue === undefined) continue;
@@ -375,4 +375,11 @@ export function mergeProjectConfig(
 		}
 	}
 	return normalizeToolDisplayConfig(merged);
+}
+
+export function mergeProjectConfig(
+	globalConfig: ToolDisplayConfig,
+	projectConfig: ToolDisplayConfigOverlay,
+): ToolDisplayConfig {
+	return applyToolDisplayConfigPatch(globalConfig, projectConfig);
 }

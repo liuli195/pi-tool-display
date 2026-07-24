@@ -400,38 +400,36 @@ test("historical rows refresh display without changing ownership or execution", 
   });
 });
 
-test("session switches keep the installed host renderer patch", () => {
+test("owned disposer restores the host renderer for every session transition", () => {
   const prototype = ToolExecutionComponent.prototype as any;
   const originalCall = prototype.getCallRenderer;
   const runtime = apiStub();
-  registerToolExecutionPatch(runtime.api, () => config({ configured: true }));
-  const patchedCall = prototype.getCallRenderer;
-  assert.notStrictEqual(patchedCall, originalCall);
+  const dispose = registerToolExecutionPatch(runtime.api, () => config({ configured: true }));
+  assert.notStrictEqual(prototype.getCallRenderer, originalCall);
 
-  for (const reason of ["new", "resume", "fork"]) {
-    runtime.handlers.session_shutdown?.({ reason });
-    assert.strictEqual(prototype.getCallRenderer, patchedCall);
-  }
-  runtime.handlers.session_shutdown?.({ reason: "quit" });
+  dispose();
+  assert.strictEqual(prototype.getCallRenderer, originalCall);
+  dispose();
   assert.strictEqual(prototype.getCallRenderer, originalCall);
 });
 
-test("reload restores the prototype and reinstallation does not stack wrappers", () => {
+test("disposal restores the prototype and reinstallation does not stack wrappers", () => {
   const prototype = ToolExecutionComponent.prototype as any;
   const originalCall = prototype.getCallRenderer;
   const originalResult = prototype.getResultRenderer;
   const first = apiStub();
-  registerToolExecutionPatch(first.api, () => config({ configured: true }));
+  const disposeFirst = registerToolExecutionPatch(first.api, () => config({ configured: true }));
   const firstPatchedCall = prototype.getCallRenderer;
-  registerToolExecutionPatch(first.api, () => config({ configured: true }));
+  const disposeDuplicate = registerToolExecutionPatch(first.api, () => config({ configured: true }));
   assert.equal(prototype.getCallRenderer, firstPatchedCall);
-  first.handlers.session_shutdown?.({ reason: "reload" });
+  disposeDuplicate();
+  disposeFirst();
   assert.equal(prototype.getCallRenderer, originalCall);
   assert.equal(prototype.getResultRenderer, originalResult);
 
   const second = apiStub();
-  registerToolExecutionPatch(second.api, () => config({ configured: true }));
+  const disposeSecond = registerToolExecutionPatch(second.api, () => config({ configured: true }));
   assert.notEqual(prototype.getCallRenderer, originalCall);
-  second.handlers.session_shutdown?.({ reason: "reload" });
+  disposeSecond();
   assert.equal(prototype.getCallRenderer, originalCall);
 });
