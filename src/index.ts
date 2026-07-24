@@ -17,7 +17,7 @@ import {
   type ToolDisplayCapabilities,
 } from "./capabilities.js";
 import { registerToolDisplayApi } from "./tool-overrides.js";
-import { registerToolExecutionPatch } from "./tool-execution-patch.js";
+import { invalidateToolExecutionRows, registerToolExecutionPatch } from "./tool-execution-patch.js";
 import { disposeAll, registerCleanup, resetDisposed } from "./disposable.js";
 import registerNativeUserMessageBox from "./user-message-box-native.js";
 import type { UserMessageTheme } from "./user-message-box-renderer.js";
@@ -32,15 +32,16 @@ const RELOAD_STATE = Symbol.for("pi-tool-display.reload-state.v1");
 interface ReloadState {
   projectConfigPath?: string;
   theme?: UserMessageTheme;
+  lastShutdownReason?: string;
 }
 type GlobalWithReloadState = typeof globalThis & { [RELOAD_STATE]?: ReloadState };
 
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
   const initial = loadToolDisplayConfig();
-  resetDisposed();
-
   const globalWithReloadState = globalThis as GlobalWithReloadState;
   const reloadState = globalWithReloadState[RELOAD_STATE];
+  const ordinarySessionTransition = ["new", "resume", "fork"].includes(reloadState?.lastShutdownReason ?? "");
+  if (!ordinarySessionTransition) resetDisposed();
   const reloadedProject = reloadState?.projectConfigPath
     ? readProjectToolDisplayConfig(reloadState.projectConfigPath)
     : undefined;
@@ -96,6 +97,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
 
     const saved = saveToolDisplayConfig(globalConfig);
     if (!saved.success && saved.error) ctx.ui.notify(saved.error, "error");
+    invalidateToolExecutionRows();
     installSession();
   };
 
@@ -109,9 +111,14 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", (event: { reason: string }) => {
     uninstallSession();
-    if (event.reason !== "reload") {
+    if (event.reason === "reload") {
+      globalWithReloadState[RELOAD_STATE] = {
+        ...globalWithReloadState[RELOAD_STATE],
+        lastShutdownReason: event.reason,
+      };
+    } else {
       activeTheme = undefined;
-      delete globalWithReloadState[RELOAD_STATE];
+      globalWithReloadState[RELOAD_STATE] = { lastShutdownReason: event.reason };
     }
     if (event.reason === "reload" || event.reason === "quit") disposeAll();
   });

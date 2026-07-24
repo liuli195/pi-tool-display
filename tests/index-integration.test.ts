@@ -5,6 +5,8 @@ import { join } from "node:path";
 import test, { after } from "node:test";
 import {
   CONFIG_DIR_NAME,
+  createReadTool,
+  initTheme,
   ToolExecutionComponent,
   type ExtensionAPI,
   type ExtensionCommandContext,
@@ -14,9 +16,12 @@ const testAgentDir = mkdtempSync(join(tmpdir(), "pi-tool-display-index-"));
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 process.env.PI_CODING_AGENT_DIR = testAgentDir;
 const { default: toolDisplayExtension } = await import("../src/index.ts");
+const { createRendererCatalog } = await import("../src/renderer-catalog.ts");
+const { DEFAULT_TOOL_DISPLAY_CONFIG } = await import("../src/types.ts");
 if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
 after(() => rmSync(testAgentDir, { recursive: true, force: true }));
+initTheme(undefined, false);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -340,6 +345,49 @@ test("reload preserves the trusted project overlay before another session_start"
     ui: { notify(message: string) { notifications.push(message); } },
   });
   assert.match(notifications.join("\n"), /read=preview/);
+  for (const { event, handler } of second.capturedHandlers) if (event === "session_shutdown") handler({ reason: "quit" });
+});
+
+test("public config mutation invalidates ToolExecution rows already rendered", async () => {
+  const runtime = createApiStub();
+  toolDisplayExtension(runtime.api);
+  const row = new ToolExecutionComponent(
+    "read",
+    "config-refresh",
+    { path: "fixture.txt" },
+    {},
+    createReadTool(process.cwd()),
+    { requestRender() {} } as any,
+    process.cwd(),
+  );
+  row.updateResult({ content: [{ type: "text", text: "one\ntwo" }], details: {} } as any);
+  row.render(80);
+  const originalInvalidate = row.invalidate.bind(row);
+  let invalidations = 0;
+  row.invalidate = () => { invalidations++; originalInvalidate(); };
+
+  await runtime.capturedCommands.find(({ name }) => name === "tool-display")?.handler?.("preset balanced", {
+    ui: { notify() {} },
+  });
+  assert.ok(invalidations > 0);
+  for (const { event, handler } of runtime.capturedHandlers) if (event === "session_shutdown") handler({ reason: "quit" });
+});
+
+test("ordinary session factory replacement preserves producer Adapter intent", () => {
+  const first = createApiStub();
+  toolDisplayExtension(first.api);
+  const apiSymbol = Symbol.for("pi-tool-display.api.v1");
+  const producerApi = (globalThis as any)[apiSymbol];
+  producerApi.registerAdapter({ id: "before-transition", toolName: "before_transition", kind: "generic" });
+  for (const { event, handler } of first.capturedHandlers) if (event === "session_shutdown") handler({ reason: "new" });
+  producerApi.registerAdapter({ id: "during-transition", toolName: "during_transition", kind: "generic" });
+
+  const second = createApiStub();
+  toolDisplayExtension(second.api);
+  assert.strictEqual((globalThis as any)[apiSymbol], producerApi);
+  const catalog = createRendererCatalog();
+  assert.ok(catalog.resolve({ toolName: "before_transition", arguments: {} }, DEFAULT_TOOL_DISPLAY_CONFIG, {}));
+  assert.ok(catalog.resolve({ toolName: "during_transition", arguments: {} }, DEFAULT_TOOL_DISPLAY_CONFIG, {}));
   for (const { event, handler } of second.capturedHandlers) if (event === "session_shutdown") handler({ reason: "quit" });
 });
 

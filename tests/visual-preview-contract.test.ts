@@ -32,6 +32,14 @@ test("Bash success preview budgets complete text by visual lines", () => {
   assertWidthSafe(lines, 10);
 });
 
+test("zero Bash body budget still reports omitted visual rows for partial and complete output", () => {
+  const renderResult = resolveResult("bash", { bashOutputMode: "opencode", bashCollapsedLines: 0 }, { command: "printf" });
+  for (const isPartial of [false, true]) {
+    const lines = renderResult(result("one\ntwo"), options(false, isPartial), theme, { args: { command: "printf" } }).render(40);
+    assert.deepEqual(lines, ["… (2 more visual lines)"]);
+  }
+});
+
 test("expanded Bash error preview caps complete text by visual lines", () => {
   const renderResult = resolveResult("bash", { bashErrorOutputMode: "preview", expandedPreviewMaxLines: 1 }, { command: "false" });
   const lines = renderResult(result("123456789012345\nb\nc"), options(true), theme, { args: { command: "false" }, isError: true }).render(10);

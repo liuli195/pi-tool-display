@@ -68,6 +68,7 @@ interface RtkCompactionInfo {
 
 const RTK_COMPACTION_LABEL = "compacted by RTK";
 const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
+const TOOL_DISPLAY_API_STATE_KEY = Symbol.for("pi-tool-display.api-state.v1");
 const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
 
 type ToolDisplayKind = "read" | "edit" | "mcp" | "generic";
@@ -97,8 +98,14 @@ interface PendingToolDisplayDecoration {
   liveDispose?: () => void;
 }
 
+interface ToolDisplayApiState {
+  api: ToolDisplayApi;
+  getConfig: ConfigGetter;
+}
+
 type GlobalWithToolDisplayApi = typeof globalThis & {
   [TOOL_DISPLAY_API_KEY]?: ToolDisplayApi;
+  [TOOL_DISPLAY_API_STATE_KEY]?: ToolDisplayApiState;
   [TOOL_DISPLAY_PENDING_DECORATIONS_KEY]?: PendingToolDisplayDecoration[];
 };
 
@@ -571,11 +578,7 @@ function prepareBashLivePreview(
   if (lines.length === 0) {
     return undefined;
   }
-  const maxLines = getBashPreviewLineLimit(options, config);
-  if (!options.expanded && maxLines === 0) {
-    return undefined;
-  }
-  return { lines, maxLines };
+  return { lines, maxLines: getBashPreviewLineLimit(options, config) };
 }
 
 function renderBashLivePreview(
@@ -652,11 +655,6 @@ export function renderBashResult(
   }
   if (config.bashOutputMode === "preview") {
     return renderBashPreviewWithHints(lines, config.previewLines, config, theme, options, details);
-  }
-  if (!options.expanded && config.bashCollapsedLines === 0) {
-    let hidden = theme.fg("muted", "↳ output hidden");
-    if (config.showTruncationHints) hidden += formatBashTruncationHints(details, theme);
-    return textResult(hidden);
   }
   if (options.expanded) return renderBashPreviewWithHints(lines, lines.length, config, theme, options, details);
   return renderBashVisualPreview(lines, config.bashCollapsedLines, config, theme, details);
@@ -1029,7 +1027,7 @@ function drainPendingToolDisplayDecorations(api: ToolDisplayApi, getConfig: Conf
   entries.length = 0;
 }
 
-function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
+function installToolDisplayApi(state: Omit<ToolDisplayApiState, "api">): ToolDisplayApi {
   const disposers = new Set<() => void>();
   const legacyDisposers = new Map<string, () => void>();
   const api: ToolDisplayApi = {
@@ -1051,21 +1049,32 @@ function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
       if (!toolName) throw new Error("Tool display compatibility registration requires tool.name");
       const key = `${toolName}:${adapter?.id ?? toolName}`;
       legacyDisposers.get(key)?.();
-      const dispose = api.registerAdapter(toProducerAdapter(toolName, adapter, _getConfig));
+      const dispose = api.registerAdapter(toProducerAdapter(toolName, adapter, () => state.getConfig()));
       legacyDisposers.set(key, dispose);
       return tool;
     },
   };
   (globalThis as GlobalWithToolDisplayApi)[TOOL_DISPLAY_API_KEY] = api;
-  drainPendingToolDisplayDecorations(api, _getConfig);
+  drainPendingToolDisplayDecorations(api, () => state.getConfig());
   registerCleanup(() => { for (const dispose of [...disposers]) dispose(); });
   return api;
 }
 
 export function registerToolDisplayApi(getConfig: ConfigGetter): void {
-  const toolDisplayApi = installToolDisplayApi(getConfig);
+  const globalWithApi = globalThis as GlobalWithToolDisplayApi;
+  const existing = globalWithApi[TOOL_DISPLAY_API_STATE_KEY];
+  if (existing && globalWithApi[TOOL_DISPLAY_API_KEY] === existing.api) {
+    existing.getConfig = getConfig;
+    drainPendingToolDisplayDecorations(existing.api, () => existing.getConfig());
+    return;
+  }
+
+  const state = { getConfig } as ToolDisplayApiState;
+  const toolDisplayApi = installToolDisplayApi(state);
+  state.api = toolDisplayApi;
+  globalWithApi[TOOL_DISPLAY_API_STATE_KEY] = state;
   registerCleanup(() => {
-    const globalWithApi = globalThis as GlobalWithToolDisplayApi;
     if (globalWithApi[TOOL_DISPLAY_API_KEY] === toolDisplayApi) delete globalWithApi[TOOL_DISPLAY_API_KEY];
+    if (globalWithApi[TOOL_DISPLAY_API_STATE_KEY] === state) delete globalWithApi[TOOL_DISPLAY_API_STATE_KEY];
   });
 }

@@ -1,9 +1,13 @@
 import { ToolExecutionComponent, VERSION, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createPiToolDisplayResolver } from "./tool-display-runtime.js";
-import { installPiHostAdapter } from "./pi-host-adapter.js";
+import { installPiHostAdapter, invalidatePiHostAdapterRows } from "./pi-host-adapter.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerSessionCleanup } from "./disposable.js";
 import type { ToolDisplayConfig } from "./types.js";
+
+export function invalidateToolExecutionRows(): void {
+  invalidatePiHostAdapterRows(ToolExecutionComponent.prototype);
+}
 
 export function registerToolExecutionPatch(_pi: ExtensionAPI, getConfig: () => ToolDisplayConfig): () => void {
   const installation = installPiHostAdapter(

@@ -3,6 +3,7 @@ import type { ToolDisplayResolver } from "./tool-display-resolver.js";
 type RendererSelector = (this: ToolRowHost, ...args: any[]) => ((...args: any[]) => any) | undefined;
 interface ToolRowHost {
   toolName?: string;
+  invalidate?: () => void;
   args?: Record<string, unknown>;
   toolDefinition?: Record<string, unknown>;
   builtInToolDefinition?: Record<string, unknown>;
@@ -13,6 +14,8 @@ interface Installation {
   resolver: ToolDisplayResolver;
   patchedCall: RendererSelector;
   patchedResult: RendererSelector;
+  active: boolean;
+  rows: Set<ToolRowHost>;
 }
 const STATE = Symbol.for("pi-tool-display.piHostAdapter.v1");
 type HostPrototype = ToolRowHost & { getCallRenderer?: RendererSelector; getResultRenderer?: RendererSelector; [STATE]?: Installation };
@@ -61,14 +64,16 @@ function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVers
     label: typeof instance.toolDefinition?.label === "string" ? instance.toolDefinition.label : undefined,
     builtIn: instance.builtInToolDefinition?.name === (instance.toolDefinition?.name ?? instance.toolName),
   });
-  const state = { call, result, resolver } as Installation;
+  const state = { call, result, resolver, active: true, rows: new Set<ToolRowHost>() } as Installation;
   const patchedCall: RendererSelector = function (...args: any[]) {
     const native = originalCall.apply(this, args);
-    return state.resolver.resolve(row(this), { call: native }).call;
+    state.rows.add(this);
+    return state.active ? state.resolver.resolve(row(this), { call: native }).call : native;
   };
   const patchedResult: RendererSelector = function (...args: any[]) {
     const native = originalResult.apply(this, args);
-    return state.resolver.resolve(row(this), { result: native }).result;
+    state.rows.add(this);
+    return state.active ? state.resolver.resolve(row(this), { result: native }).result : native;
   };
   state.patchedCall = patchedCall;
   state.patchedResult = patchedResult;
@@ -108,5 +113,13 @@ function rollback(prototype: HostPrototype, state: Installation): void {
 }
 
 function dispose(prototype: HostPrototype, state: Installation): void {
+  state.active = false;
+  state.rows.clear();
   rollback(prototype, state);
+}
+
+export function invalidatePiHostAdapterRows(host: object): void {
+  const state = ownState(host as HostPrototype);
+  if (!state?.active) return;
+  for (const row of state.rows) row.invalidate?.();
 }

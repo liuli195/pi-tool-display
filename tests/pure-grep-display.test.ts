@@ -3,7 +3,7 @@ import test from "node:test";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 import { createToolDisplayResolver } from "../src/tool-display-resolver.ts";
 import { createRendererCatalog } from "../src/renderer-catalog.ts";
-import { installPiHostAdapter } from "../src/pi-host-adapter.ts";
+import { installPiHostAdapter, invalidatePiHostAdapterRows } from "../src/pi-host-adapter.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const output = { content: [{ type: "text", text: "a:1\nb:2\nc:3" }], details: {} };
@@ -103,6 +103,34 @@ test("Pi Host Adapter is transactional, idempotent, receiver-safe, and conflict-
   } finally {
     installation?.dispose();
   }
+});
+
+test("Pi Host Adapter invalidates rows already resolved through the display seam", () => {
+  const { host } = syntheticHost();
+  const installation = installPiHostAdapter(host, config("count"), "0.81.1");
+  let invalidations = 0;
+  const row = { toolName: "grep", args: {}, builtInToolDefinition: { name: "grep" }, invalidate() { invalidations++; } };
+  host.getResultRenderer.call(row);
+
+  invalidatePiHostAdapterRows(host);
+  assert.equal(invalidations, 1);
+  installation.dispose();
+  invalidatePiHostAdapterRows(host);
+  assert.equal(invalidations, 1);
+});
+
+test("Pi Host Adapter disposal deactivates its wrapper beneath a later foreign wrapper", () => {
+  const { host } = syntheticHost();
+  const installation = installPiHostAdapter(host, config("count"), "0.81.1");
+  const installedSelector = host.getResultRenderer;
+  host.getResultRenderer = function (this: unknown, ...args: unknown[]) {
+    return installedSelector.apply(this, args);
+  };
+  const row = { toolName: "grep", args: { pattern: "x" }, builtInToolDefinition: { name: "grep" } };
+
+  assert.match(render(host.getResultRenderer.call(row)(output, { expanded: false, isPartial: false }, theme)), /3 matches/);
+  installation.dispose();
+  assert.equal(render(host.getResultRenderer.call(row)(output, { expanded: false, isPartial: false }, theme)), "native result");
 });
 
 test("Pi Host Adapter retains ownership tracking until an interrupted mixed disposal can finish", () => {
