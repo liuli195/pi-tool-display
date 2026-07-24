@@ -44,40 +44,8 @@ function toBoolean(value: unknown, fallback: boolean): boolean {
 	return typeof value === "boolean" ? value : fallback;
 }
 
-function toReadOutputMode(value: unknown): ToolDisplayConfig["readOutputMode"] {
-	return READ_OUTPUT_MODES.includes(value as ToolDisplayConfig["readOutputMode"])
-		? (value as ToolDisplayConfig["readOutputMode"])
-		: DEFAULT_TOOL_DISPLAY_CONFIG.readOutputMode;
-}
-
-function toSearchOutputMode(value: unknown): ToolDisplayConfig["searchOutputMode"] {
-	return SEARCH_OUTPUT_MODES.includes(value as ToolDisplayConfig["searchOutputMode"])
-		? (value as ToolDisplayConfig["searchOutputMode"])
-		: DEFAULT_TOOL_DISPLAY_CONFIG.searchOutputMode;
-}
-
-function toMcpOutputMode(value: unknown): ToolDisplayConfig["mcpOutputMode"] {
-	return MCP_OUTPUT_MODES.includes(value as ToolDisplayConfig["mcpOutputMode"])
-		? (value as ToolDisplayConfig["mcpOutputMode"])
-		: DEFAULT_TOOL_DISPLAY_CONFIG.mcpOutputMode;
-}
-
-function toBashOutputMode(value: unknown): ToolDisplayConfig["bashOutputMode"] {
-	return BASH_OUTPUT_MODES.includes(value as ToolDisplayConfig["bashOutputMode"])
-		? (value as ToolDisplayConfig["bashOutputMode"])
-		: DEFAULT_TOOL_DISPLAY_CONFIG.bashOutputMode;
-}
-
-function toBashCommandMode(value: unknown): ToolDisplayConfig["bashCommandMode"] {
-	return BASH_COMMAND_MODES.includes(value as ToolDisplayConfig["bashCommandMode"])
-		? (value as ToolDisplayConfig["bashCommandMode"])
-		: DEFAULT_TOOL_DISPLAY_CONFIG.bashCommandMode;
-}
-
-function toBashErrorOutputMode(value: unknown): ToolDisplayConfig["bashErrorOutputMode"] {
-	return BASH_ERROR_OUTPUT_MODES.includes(value as ToolDisplayConfig["bashErrorOutputMode"])
-		? (value as ToolDisplayConfig["bashErrorOutputMode"])
-		: DEFAULT_TOOL_DISPLAY_CONFIG.bashErrorOutputMode;
+function parseEnum<T>(value: unknown, values: readonly T[], fallback: T): T {
+	return values.includes(value as T) ? value as T : fallback;
 }
 
 function toDiffViewMode(value: unknown): ToolDisplayConfig["diffViewMode"] {
@@ -86,15 +54,7 @@ function toDiffViewMode(value: unknown): ToolDisplayConfig["diffViewMode"] {
 		return "unified";
 	}
 
-	return DIFF_VIEW_MODES.includes(value as ToolDisplayConfig["diffViewMode"])
-		? (value as ToolDisplayConfig["diffViewMode"])
-		: DEFAULT_TOOL_DISPLAY_CONFIG.diffViewMode;
-}
-
-function toDiffIndicatorMode(value: unknown): ToolDisplayConfig["diffIndicatorMode"] {
-	return DIFF_INDICATOR_MODES.includes(value as ToolDisplayConfig["diffIndicatorMode"])
-		? (value as ToolDisplayConfig["diffIndicatorMode"])
-		: DEFAULT_TOOL_DISPLAY_CONFIG.diffIndicatorMode;
+	return parseEnum(value, DIFF_VIEW_MODES, DEFAULT_TOOL_DISPLAY_CONFIG.diffViewMode);
 }
 
 export function cloneCustomToolOverrides(
@@ -162,15 +122,11 @@ function isBuiltInToolDisplayName(toolName: string): boolean {
 }
 
 export function toCustomToolOverrideKind(value: unknown): CustomToolOverrideConfig["kind"] {
-	return CUSTOM_TOOL_OVERRIDE_KINDS.includes(value as CustomToolOverrideConfig["kind"])
-		? (value as CustomToolOverrideConfig["kind"])
-		: "generic";
+	return parseEnum(value, CUSTOM_TOOL_OVERRIDE_KINDS, "generic");
 }
 
 export function toCustomToolOutputMode(value: unknown): CustomToolOverrideConfig["outputMode"] {
-	return CUSTOM_TOOL_OUTPUT_MODES.includes(value as CustomToolOverrideConfig["outputMode"])
-		? (value as CustomToolOverrideConfig["outputMode"])
-		: "summary";
+	return parseEnum(value, CUSTOM_TOOL_OUTPUT_MODES, "summary");
 }
 
 export function normalizeCustomToolOverrideEntry(rawEntry: unknown): CustomToolOverrideConfig | undefined {
@@ -233,9 +189,9 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 			source.enableNativeUserMessageBox,
 			DEFAULT_TOOL_DISPLAY_CONFIG.enableNativeUserMessageBox,
 		),
-		readOutputMode: toReadOutputMode(source.readOutputMode),
-		searchOutputMode: toSearchOutputMode(source.searchOutputMode),
-		mcpOutputMode: toMcpOutputMode(source.mcpOutputMode),
+		readOutputMode: parseEnum(source.readOutputMode, READ_OUTPUT_MODES, DEFAULT_TOOL_DISPLAY_CONFIG.readOutputMode),
+		searchOutputMode: parseEnum(source.searchOutputMode, SEARCH_OUTPUT_MODES, DEFAULT_TOOL_DISPLAY_CONFIG.searchOutputMode),
+		mcpOutputMode: parseEnum(source.mcpOutputMode, MCP_OUTPUT_MODES, DEFAULT_TOOL_DISPLAY_CONFIG.mcpOutputMode),
 		previewLines: clampNumber(source.previewLines, 1, 80, DEFAULT_TOOL_DISPLAY_CONFIG.previewLines),
 		expandedPreviewMaxLines: clampNumber(
 			source.expandedPreviewMaxLines,
@@ -243,16 +199,16 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 			20_000,
 			DEFAULT_TOOL_DISPLAY_CONFIG.expandedPreviewMaxLines,
 		),
-		bashOutputMode: toBashOutputMode(source.bashOutputMode),
+		bashOutputMode: parseEnum(source.bashOutputMode, BASH_OUTPUT_MODES, DEFAULT_TOOL_DISPLAY_CONFIG.bashOutputMode),
 		bashCollapsedLines: clampNumber(source.bashCollapsedLines, 0, 80, DEFAULT_TOOL_DISPLAY_CONFIG.bashCollapsedLines),
-		bashCommandMode: toBashCommandMode(source.bashCommandMode),
+		bashCommandMode: parseEnum(source.bashCommandMode, BASH_COMMAND_MODES, DEFAULT_TOOL_DISPLAY_CONFIG.bashCommandMode),
 		bashCommandPreviewLines: clampNumber(
 			source.bashCommandPreviewLines,
 			1,
 			80,
 			DEFAULT_TOOL_DISPLAY_CONFIG.bashCommandPreviewLines,
 		),
-		bashErrorOutputMode: toBashErrorOutputMode(source.bashErrorOutputMode),
+		bashErrorOutputMode: parseEnum(source.bashErrorOutputMode, BASH_ERROR_OUTPUT_MODES, DEFAULT_TOOL_DISPLAY_CONFIG.bashErrorOutputMode),
 		bashErrorPreviewLines: clampNumber(
 			source.bashErrorPreviewLines,
 			1,
@@ -260,7 +216,7 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 			DEFAULT_TOOL_DISPLAY_CONFIG.bashErrorPreviewLines,
 		),
 		diffViewMode: toDiffViewMode(source.diffViewMode),
-		diffIndicatorMode: toDiffIndicatorMode(source.diffIndicatorMode),
+		diffIndicatorMode: parseEnum(source.diffIndicatorMode, DIFF_INDICATOR_MODES, DEFAULT_TOOL_DISPLAY_CONFIG.diffIndicatorMode),
 		diffSplitMinWidth: clampNumber(source.diffSplitMinWidth, 70, 240, DEFAULT_TOOL_DISPLAY_CONFIG.diffSplitMinWidth),
 		diffCollapsedLines: clampNumber(source.diffCollapsedLines, 4, 240, DEFAULT_TOOL_DISPLAY_CONFIG.diffCollapsedLines),
 		diffWordWrap: toBoolean(source.diffWordWrap, DEFAULT_TOOL_DISPLAY_CONFIG.diffWordWrap),

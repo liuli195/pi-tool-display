@@ -1,4 +1,3 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { createRendererCatalog } from "./renderer-catalog.js";
 import { createToolDisplayResolver, type ToolDisplayDiagnostic, type ToolDisplayDiagnosticSink } from "./tool-display-resolver.js";
@@ -12,7 +11,6 @@ const productionDiagnosticSink = (log: typeof logToolDisplayDebug): ToolDisplayD
 };
 
 export const createPiToolDisplayResolver = (
-  pi: ExtensionAPI,
   getConfig: () => ToolDisplayConfig,
   log: typeof logToolDisplayDebug = logToolDisplayDebug,
-) => createToolDisplayResolver(getConfig, createRendererCatalog(pi), productionDiagnosticSink(log));
+) => createToolDisplayResolver(getConfig, createRendererCatalog(), productionDiagnosticSink(log));

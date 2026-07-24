@@ -28,7 +28,3 @@ export function resetDisposed(): void {
   isDisposed = false;
   cleanupCallbacks = [];
 }
-
-export function getCleanupCount(): number {
-  return cleanupCallbacks.length;
-}

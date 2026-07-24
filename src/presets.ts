@@ -1,5 +1,5 @@
 import { cloneCustomToolOverrides } from "./config-store.js";
-import { DEFAULT_TOOL_DISPLAY_CONFIG, type CustomToolOverrideConfig, type ToolDisplayConfig } from "./types.js";
+import { BUILT_IN_TOOL_DISPLAY_NAMES, DEFAULT_TOOL_DISPLAY_CONFIG, type CustomToolOverrideConfig, type ToolDisplayConfig } from "./types.js";
 
 export const TOOL_DISPLAY_PRESETS = ["opencode", "balanced", "verbose"] as const;
 export type ToolDisplayPreset = (typeof TOOL_DISPLAY_PRESETS)[number];
@@ -34,14 +34,8 @@ const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> 
 };
 
 function builtInToolDisplaysEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
-	return (
-		a.builtInToolDisplays.read === b.builtInToolDisplays.read &&
-		a.builtInToolDisplays.grep === b.builtInToolDisplays.grep &&
-		a.builtInToolDisplays.find === b.builtInToolDisplays.find &&
-		a.builtInToolDisplays.ls === b.builtInToolDisplays.ls &&
-		a.builtInToolDisplays.bash === b.builtInToolDisplays.bash &&
-		a.builtInToolDisplays.edit === b.builtInToolDisplays.edit &&
-		a.builtInToolDisplays.write === b.builtInToolDisplays.write
+	return BUILT_IN_TOOL_DISPLAY_NAMES.every(
+		(toolName) => a.builtInToolDisplays[toolName] === b.builtInToolDisplays[toolName],
 	);
 }
 

@@ -8,7 +8,6 @@ import {
 } from "../src/diff-presentation.ts";
 import {
 	renderEditDiffResult,
-	renderWriteDiffResult,
 } from "../src/diff-renderer.ts";
 import type { ToolDisplayConfig } from "../src/types.ts";
 
@@ -466,174 +465,6 @@ test("renderEditDiffResult handles empty filePath string", () => {
 	assert.ok(lines.length > 0);
 });
 
-// ─── Large overwrite guard behavior in write diffs ──────────────────────────
-
-test("renderWriteDiffResult triggers overwrite guard when previousLineCount * nextLineCount exceeds matrix limit", () => {
-	// Matrix limit is 1,000,000 cells. Using 1001 previous lines × 1000 next lines = 1,001,000 > 1M.
-	const previousLines = Array.from({ length: 1001 }, (_, i) => `previous line ${i}`);
-	const nextLines = Array.from({ length: 1000 }, (_, i) => `next line ${i}`);
-	const previousContent = previousLines.join("\n");
-	const content = nextLines.join("\n");
-
-	const component = renderWriteDiffResult(
-		content,
-		{
-			expanded: true,
-			filePath: "large.txt",
-			previousContent,
-			fileExistedBeforeWrite: true,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.length > 0);
-	const joined = lines.join("");
-	assert.ok(
-		joined.includes("overwrite diff omitted") || joined.includes("large"),
-		`Expected overwrite guard message in output: ${joined}`,
-	);
-});
-
-test("renderWriteDiffResult triggers guard when previous lines exceed MAX_WRITE_OVERWRITE_LINES", () => {
-	// MAX_WRITE_OVERWRITE_DIFF_LINES = 4000
-	const previousLines = Array.from({ length: 4001 }, (_, i) => `line ${i}`);
-	const nextLines = ["single line"];
-	const previousContent = previousLines.join("\n");
-
-	const component = renderWriteDiffResult(
-		"single line",
-		{
-			expanded: true,
-			filePath: "big.txt",
-			previousContent,
-			fileExistedBeforeWrite: true,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.length > 0);
-});
-
-test("renderWriteDiffResult does not trigger guard for small diffs", () => {
-	const previousContent = "line1\nline2\nline3";
-	const component = renderWriteDiffResult(
-		"line1\nline2\nline3\nline4",
-		{
-			expanded: true,
-			filePath: "small.txt",
-			previousContent,
-			fileExistedBeforeWrite: true,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.length > 0);
-	const joined = lines.join("");
-	assert.ok(
-		!joined.includes("overwrite diff omitted"),
-		`Small diff should not trigger overwrite guard: ${joined}`,
-	);
-});
-
-test("renderWriteDiffResult does not trigger guard for new file (not overwrite)", () => {
-	// fileExistedBeforeWrite is false, so guard is skipped
-	const component = renderWriteDiffResult(
-		"hello\nworld",
-		{
-			expanded: true,
-			filePath: "new.txt",
-			previousContent: undefined,
-			fileExistedBeforeWrite: false,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.length > 0);
-});
-
-test("renderWriteDiffResult reports created file header", () => {
-	const component = renderWriteDiffResult(
-		"new content",
-		{
-			expanded: true,
-			filePath: "fresh.txt",
-			fileExistedBeforeWrite: false,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	const joined = lines.join("");
-	assert.ok(joined.includes("created") || joined.includes("↳"));
-});
-
-test("renderWriteDiffResult reports overwritten file header", () => {
-	const component = renderWriteDiffResult(
-		"new",
-		{
-			expanded: true,
-			filePath: "over.txt",
-			previousContent: "old",
-			fileExistedBeforeWrite: true,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	const joined = lines.join("");
-	assert.ok(joined.includes("overwritten") || joined.includes("↳"));
-});
-
-// ─── renderWriteDiffResult with undefined / null content ────────────────────
-
-test("renderWriteDiffResult handles undefined content", () => {
-	const component = renderWriteDiffResult(
-		undefined,
-		{ expanded: true, filePath: "f.txt" },
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.some((l) => l.includes("write completed")));
-});
-
-test("renderWriteDiffResult handles non-string content", () => {
-	const component = renderWriteDiffResult(
-		42 as any,
-		{ expanded: true, filePath: "f.txt" },
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.some((l) => l.includes("write completed")));
-});
-
-test("renderWriteDiffResult uses fallback text when content is missing", () => {
-	const component = renderWriteDiffResult(
-		undefined,
-		{ expanded: true, filePath: "f.txt" },
-		defaultConfig as any,
-		passThroughTheme,
-		"↳ file saved successfully",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.some((l) => l.includes("saved successfully")));
-});
-
-// ─── renderEditDiffResult with very narrow widths ──────────────────────────
-
 test("renderEditDiffResult renders summary at very narrow width", () => {
 	const diff = [
 		"--- a/a.ts",
@@ -673,40 +504,6 @@ test("renderEditDiffResult renders compact mode at narrow width (8..17)", () => 
 	const lines = renderInsideToolBox(component, 12);
 	assert.ok(lines.length > 0);
 });
-
-// ─── write diff with empty content ─────────────────────────────────────────
-
-test("renderWriteDiffResult handles empty string content", () => {
-	const component = renderWriteDiffResult(
-		"",
-		{ expanded: true, filePath: "empty.txt" },
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.length > 0);
-});
-
-test("renderWriteDiffResult handles overwrite with identical content", () => {
-	const previousContent = "same\ncontent";
-	const component = renderWriteDiffResult(
-		"same\ncontent",
-		{
-			expanded: true,
-			filePath: "same.txt",
-			previousContent,
-			fileExistedBeforeWrite: true,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	assert.ok(lines.length > 0);
-});
-
-// ─── Edit diff with hashline anchors (canonical format) ─────────────────────
 
 test("renderEditDiffResult renders canonical numbered diff with hashline anchors", () => {
 	const diff = [
@@ -799,49 +596,9 @@ test("buildDiffSummaryText returns progressively shorter candidates for limited 
 test("buildDiffSummaryText handles zero stats", () => {
 	const stats = { added: 0, removed: 0, hunks: 0, files: 0 };
 	const result = buildDiffSummaryText(stats, 80);
-	// With zero stats, the first candidate "↳ diff +0 -0 • 0 hunks • 0 files" fits
 	assert.ok(result.includes("+0"));
 	assert.ok(result.includes("-0"));
 });
-
-// ─── renderWriteDiffResult with custom header label ────────────────────────
-
-test("renderWriteDiffResult uses custom header label", () => {
-	const component = renderWriteDiffResult(
-		"content",
-		{
-			expanded: true,
-			filePath: "custom.txt",
-			headerLabel: "custom-label",
-			fileExistedBeforeWrite: false,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	const joined = lines.join("");
-	assert.ok(joined.includes("custom-label"), `Expected custom label in output: ${joined}`);
-});
-
-test("renderWriteDiffResult falls back to 'created' when no header label for new file", () => {
-	const component = renderWriteDiffResult(
-		"content",
-		{
-			expanded: true,
-			filePath: "nothdr.txt",
-			fileExistedBeforeWrite: false,
-		},
-		defaultConfig as any,
-		passThroughTheme,
-		"",
-	);
-	const lines = renderInsideToolBox(component, 80);
-	const joined = lines.join("");
-	assert.ok(joined.includes("created") || joined.includes("↳"));
-});
-
-// ─── renderEditDiffResult with summary mode at width 0 ────────────────────
 
 test("renderEditDiffResult handles width 0 without crashing", () => {
 	const diff = [

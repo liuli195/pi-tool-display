@@ -57,19 +57,19 @@ test("runtime diagnostics identify conflicts and renderer failures once each per
   const second = registerProducerRendererAdapter({ id: "second", toolName: "conflict", kind: "mcp" });
   try {
     const diagnostics: Array<{ message: string; error: unknown }> = [];
-    const runtime = createPiToolDisplayResolver({} as any, () => DEFAULT_TOOL_DISPLAY_CONFIG, (message, error) => diagnostics.push({ message, error }));
+    const runtime = createPiToolDisplayResolver(() => DEFAULT_TOOL_DISPLAY_CONFIG, (message, error) => diagnostics.push({ message, error }));
     const native = { call: nativeCall, result: nativeResult };
     runtime.resolve({ toolName: "conflict", arguments: {} }, native);
     runtime.resolve({ toolName: "conflict", arguments: {} }, native);
     assert.deepEqual(diagnostics.map(({ message }) => message), [
       "tool-display adapter-conflict tool=conflict adapters=first:generic,second:mcp",
     ]);
-    createPiToolDisplayResolver({} as any, () => DEFAULT_TOOL_DISPLAY_CONFIG, (message, error) => diagnostics.push({ message, error }))
+    createPiToolDisplayResolver(() => DEFAULT_TOOL_DISPLAY_CONFIG, (message, error) => diagnostics.push({ message, error }))
       .resolve({ toolName: "conflict", arguments: {} }, native);
     assert.equal(diagnostics.length, 2, "a real reload starts a new diagnostic epoch");
 
     const failures: Array<{ message: string; error: unknown }> = [];
-    const broken = createPiToolDisplayResolver({} as any, () => ({
+    const broken = createPiToolDisplayResolver(() => ({
       ...DEFAULT_TOOL_DISPLAY_CONFIG,
       customToolOverrides: { broken: { enabled: true, kind: "generic", outputMode: "summary", overrideCallRenderer: false } },
     }), (message, error) => failures.push({ message, error }));

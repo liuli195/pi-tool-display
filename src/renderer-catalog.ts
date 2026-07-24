@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
+import type { ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { renderEditDiffResult } from "./diff-renderer.js";
 import { extractTextOutput, shortenPath } from "./render-utils.js";
@@ -148,7 +148,7 @@ function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfi
   return { call: failOpen(renderCall, native.call), result: failOpen(renderResult, native.result), shell: "default" };
 }
 
-export function createRendererCatalog(_pi?: ExtensionAPI): RendererCatalog {
+export function createRendererCatalog(): RendererCatalog {
   return {
     resolve(row, config, native) {
       if (row.toolName === "read" && config.builtInToolDisplays.read) return {

@@ -7,7 +7,7 @@ import type { ToolDisplayConfig } from "./types.js";
 export function registerToolExecutionPatch(pi: ExtensionAPI, getConfig: () => ToolDisplayConfig): void {
   const installation = installPiHostAdapter(
     ToolExecutionComponent.prototype,
-    createPiToolDisplayResolver(pi, getConfig),
+    createPiToolDisplayResolver(getConfig),
     VERSION,
     message => logToolDisplayDebug(message),
   );

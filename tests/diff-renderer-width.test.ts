@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Box, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { buildDiffSummaryText, resolveDiffPresentationMode } from "../src/diff-presentation.ts";
-import { renderEditDiffResult, renderWriteDiffResult } from "../src/diff-renderer.ts";
+import { renderEditDiffResult } from "../src/diff-renderer.ts";
 
 const diffConfig = {
 	diffViewMode: "auto" as const,
@@ -203,43 +203,6 @@ test("edit diff renderer respects parent box width across narrow layouts", () =>
 		assertLinesFitWidth(lines, width);
 		assert.ok(lines.some((line) => visibleWidth(line) > 0));
 	}
-});
-
-test("write diff renderer respects parent box width across narrow layouts", () => {
-	const component = renderWriteDiffResult(
-		"hello world\nsecond line\n",
-		{ expanded: false, filePath: "demo.txt", fileExistedBeforeWrite: false },
-		diffConfig as any,
-		theme,
-		"",
-	);
-
-	for (const width of [23, 17, 7]) {
-		const lines = renderInsideToolBox(component, width);
-		assertLinesFitWidth(lines, width);
-		assert.ok(lines.some((line) => visibleWidth(line) > 0));
-	}
-});
-
-test("write overwrite diff renderer falls back when the overwrite matrix would be too large", () => {
-	const previousContent = `${Array.from({ length: 1100 }, (_, index) => `old-${index}`).join("\n")}\n`;
-	const nextContent = `${Array.from({ length: 1100 }, (_, index) => `new-${index}`).join("\n")}\n`;
-	const component = renderWriteDiffResult(
-		nextContent,
-		{
-			expanded: false,
-			filePath: "demo.txt",
-			fileExistedBeforeWrite: true,
-			previousContent,
-		},
-		diffConfig as any,
-		theme,
-		"",
-	);
-
-	const lines = renderInsideToolBox(component, 80);
-	assertLinesFitWidth(lines, 80);
-	assert.match(lines.join("\n"), /overwrite diff omitted/i);
 });
 
 test("split diff renderer preserves full background coverage inside the default tool shell", () => {
