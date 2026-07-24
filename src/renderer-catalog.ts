@@ -198,8 +198,10 @@ export function createRendererCatalog(): RendererCatalog {
       };
       if (row.builtIn) return undefined;
       const configured = getRuntimeCustomToolOverride(row.toolName, config as ToolDisplayConfig);
+      const hasExplicitOverride = Object.hasOwn(config.customToolOverrides, row.toolName);
+      if (hasExplicitOverride && !configured?.enabled) return undefined;
       const producers = producerAdapters.get(row.toolName);
-      if (!configured?.enabled && producers && producers.size > 1) {
+      if (!hasExplicitOverride && producers && producers.size > 1) {
         throw new RendererAdapterConflict(
           row.toolName,
           [...producers.values()].map(({ id, kind }) => ({ id, kind })).sort((a, b) => a.id.localeCompare(b.id) || a.kind.localeCompare(b.kind)),

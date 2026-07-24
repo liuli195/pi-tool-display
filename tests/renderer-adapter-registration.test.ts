@@ -18,6 +18,19 @@ test("producer registration is disposable, deterministic, and leaves its input u
   assert.deepEqual(adapter, { id: "producer-a", toolName: "third_party", kind: "generic" });
 });
 
+test("an explicit disabled custom override keeps native presentation ahead of producer intent", () => {
+  const dispose = registerProducerRendererAdapter({ id: "producer-disabled", toolName: "third_party", kind: "generic" });
+  try {
+    const config = {
+      ...DEFAULT_TOOL_DISPLAY_CONFIG,
+      customToolOverrides: {
+        third_party: { enabled: false, kind: "generic" as const, outputMode: "preview" as const, overrideCallRenderer: true },
+      },
+    };
+    assert.equal(createRendererCatalog().resolve(row, config, {}), undefined);
+  } finally { dispose(); }
+});
+
 test("producer callbacks receive detached arguments, results, and context args", () => {
   const args = { nested: { path: "original.txt" } };
   const result = { content: [{ type: "text", text: "original" }], details: { count: 1 } };

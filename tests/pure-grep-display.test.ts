@@ -126,11 +126,14 @@ test("Pi Host Adapter disposal deactivates its wrapper beneath a later foreign w
   host.getResultRenderer = function (this: unknown, ...args: unknown[]) {
     return installedSelector.apply(this, args);
   };
-  const row = { toolName: "grep", args: { pattern: "x" }, builtInToolDefinition: { name: "grep" } };
+  let invalidations = 0;
+  const row = { toolName: "grep", args: { pattern: "x" }, builtInToolDefinition: { name: "grep" }, invalidate() { invalidations++; } };
 
   assert.match(render(host.getResultRenderer.call(row)(output, { expanded: false, isPartial: false }, theme)), /3 matches/);
   installation.dispose();
   assert.equal(render(host.getResultRenderer.call(row)(output, { expanded: false, isPartial: false }, theme)), "native result");
+  invalidatePiHostAdapterRows(host);
+  assert.equal(invalidations, 0);
 });
 
 test("Pi Host Adapter retains ownership tracking until an interrupted mixed disposal can finish", () => {

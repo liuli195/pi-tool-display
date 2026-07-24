@@ -67,13 +67,15 @@ function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVers
   const state = { call, result, resolver, active: true, rows: new Set<ToolRowHost>() } as Installation;
   const patchedCall: RendererSelector = function (...args: any[]) {
     const native = originalCall.apply(this, args);
+    if (!state.active) return native;
     state.rows.add(this);
-    return state.active ? state.resolver.resolve(row(this), { call: native }).call : native;
+    return state.resolver.resolve(row(this), { call: native }).call;
   };
   const patchedResult: RendererSelector = function (...args: any[]) {
     const native = originalResult.apply(this, args);
+    if (!state.active) return native;
     state.rows.add(this);
-    return state.active ? state.resolver.resolve(row(this), { result: native }).result : native;
+    return state.resolver.resolve(row(this), { result: native }).result;
   };
   state.patchedCall = patchedCall;
   state.patchedResult = patchedResult;
