@@ -20,7 +20,7 @@ import { registerToolDisplayApi } from "./tool-overrides.js";
 import { registerToolExecutionPatch } from "./tool-execution-patch.js";
 import { disposeAll, disposeSession, resetDisposed } from "./disposable.js";
 import registerNativeUserMessageBox from "./user-message-box-native.js";
-import type { ToolDisplayConfig } from "./types.js";
+import type { ToolDisplayConfig, ToolDisplayConfigOverlay } from "./types.js";
 import { registerToolDisplayCommand } from "./config-command.js";
 
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
@@ -41,7 +41,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     hasRtkOptimizer: false,
   };
   let effectiveConfig: ToolDisplayConfig | undefined;
-  let projectOverlay: Partial<ToolDisplayConfig> | undefined;
+  let projectOverlay: ToolDisplayConfigOverlay | undefined;
 
   const refreshCapabilities = (): void => {
     capabilities = detectToolDisplayCapabilities(pi, process.cwd());

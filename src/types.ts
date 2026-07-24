@@ -109,6 +109,16 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	showRtkCompactionHints: false,
 };
 
+export type ToolDisplayConfigPatch = Omit<
+	Partial<ToolDisplayConfig>,
+	"builtInToolDisplays" | "customToolOverrides"
+> & {
+	builtInToolDisplays?: Partial<BuiltInToolDisplays>;
+	customToolOverrides?: Record<string, Partial<CustomToolOverrideConfig> | boolean>;
+};
+
+export type ToolDisplayConfigOverlay = ToolDisplayConfigPatch;
+
 export interface ConfigLoadResult {
 	config: ToolDisplayConfig;
 	error?: string;

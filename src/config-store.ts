@@ -18,6 +18,7 @@ import {
 	READ_OUTPUT_MODES,
 	SEARCH_OUTPUT_MODES,
 	type ToolDisplayConfig,
+	type ToolDisplayConfigOverlay,
 	type BuiltInToolDisplays,
 } from "./types.js";
 import { toRecord } from "./tool-metadata.js";
@@ -296,9 +297,9 @@ export function getToolDisplayConfigPath(): string {
  * missing keys stay absent so the caller can merge without overwriting
  * unrelated global settings.
  */
-function extractExplicitFields(raw: unknown): Partial<ToolDisplayConfig> {
+function extractExplicitFields(raw: unknown): ToolDisplayConfigOverlay {
 	if (typeof raw !== "object" || raw === null) return {};
-	const result: Partial<ToolDisplayConfig> = {};
+	const result: ToolDisplayConfigOverlay = {};
 	for (const key of Object.keys(raw as Record<string, unknown>)) {
 		if (key in (raw as Record<string, unknown>)) {
 			(result as Record<string, unknown>)[key] = (raw as Record<string, unknown>)[key];
@@ -314,7 +315,7 @@ function extractExplicitFields(raw: unknown): Partial<ToolDisplayConfig> {
  */
 export function readProjectToolDisplayConfig(
 	projectConfigFile: string,
-): { config: Partial<ToolDisplayConfig> | undefined; error?: string } {
+): { config: ToolDisplayConfigOverlay | undefined; error?: string } {
 	if (!existsSync(projectConfigFile)) {
 		return { config: undefined };
 	}
@@ -333,6 +334,24 @@ export function readProjectToolDisplayConfig(
 
 const NESTED_OBJECT_KEYS: ReadonlySet<string> = new Set(["builtInToolDisplays", "customToolOverrides"]);
 
+function mergeNestedConfigField(
+	key: string,
+	globalValue: unknown,
+	projectValue: Record<string, unknown>,
+): Record<string, unknown> {
+	const merged = { ...toRecord(globalValue) };
+	for (const [nestedKey, nestedValue] of Object.entries(projectValue)) {
+		if (nestedValue === undefined) continue;
+		merged[nestedKey] = key === "customToolOverrides"
+			&& nestedValue !== null
+			&& typeof nestedValue === "object"
+			&& !Array.isArray(nestedValue)
+			? { ...toRecord(merged[nestedKey]), ...nestedValue }
+			: nestedValue;
+	}
+	return merged;
+}
+
 /**
  * Merge a project-local partial config over a global config. Only keys
  * explicitly present in the project config override the global values.
@@ -342,7 +361,7 @@ const NESTED_OBJECT_KEYS: ReadonlySet<string> = new Set(["builtInToolDisplays", 
  */
 export function mergeProjectConfig(
 	globalConfig: ToolDisplayConfig,
-	projectConfig: Partial<ToolDisplayConfig>,
+	projectConfig: ToolDisplayConfigOverlay,
 ): ToolDisplayConfig {
 	const merged = { ...globalConfig } as Record<string, unknown>;
 	const project = projectConfig as Record<string, unknown>;
@@ -350,13 +369,7 @@ export function mergeProjectConfig(
 		const projectValue = project[key];
 		if (projectValue === undefined) continue;
 		if (NESTED_OBJECT_KEYS.has(key) && typeof projectValue === "object" && projectValue !== null && !Array.isArray(projectValue)) {
-			// Deep merge: project nested fields overlay global, don't replace whole object.
-			const globalNested = typeof merged[key] === "object" && merged[key] !== null ? { ...(merged[key] as Record<string, unknown>) } : {};
-			for (const nestedKey of Object.keys(projectValue as Record<string, unknown>)) {
-				const nestedValue = (projectValue as Record<string, unknown>)[nestedKey];
-				if (nestedValue !== undefined) globalNested[nestedKey] = nestedValue;
-			}
-			merged[key] = globalNested;
+			merged[key] = mergeNestedConfigField(key, merged[key], projectValue as Record<string, unknown>);
 		} else {
 			merged[key] = projectValue;
 		}

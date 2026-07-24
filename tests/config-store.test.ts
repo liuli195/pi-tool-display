@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  applyToolDisplayConfigPatch,
   loadToolDisplayConfig,
+  mergeProjectConfig,
   normalizeToolDisplayConfig,
   saveToolDisplayConfig,
 } from "../src/config-store.ts";
@@ -104,6 +106,65 @@ test("config load reports parse errors and falls back to defaults", () => {
     assert.deepEqual(result.config, DEFAULT_TOOL_DISPLAY_CONFIG);
     assert.match(result.error ?? "", /Failed to parse/);
     assert.match(result.error ?? "", /config\.json/);
+  });
+});
+
+test("project overlays merge built-in and custom-tool fields without resetting global siblings", () => {
+  const globalConfig = normalizeToolDisplayConfig({
+    builtInToolDisplays: { read: true, bash: false },
+    customToolOverrides: {
+      custom_search: {
+        enabled: false,
+        kind: "mcp",
+        outputMode: "summary",
+        overrideCallRenderer: true,
+      },
+    },
+  });
+
+  const effective = mergeProjectConfig(globalConfig, {
+    builtInToolDisplays: { read: false },
+    customToolOverrides: {
+      custom_search: { outputMode: "preview" },
+    },
+  });
+
+  assert.equal(effective.builtInToolDisplays.read, false);
+  assert.equal(effective.builtInToolDisplays.bash, false);
+  assert.deepEqual(effective.customToolOverrides.custom_search, {
+    enabled: false,
+    kind: "mcp",
+    outputMode: "preview",
+    overrideCallRenderer: true,
+  });
+});
+
+test("an explicit global patch cannot persist fields inherited from a project overlay", () => {
+  const globalConfig = normalizeToolDisplayConfig({
+    readOutputMode: "hidden",
+    searchOutputMode: "hidden",
+    customToolOverrides: {
+      custom_search: { enabled: true, kind: "mcp", outputMode: "summary", overrideCallRenderer: true },
+    },
+  });
+  const overlay = {
+    readOutputMode: "preview" as const,
+    customToolOverrides: { custom_search: { outputMode: "preview" as const } },
+  };
+
+  const persisted = applyToolDisplayConfigPatch(globalConfig, { searchOutputMode: "count" });
+  const effective = mergeProjectConfig(persisted, overlay);
+
+  assert.equal(persisted.readOutputMode, "hidden");
+  assert.equal(persisted.searchOutputMode, "count");
+  assert.deepEqual(persisted.customToolOverrides.custom_search, globalConfig.customToolOverrides.custom_search);
+  assert.equal(effective.readOutputMode, "preview");
+  assert.equal(effective.searchOutputMode, "count");
+  assert.deepEqual(effective.customToolOverrides.custom_search, {
+    enabled: true,
+    kind: "mcp",
+    outputMode: "preview",
+    overrideCallRenderer: true,
   });
 });
 

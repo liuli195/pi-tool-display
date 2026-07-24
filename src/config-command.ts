@@ -1,10 +1,16 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ToolDisplayCapabilities } from "./capabilities.js";
-import type { ToolDisplayConfig } from "./types.js";
+import type { ToolDisplayPreset } from "./presets.js";
+import type { ToolDisplayConfig, ToolDisplayConfigPatch } from "./types.js";
+
+export type ToolDisplayConfigMutation =
+	| { type: "patch"; patch: ToolDisplayConfigPatch }
+	| { type: "preset"; preset: ToolDisplayPreset }
+	| { type: "reset" };
 
 export interface ToolDisplayConfigController {
 	getConfig(): ToolDisplayConfig;
-	setConfig(next: ToolDisplayConfig, ctx: ExtensionCommandContext): void;
+	mutateConfig(mutation: ToolDisplayConfigMutation, ctx: ExtensionCommandContext): void;
 	getCapabilities(): ToolDisplayCapabilities;
 }
 
