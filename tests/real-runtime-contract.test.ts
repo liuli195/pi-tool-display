@@ -218,8 +218,8 @@ for (const entry of matrix) {
       assert.deepEqual(run.hostCallbacks.producer.disposedDescriptor, run.hostCallbacks.producer.pristineDescriptor);
       assert.deepEqual(run.hostCallbacks.producer.initializedOwnerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
       assert.deepEqual(run.hostCallbacks.producer.disposedOwnerDescriptors, run.hostCallbacks.producer.pristineOwnerDescriptors);
-      assert.equal(run.hostCallbacks.producer.pristineSnapshots.length, 4); // initial load and three real reloads
-      assert.equal(run.hostCallbacks.producer.initializedSnapshots.length, 4);
+      assert.equal(run.hostCallbacks.producer.pristineSnapshots.length, 2); // initial load and one real reload
+      assert.equal(run.hostCallbacks.producer.initializedSnapshots.length, 2);
       assert.ok(Object.isFrozen(run.hostCallbacks.producer.pristineSnapshots));
       assert.ok(Object.isFrozen(run.hostCallbacks.producer.initializedSnapshots));
       for (const snapshot of [...run.hostCallbacks.producer.pristineSnapshots, ...run.hostCallbacks.producer.initializedSnapshots]) {

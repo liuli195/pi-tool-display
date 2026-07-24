@@ -21,7 +21,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text, type Component } from "@earendil-works/pi-tui";
 import { resolvePiAgentDir } from "./agent-dir.js";
-import { renderBashCall, VisualLinePreviewComponent } from "./bash-display.js";
+import { VisualLinePreviewComponent } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
 import { registerProducerRendererAdapter, type ProducerRendererAdapter } from "./renderer-catalog.js";
