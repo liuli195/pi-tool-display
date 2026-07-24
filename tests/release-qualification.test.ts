@@ -1,101 +1,146 @@
 import assert from "node:assert/strict";
-import { performance } from "node:perf_hooks";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import test from "node:test";
-import { initTheme, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionFromServices, createAgentSessionServices, createReadTool, initTheme, SessionManager, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 
-import { installPiHostAdapter } from "../src/pi-host-adapter.js";
-import { createRendererCatalog } from "../src/renderer-catalog.js";
-import { createToolDisplayResolver } from "../src/tool-display-resolver.js";
-import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.js";
+import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.js";
 
 initTheme(undefined, false);
-const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
-const render = (component: any) => component.render(120).join("\n").trim();
 const result = { content: [{ type: "text", text: "one\ntwo" }], details: {} };
+const observedMapMethods = ["get", "has", "values", "entries", "keys", Symbol.iterator, "forEach"] as const;
 
-function qualifyRows(count: number) {
-  const overrides = Object.fromEntries(Array.from({ length: 500 }, (_, index) => [`custom-${index}`, { enabled: true, kind: "generic" as const, outputMode: "summary" as const, overrideCallRenderer: false }]));
-  const config = { ...DEFAULT_TOOL_DISPLAY_CONFIG, customToolOverrides: overrides };
-  const resolver = createToolDisplayResolver(() => config, createRendererCatalog());
-  const installation = installPiHostAdapter(ToolExecutionComponent.prototype, resolver, "0.81.1");
-  assert.equal(installation.installed, true);
-
-  let snapshotEnumerations = 0;
-  let registryGets = 0;
-  let rebuilds = 0;
-  const entries = Object.entries;
-  const mapGet = Map.prototype.get;
-  const defineProperty = Object.defineProperty;
-  Object.entries = ((value: object) => {
-    if (value === overrides) snapshotEnumerations++;
-    return entries(value);
-  }) as typeof Object.entries;
-  Map.prototype.get = function (key: unknown) {
-    if (new Error().stack?.includes("renderer-catalog")) registryGets++;
-    return mapGet.call(this, key);
-  };
-  Object.defineProperty = ((target: object, key: PropertyKey, descriptor: PropertyDescriptor) => {
-    if (target === ToolExecutionComponent.prototype && (key === "getCallRenderer" || key === "getResultRenderer")) rebuilds++;
-    return defineProperty(target, key, descriptor);
-  }) as typeof Object.defineProperty;
-
-  const started = performance.now();
-  try {
-    for (let index = 0; index < count; index++) {
-      const row = new ToolExecutionComponent("plain", `call-${index}`, { index }, {}, { name: "plain", execute() {} } as any, { requestRender() {} } as any, process.cwd());
-      (row as any).getCallRenderer();
-      (row as any).getResultRenderer();
-    }
-  } finally {
-    Object.entries = entries;
-    Map.prototype.get = mapGet;
-    Object.defineProperty = defineProperty;
-    installation.dispose();
-  }
-  return { elapsed: performance.now() - started, snapshotEnumerations, registryGets, rebuilds };
+async function loadedRuntime() {
+  const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-release-"));
+  await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
+  await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({
+    customToolOverrides: Object.fromEntries(Array.from({ length: 500 }, (_, index) => [`custom-${index}`, { enabled: true, kind: "generic", outputMode: "summary", overrideCallRenderer: false }])),
+  }));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  const services = await createAgentSessionServices({
+    cwd: process.cwd(), agentDir,
+    resourceLoaderOptions: { additionalExtensionPaths: [resolve(import.meta.dirname, "..", "index.ts")], noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true },
+  });
+  const sessionManager = SessionManager.inMemory(process.cwd());
+  const created = await createAgentSessionFromServices({ services, sessionManager });
+  return { ...created, services, agentDir, restore: async () => {
+    await created.session.dispose();
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(agentDir, { recursive: true, force: true });
+  } };
 }
 
-// External instrumentation observes production APIs; there are deliberately no production counters/hooks.
-test("production ToolExecution selection performs one snapshot, no row rebuild, and linear registry access", () => {
-  const fiveHundred = qualifyRows(500);
-  const thousand = qualifyRows(1000);
-  assert.deepEqual({ ...fiveHundred, elapsed: 0 }, { elapsed: 0, snapshotEnumerations: 1, registryGets: 1500, rebuilds: 0 });
-  assert.deepEqual({ ...thousand, elapsed: 0 }, { elapsed: 0, snapshotEnumerations: 1, registryGets: 3000, rebuilds: 0 });
-  assert.ok(thousand.elapsed < fiveHundred.elapsed * 3.5 + 25, `500=${fiveHundred.elapsed.toFixed(1)}ms 1000=${thousand.elapsed.toFixed(1)}ms`);
+async function qualifyRows(...countsToRender: number[]) {
+  const runtime = await loadedRuntime();
+  const tool = runtime.session.getToolDefinition("read");
+  const counts = Object.fromEntries(observedMapMethods.map(String).map(name => [name, 0])) as Record<string, number>;
+  const originals = new Map<PropertyKey, Function>();
+  for (const key of observedMapMethods) {
+    const original = (Map.prototype as any)[key];
+    originals.set(key, original);
+    (Map.prototype as any)[key] = function (...args: unknown[]) {
+      counts[String(key)]++;
+      return original.apply(this, args);
+    };
+  }
+  const sessionApis = ["getAllTools", "getActiveToolNames", "getToolDefinition"] as const;
+  const apiCounts = Object.fromEntries(sessionApis.map(name => [name, 0])) as Record<string, number>;
+  const apiOriginals = new Map<string, Function>();
+  for (const name of sessionApis) {
+    const original = (runtime.session as any)[name];
+    apiOriginals.set(name, original);
+    (runtime.session as any)[name] = function (...args: unknown[]) { apiCounts[name]++; return original.apply(this, args); };
+  }
+  let renderRequests = 0;
+  const ui = { requestRender() { renderRequests++; } };
+  const hostDescriptors = Object.getOwnPropertyDescriptors(ToolExecutionComponent.prototype);
+  const observations = [];
+  try {
+    for (const count of countsToRender) {
+      for (const key of Object.keys(counts)) counts[key] = 0;
+      for (const key of Object.keys(apiCounts)) apiCounts[key] = 0;
+      renderRequests = 0;
+      for (let index = 0; index < count; index++) {
+        const row = new ToolExecutionComponent("read", `call-${index}`, { path: "fixture" }, {}, tool, ui as any, process.cwd());
+        row.updateResult(result as any);
+        row.render(120);
+      }
+      observations.push({ count, counts: { ...counts }, apiCounts: { ...apiCounts }, renderRequests });
+    }
+    assert.deepEqual(Object.getOwnPropertyDescriptors(ToolExecutionComponent.prototype), hostDescriptors, "row selection must not rebuild the host");
+  } finally {
+    for (const key of observedMapMethods) (Map.prototype as any)[key] = originals.get(key);
+    for (const name of sessionApis) (runtime.session as any)[name] = apiOriginals.get(name);
+    await runtime.restore();
+    const prototype = ToolExecutionComponent.prototype as any;
+    const stateKey = Symbol.for("pi-tool-display.piHostAdapter.v1");
+    const state = Object.getOwnPropertyDescriptor(prototype, stateKey)?.value;
+    if (state) {
+      Object.defineProperty(prototype, "getCallRenderer", state.call);
+      Object.defineProperty(prototype, "getResultRenderer", state.result);
+      delete prototype[stateKey];
+    }
+  }
+  return observations;
+}
+
+test("production loader path performs no registry scans/rebuild loops and linear row selection", async () => {
+  const [fiveHundred, thousand] = await qualifyRows(500, 1000);
+  for (const observation of [fiveHundred, thousand]) {
+    for (const method of ["values", "entries", "keys", "Symbol(Symbol.iterator)", "forEach"])
+      assert.equal(observation.counts[method], 0, `${method} must not scan during row rendering`);
+    assert.deepEqual(observation.apiCounts, { getAllTools: 0, getActiveToolNames: 0, getToolDefinition: 0 });
+    assert.equal(observation.renderRequests, 0, "row selection must not invalidate or rebuild the chat");
+  }
+  for (const method of ["get", "has"])
+    assert.ok(Math.abs(thousand.counts[method] - fiveHundred.counts[method] * 2) <= 32, `${method} must scale linearly per row`);
 });
 
-test("config and capability epochs change the first frame from exactly one new immutable snapshot", () => {
-  const configured = (outputMode: "summary" | "hidden" | "preview") => ({ custom: { enabled: true, kind: "generic" as const, outputMode, overrideCallRenderer: false } });
-  const overrides = configured("summary");
-  const summary = { ...DEFAULT_TOOL_DISPLAY_CONFIG, customToolOverrides: overrides };
-  const hidden = { ...summary, customToolOverrides: configured("hidden") };
-  const preview = { ...summary, customToolOverrides: configured("preview") };
-  let effective: ToolDisplayConfig = summary;
-  let snapshots = 0;
+test("real capability lifecycle changes the first frame with one immutable snapshot per epoch", async () => {
+  const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-capability-"));
+  await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
+  await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({ readOutputMode: "preview", showRtkCompactionHints: true }));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  let commands: Array<{ name: string }> = [];
+  const handlers = new Map<string, Function[]>();
+  const readTool = createReadTool(process.cwd());
+  const api = {
+    on(event: string, handler: Function) { handlers.set(event, [...(handlers.get(event) ?? []), handler]); },
+    registerCommand() {}, getAllTools() { return [readTool]; }, getCommands() { return commands; },
+  } as any;
   const entries = Object.entries;
+  let snapshots = 0;
   Object.entries = ((value: object) => {
-    if (value === effective.customToolOverrides) snapshots++;
+    if (new Error().stack?.includes("tool-display-resolver")) snapshots++;
     return entries(value);
   }) as typeof Object.entries;
-  const installation = installPiHostAdapter(ToolExecutionComponent.prototype, createToolDisplayResolver(() => effective, createRendererCatalog()), "0.81.1");
   try {
+    const { default: toolDisplayExtension } = await import(`../src/index.js?capability=${Date.now()}`);
+    toolDisplayExtension(api);
     const frame = (id: string) => {
-      const row = new ToolExecutionComponent("custom", id, {}, {}, { name: "custom", execute() {} } as any, { requestRender() {} } as any, process.cwd());
-      return render((row as any).getResultRenderer()(result, { expanded: false, isPartial: false }, theme));
+      const row = new ToolExecutionComponent("read", id, { path: "fixture" }, {}, readTool, { requestRender() {} } as any, process.cwd());
+      const value = { content: [{ type: "text", text: "one\ntwo" }], details: { rtkCompaction: { applied: true, techniques: ["dedupe"] } }, isError: false };
+      row.updateResult(value as any);
+      row.setExpanded(true);
+      return row.render(120).join("\n");
     };
-    assert.match(frame("summary"), /2 lines returned/);
+    await handlers.get("session_start")?.at(-1)?.({}, { ui: { notify() {} } });
+    assert.doesNotMatch(frame("without-rtk"), /compacted by RTK/);
     assert.equal(snapshots, 1);
-    effective = hidden; // display-config epoch
-    assert.equal(frame("hidden"), "");
+    commands = [{ name: "rtk" }];
+    await handlers.get("before_agent_start")?.at(-1)?.();
+    assert.match(frame("with-rtk"), /compacted by RTK/);
     assert.equal(snapshots, 2);
-    effective = preview; // capability-derived effective-config epoch
-    assert.match(frame("preview"), /one[\s\S]*two/);
-    assert.equal(snapshots, 3);
-    assert.match(frame("same-epoch"), /one[\s\S]*two/);
-    assert.equal(snapshots, 3);
+    assert.match(frame("same-epoch"), /compacted by RTK/);
+    assert.equal(snapshots, 2);
   } finally {
     Object.entries = entries;
-    installation.dispose();
+    await handlers.get("session_shutdown")?.at(-1)?.({ reason: "reload" });
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(agentDir, { recursive: true, force: true });
   }
 });
 

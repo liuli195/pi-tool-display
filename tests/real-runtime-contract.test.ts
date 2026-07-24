@@ -121,10 +121,12 @@ for (const entry of matrix) {
       const text = plain(frame);
       assert.match(text, /contract read first line/);
       assert.match(text, /contract read third line/);
-      assert.match(text, /old-schema result preserved/);
-      assert.match(text, /aborted result preserved/);
+      assert.match(text, /legacy-runtime result preserved/);
+      assert.match(text, /Operation aborted/);
       assert.match(text, /image-bearing result preserved/);
     }
+    assert.deepEqual(observation.present.restoredState, { legacyEntry: true, abortedIsError: true, coldImageComponents: 1, reloadImageComponents: 1 }, "real restored TUI rows must retain legacy, aborted, and image lifecycle state");
+    assert.deepEqual(observation.absent.restoredState, observation.present.restoredState, "display extension must not alter restored lifecycle state");
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract read final third line/);
     for (const frame of [observation.firstCollapsedOutput, observation.present.tuiOutput.reload]) {
       const text = plain(frame);
@@ -237,10 +239,10 @@ for (const entry of matrix) {
         assert.deepEqual(Object.keys(callbacks).sort(), run.hostCallbacks.keys);
       }
       assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
-      assert.match(run.sessionSerializationAfterDispose, /old-schema result preserved/);
-      assert.match(run.sessionSerializationAfterDispose, /aborted result preserved/);
-      assert.match(run.sessionSerializationAfterDispose, /"isError":true/);
-      assert.match(run.sessionSerializationAfterDispose, /aW1hZ2UtYnl0ZXM=/);
+      assert.match(run.sessionSerializationAfterDispose, /legacy-runtime result preserved/);
+      assert.match(run.sessionSerializationAfterDispose, /"stopReason":"aborted"/);
+      assert.match(run.sessionSerializationAfterDispose, /"errorMessage":"Request was aborted"/);
+      assert.match(run.sessionSerializationAfterDispose, /iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB/);
       assert.match(run.sessionSerializationAfterDispose, /"mimeType":"image\/png"/);
       assert.match(plain(run.tuiOutput.reload), /read/);
       assert.match(plain(run.tuiOutput.newCall), /read|find|ls/);

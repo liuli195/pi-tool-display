@@ -38,6 +38,7 @@ interface RunObservation {
     errorNewCall: string; expandedErrorNewCall: string; collapsedErrorNewCall: string;
   };
   lifecycle: { reloads: number; stableWrappers: boolean; wrappersAfterDispose: number; descriptorsRestored: boolean; timerBaseline: number; timersWhilePartial: number; timersAfterCompletion: number; timersAfterDispose: number };
+  restoredState: { legacyEntry: boolean; abortedIsError: boolean; coldImageComponents: number; reloadImageComponents: number };
 }
 
 export interface PureDisplayContractObservation {
@@ -298,6 +299,9 @@ async function probeGeneratedCallbacks(Agent: new () => any, producer: ProducerS
 async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview", createTools: (probes: Record<string, { updates: string[]; arguments?: unknown }>) => any[]): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
+  const tui = await importRuntimePackage(root, "pi-tui");
+  const previousCapabilities = tui.getCapabilities();
+  tui.setCapabilities({ ...previousCapabilities, images: "kitty" });
   const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-contract-"));
   const terminal = new MemoryTerminal();
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -415,6 +419,19 @@ await server.connect(new StdioServerTransport());
     }
     await mode.init();
     await waitForOutput(terminal, withExtension && outputMode === "count" ? "3 lines" : "contract read first line");
+    const restoredRows = () => {
+      const found: any[] = [];
+      const visit = (component: any) => {
+        if (!component || typeof component !== "object") return;
+        if (typeof component.toolCallId === "string") found.push(component);
+        for (const child of component.children ?? []) visit(child);
+      };
+      visit(mode.chatContainer);
+      return found;
+    };
+    const coldRows = restoredRows();
+    const coldImageComponents = coldRows.find((row) => row.toolCallId === "contract-image")?.imageComponents?.filter((component: unknown) => component instanceof tui.Image).length ?? 0;
+    const abortedIsError = coldRows.find((row) => row.toolCallId === "contract-aborted")?.result?.isError === true;
     const cold = terminal.output;
     terminal.take();
     const actionsAtFirstOutput = [...actionsBeforeFirstOutput];
@@ -432,6 +449,7 @@ await server.connect(new StdioServerTransport());
     mode.toggleToolOutputExpansion();
     await waitForOutput(terminal, outputMode === "hidden" ? "read" : "contract read third line");
     const expandedReload = terminal.take();
+    const reloadImageComponents = restoredRows().find((row) => row.toolCallId === "contract-image")?.imageComponents?.filter((component: unknown) => component instanceof tui.Image).length ?? 0;
     mode.toggleToolOutputExpansion();
     terminal.take();
 
@@ -559,6 +577,7 @@ await server.connect(new StdioServerTransport());
       },
       sessionSerializationAfterDispose: completeSerializedSessionBytes,
       tuiOutput: { cold, expandedCold, reload, expandedReload, newCall, expandedNewCall },
+      restoredState: { legacyEntry: sessionJsonl.includes("legacy-runtime result preserved"), abortedIsError, coldImageComponents, reloadImageComponents },
       actionsBeforeFirstOutput: actionsAtFirstOutput,
     };
     return observation as unknown as RunObservation & { actionsBeforeFirstOutput: string[] };
@@ -567,6 +586,7 @@ await server.connect(new StdioServerTransport());
       mode?.stop();
       if (runtime && !disposed) await runtime.dispose();
     } finally {
+      tui.setCapabilities(previousCapabilities);
       if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
       await rm(agentDir, { recursive: true, force: true });
@@ -577,7 +597,11 @@ await server.connect(new StdioServerTransport());
 export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden" | "count" | "preview" = "count"): Promise<PureDisplayContractObservation> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
-  const seed = pi.SessionManager.inMemory(process.cwd(), { id: "contract-session" });
+  // Seed restored rows with the oldest supported runtime's real SessionManager so
+  // every newer runtime consumes genuine legacy JSONL rather than a hand-shaped fixture.
+  const legacyRoot = process.env.PI_RUNTIME_MIN_ROOT ? packageRoot(resolve(process.env.PI_RUNTIME_MIN_ROOT)) : root;
+  const legacyPi = await import(pathToFileURL(join(legacyRoot, "dist", "index.js")).href);
+  const seed = legacyPi.SessionManager.inMemory(process.cwd(), { id: "contract-session" });
   seed.appendMessage({
     role: "assistant",
     content: [{ type: "thinking", thinking: "Thinking: provider-authored bytes" }],
@@ -619,18 +643,24 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
     });
   }
   const lifecycleResults = [
-    { id: "contract-old-schema", text: "old-schema result preserved", isError: false, content: [{ type: "text", text: "old-schema result preserved" }] },
-    { id: "contract-aborted", text: "aborted result preserved", isError: true, content: [{ type: "text", text: "aborted result preserved" }] },
-    { id: "contract-image", text: "image-bearing result preserved", isError: false, content: [{ type: "image", data: "aW1hZ2UtYnl0ZXM=", mimeType: "image/png" }, { type: "text", text: "image-bearing result preserved" }] },
+    { id: "contract-old-schema", text: "legacy-runtime result preserved", isError: false, content: [{ type: "text", text: "legacy-runtime result preserved" }] },
+    { id: "contract-image", text: "image-bearing result preserved", isError: false, content: [{ type: "image", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", mimeType: "image/png" }, { type: "text", text: "image-bearing result preserved" }] },
   ];
   for (const [index, fixture] of lifecycleResults.entries()) {
     seed.appendMessage({
-      role: "assistant", content: [{ type: "toolCall", id: fixture.id, name: "generic_fixture", arguments: { schema: fixture.id === "contract-old-schema" ? "old" : "current" } }],
+      role: "assistant", content: [{ type: "toolCall", id: fixture.id, name: "generic_fixture", arguments: {} }],
       api: "contract", provider: "contract", model: "contract", stopReason: "toolUse",
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 20 + index * 2,
     });
     seed.appendMessage({ role: "toolResult", toolCallId: fixture.id, toolName: "generic_fixture", content: fixture.content, isError: fixture.isError, timestamp: 21 + index * 2 });
   }
+  // Pi's real restored-session path turns a tool call in an aborted assistant
+  // message into an errored ToolExecutionComponent without a fabricated result.
+  seed.appendMessage({
+    role: "assistant", content: [{ type: "toolCall", id: "contract-aborted", name: "generic_fixture", arguments: {} }],
+    api: "contract", provider: "contract", model: "contract", stopReason: "aborted", errorMessage: "Request was aborted",
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 30,
+  });
   seed.appendThinkingLevelChange("medium");
   const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
   const createTools = (probes: Record<string, { updates: string[]; arguments?: unknown }>) => {
