@@ -20,7 +20,7 @@ export type BashErrorOutputMode = (typeof BASH_ERROR_OUTPUT_MODES)[number];
 export type DiffViewMode = (typeof DIFF_VIEW_MODES)[number];
 export type DiffIndicatorMode = (typeof DIFF_INDICATOR_MODES)[number];
 
-export const BUILT_IN_TOOL_OVERRIDE_NAMES = [
+export const BUILT_IN_TOOL_DISPLAY_NAMES = [
 	"read",
 	"grep",
 	"find",
@@ -30,9 +30,9 @@ export const BUILT_IN_TOOL_OVERRIDE_NAMES = [
 	"write",
 ] as const;
 
-export type BuiltInToolOverrideName = (typeof BUILT_IN_TOOL_OVERRIDE_NAMES)[number];
+export type BuiltInToolDisplayName = (typeof BUILT_IN_TOOL_DISPLAY_NAMES)[number];
 
-export interface ToolOverrideOwnership {
+export interface BuiltInToolDisplays {
 	read: boolean;
 	grep: boolean;
 	find: boolean;
@@ -51,7 +51,7 @@ export interface CustomToolOverrideConfig {
 
 export interface ToolDisplayConfig {
 	enabled: boolean;
-	registerToolOverrides: ToolOverrideOwnership;
+	builtInToolDisplays: BuiltInToolDisplays;
 	customToolOverrides: Record<string, CustomToolOverrideConfig>;
 	enableNativeUserMessageBox: boolean;
 	readOutputMode: ReadOutputMode;
@@ -76,7 +76,7 @@ export interface ToolDisplayConfig {
 
 export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	enabled: true,
-	registerToolOverrides: {
+	builtInToolDisplays: {
 		read: true,
 		grep: true,
 		find: true,

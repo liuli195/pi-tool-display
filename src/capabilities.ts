@@ -78,7 +78,7 @@ export function applyCapabilityConfigGuards(
 ): ToolDisplayConfig {
 	return {
 		...config,
-		registerToolOverrides: { ...config.registerToolOverrides },
+		builtInToolDisplays: { ...config.builtInToolDisplays },
 		mcpOutputMode: config.mcpOutputMode,
 		showRtkCompactionHints: capabilities.hasRtkOptimizer ? config.showRtkCompactionHints : false,
 	};

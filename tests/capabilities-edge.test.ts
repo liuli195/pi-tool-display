@@ -243,7 +243,7 @@ test("applyCapabilityConfigGuards preserves values when both capabilities presen
 	assert.equal(guarded.showRtkCompactionHints, true);
 });
 
-test("applyCapabilityConfigGuards clones registerToolOverrides", () => {
+test("applyCapabilityConfigGuards clones builtInToolDisplays", () => {
 	const input = { ...DEFAULT_TOOL_DISPLAY_CONFIG };
 	const guarded = applyCapabilityConfigGuards(input, {
 		hasMcpTooling: false,
@@ -251,8 +251,8 @@ test("applyCapabilityConfigGuards clones registerToolOverrides", () => {
 	});
 
 	// Modifying the source should not affect the guarded copy
-	const originalOverrides = input.registerToolOverrides;
-	const guardedOverrides = guarded.registerToolOverrides;
+	const originalOverrides = input.builtInToolDisplays;
+	const guardedOverrides = guarded.builtInToolDisplays;
 	assert.notEqual(originalOverrides, guardedOverrides, "should be a different object");
 	assert.deepEqual(originalOverrides, guardedOverrides);
 });

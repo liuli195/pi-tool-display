@@ -6,7 +6,7 @@ import type { ToolDisplayConfig } from "./types.js";
 import { renderBashCall } from "./bash-display.js";
 import { toRecord } from "./tool-metadata.js";
 import { countWriteContentLines, getWriteContentSizeBytes } from "./write-display-utils.js";
-import { formatGenericToolCallLine, formatMcpCallLine, formatSearchCallLine, getRuntimeBuiltInToolOverride, getRuntimeCustomToolOverride, getSearchScope, renderBashResult, renderCustomToolResult, renderReadDisplayCall, renderReadDisplayResult, renderSearchResult, type RenderTheme } from "./tool-overrides.js";
+import { formatGenericToolCallLine, formatMcpCallLine, formatSearchCallLine, getRuntimeCustomToolOverride, getSearchScope, renderBashResult, renderCustomToolResult, renderReadDisplayCall, renderReadDisplayResult, renderSearchResult, type RenderTheme } from "./tool-overrides.js";
 
 export type ToolRenderer = (...args: any[]) => any;
 export interface ToolRowDescriptor {
@@ -148,15 +148,15 @@ function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfi
   return { call: failOpen(renderCall, native.call), result: failOpen(renderResult, native.result), shell: "default" };
 }
 
-export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
+export function createRendererCatalog(_pi?: ExtensionAPI): RendererCatalog {
   return {
     resolve(row, config, native) {
-      if (row.toolName === "read" && config.registerToolOverrides.read) return {
+      if (row.toolName === "read" && config.builtInToolDisplays.read) return {
         ...native,
         call: (args: unknown, theme: RenderTheme) => renderReadDisplayCall(args, theme),
         result: (result: any, options: ToolRenderResultOptions, theme: RenderTheme) => renderReadDisplayResult(result, options, config as ToolDisplayConfig, theme),
       };
-      if (["grep", "find", "ls"].includes(row.toolName) && config.registerToolOverrides[row.toolName as "grep" | "find" | "ls"]) {
+      if (["grep", "find", "ls"].includes(row.toolName) && config.builtInToolDisplays[row.toolName as "grep" | "find" | "ls"]) {
         const labels = row.toolName === "grep" ? ["match", "matches"] : row.toolName === "ls" ? ["entry", "entries"] : ["result", undefined];
         const call: ToolRenderer = (args: Record<string, unknown>, theme: RenderTheme) => {
           const scope = getSearchScope(args);
@@ -168,22 +168,14 @@ export function createRendererCatalog(pi?: ExtensionAPI): RendererCatalog {
           renderSearchResult(value, options, config as ToolDisplayConfig, theme, labels[0]!, value?.details, labels[1]);
         return { ...native, call, result };
       }
-      if (row.toolName === "edit" && config.registerToolOverrides.edit) return { ...native, ...editRenderers(row, config, native) };
-      if (row.toolName === "write" && config.registerToolOverrides.write) return { ...native, ...writeRenderers(row, config, native) };
-      if (row.toolName === "bash" && config.registerToolOverrides.bash) return {
+      if (row.toolName === "edit" && config.builtInToolDisplays.edit) return { ...native, ...editRenderers(row, config, native) };
+      if (row.toolName === "write" && config.builtInToolDisplays.write) return { ...native, ...writeRenderers(row, config, native) };
+      if (row.toolName === "bash" && config.builtInToolDisplays.bash) return {
         ...native,
         call: (args: unknown, theme: RenderTheme, context: unknown) => renderBashCall(args as never, theme, context as never, config as ToolDisplayConfig),
         result: (result: any, options: ToolRenderResultOptions, theme: RenderTheme, context: any) =>
           renderBashResult(result, options, config as ToolDisplayConfig, theme, context),
       };
-      if (row.builtIn && pi) {
-        const definition = getRuntimeBuiltInToolOverride(pi, row.toolName);
-        if (definition) return {
-          ...native,
-          ...(typeof definition.renderCall === "function" ? { call: definition.renderCall as ToolRenderer } : {}),
-          ...(typeof definition.renderResult === "function" ? { result: definition.renderResult as ToolRenderer } : {}),
-        };
-      }
       if (row.builtIn) return undefined;
       const configured = getRuntimeCustomToolOverride(row.toolName, config as ToolDisplayConfig);
       const producers = producerAdapters.get(row.toolName);

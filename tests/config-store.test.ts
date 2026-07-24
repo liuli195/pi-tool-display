@@ -37,9 +37,10 @@ test("config normalization clamps invalid values and migrates legacy read overri
     diffWordWrap: false,
   });
 
-  assert.equal(config.registerToolOverrides.read, false);
-  assert.equal(config.registerToolOverrides.grep, true);
-  assert.equal(config.registerToolOverrides.bash, false);
+  assert.equal(config.builtInToolDisplays.read, false);
+  assert.equal(config.builtInToolDisplays.grep, true);
+  assert.equal(config.builtInToolDisplays.bash, false);
+  assert.equal("registerToolOverrides" in config, false);
   assert.equal(config.readOutputMode, DEFAULT_TOOL_DISPLAY_CONFIG.readOutputMode);
   assert.equal(config.searchOutputMode, "count");
   assert.equal(config.mcpOutputMode, "preview");
@@ -52,6 +53,29 @@ test("config normalization clamps invalid values and migrates legacy read overri
   assert.equal(config.diffSplitMinWidth, 70);
   assert.equal(config.diffCollapsedLines, 240);
   assert.equal(config.diffWordWrap, false);
+});
+
+test("legacy registerToolOverrides config is accepted without rewriting the file", () => {
+  withTempDir("pi-tool-display-legacy-register-", (dir) => {
+    const configFile = join(dir, "config.json");
+    const original = '{\n  "registerToolOverrides": { "read": false, "bash": false }\n}\n';
+    writeFileSync(configFile, original, "utf8");
+
+    const result = loadToolDisplayConfig(configFile);
+
+    assert.equal(result.config.builtInToolDisplays.read, false);
+    assert.equal(result.config.builtInToolDisplays.bash, false);
+    assert.equal(readFileSync(configFile, "utf8"), original);
+  });
+});
+
+test("canonical builtInToolDisplays takes precedence over legacy input", () => {
+  const config = normalizeToolDisplayConfig({
+    builtInToolDisplays: { read: true },
+    registerToolOverrides: { read: false, bash: false },
+  });
+  assert.equal(config.builtInToolDisplays.read, true);
+  assert.equal(config.builtInToolDisplays.bash, true);
 });
 
 test("legacy thinking-label config is ignored without rewriting the file", () => {

@@ -2,7 +2,7 @@ import { resolvePiAgentDir } from "./agent-dir.js";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-	BUILT_IN_TOOL_OVERRIDE_NAMES,
+	BUILT_IN_TOOL_DISPLAY_NAMES,
 	BASH_COMMAND_MODES,
 	BASH_ERROR_OUTPUT_MODES,
 	BASH_OUTPUT_MODES,
@@ -18,7 +18,7 @@ import {
 	READ_OUTPUT_MODES,
 	SEARCH_OUTPUT_MODES,
 	type ToolDisplayConfig,
-	type ToolOverrideOwnership,
+	type BuiltInToolDisplays,
 } from "./types.js";
 import { toRecord } from "./tool-metadata.js";
 
@@ -26,6 +26,7 @@ const CONFIG_DIR = join(resolvePiAgentDir(), "extensions", "pi-tool-display");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 interface LegacyToolDisplayConfigSource extends Partial<ToolDisplayConfig> {
+	registerToolOverrides?: unknown;
 	registerReadToolOverride?: unknown;
 }
 
@@ -110,7 +111,7 @@ export function cloneCustomToolOverrides(
 function cloneDefaultConfig(): ToolDisplayConfig {
 	return {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
-		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays },
 		customToolOverrides: cloneCustomToolOverrides(DEFAULT_TOOL_DISPLAY_CONFIG.customToolOverrides),
 	};
 }
@@ -139,16 +140,16 @@ function getConfigFingerprint(configFile: string): string {
 	}
 }
 
-function normalizeToolOverrideOwnership(
+function normalizeBuiltInToolDisplays(
 	rawOverrides: unknown,
 	legacyRegisterReadToolOverride: unknown,
-): ToolOverrideOwnership {
+): BuiltInToolDisplays {
 	const source = toRecord(rawOverrides);
-	const defaults = DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides;
+	const defaults = DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays;
 	const legacyReadDefault = toBoolean(legacyRegisterReadToolOverride, defaults.read);
 
 	const overrides = { ...defaults };
-	for (const toolName of BUILT_IN_TOOL_OVERRIDE_NAMES) {
+	for (const toolName of BUILT_IN_TOOL_DISPLAY_NAMES) {
 		const fallback = toolName === "read" ? legacyReadDefault : defaults[toolName];
 		overrides[toolName] = toBoolean(source[toolName], fallback);
 	}
@@ -156,8 +157,8 @@ function normalizeToolOverrideOwnership(
 	return overrides;
 }
 
-function isBuiltInToolOverrideName(toolName: string): boolean {
-	return (BUILT_IN_TOOL_OVERRIDE_NAMES as readonly string[]).includes(toolName);
+function isBuiltInToolDisplayName(toolName: string): boolean {
+	return (BUILT_IN_TOOL_DISPLAY_NAMES as readonly string[]).includes(toolName);
 }
 
 export function toCustomToolOverrideKind(value: unknown): CustomToolOverrideConfig["kind"] {
@@ -201,7 +202,7 @@ function normalizeCustomToolOverrides(rawOverrides: unknown): Record<string, Cus
 
 	for (const [rawToolName, rawEntry] of Object.entries(source)) {
 		const toolName = rawToolName.trim();
-		if (!toolName || isBuiltInToolOverrideName(toolName)) {
+		if (!toolName || isBuiltInToolDisplayName(toolName)) {
 			continue;
 		}
 
@@ -222,9 +223,9 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 
 	return {
 		enabled: toBoolean(source.enabled, DEFAULT_TOOL_DISPLAY_CONFIG.enabled),
-		registerToolOverrides: normalizeToolOverrideOwnership(
-			source.registerToolOverrides,
-			source.registerReadToolOverride,
+		builtInToolDisplays: normalizeBuiltInToolDisplays(
+			source.builtInToolDisplays ?? source.registerToolOverrides,
+			source.builtInToolDisplays === undefined ? source.registerReadToolOverride : undefined,
 		),
 		customToolOverrides: normalizeCustomToolOverrides(source.customToolOverrides),
 		enableNativeUserMessageBox: toBoolean(

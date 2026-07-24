@@ -8,7 +8,7 @@ import { createRendererCatalog } from "../src/renderer-catalog.ts";
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const render = (component: any, width = 120) => component.render(width).join("\n");
 const resolver = (overrides = {}) => createToolDisplayResolver(
-  () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides, edit: true }, ...overrides }),
+  () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays, edit: true }, ...overrides }),
   createRendererCatalog(),
 );
 const native = () => ({ render: () => ["native edit"] });
@@ -109,7 +109,7 @@ test("pending edit evidence performs zero node:fs and node:fs/promises workspace
 
 test("unconfigured edit remains native", () => {
   const selected = createToolDisplayResolver(
-    () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides, edit: false } }),
+    () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays, edit: false } }),
     createRendererCatalog(),
   ).resolve({ toolName: "edit", arguments: {}, builtIn: true }, { call: native, result: native });
   assert.strictEqual(selected.call, native);

@@ -51,7 +51,7 @@ test("getToolDisplayPresetConfig returns independent clones for each call", () =
 	const a = getToolDisplayPresetConfig("opencode");
 	const b = getToolDisplayPresetConfig("opencode");
 
-	assert.notEqual(a.registerToolOverrides, b.registerToolOverrides, "registerToolOverrides should be different objects");
+	assert.notEqual(a.builtInToolDisplays, b.builtInToolDisplays, "builtInToolDisplays should be different objects");
 	assert.deepEqual(a, b, "values should be identical");
 });
 
@@ -100,7 +100,7 @@ test("detectToolDisplayPreset returns 'custom' when tool ownership differs", () 
 	const opencode = getToolDisplayPresetConfig("opencode");
 	const modified: ToolDisplayConfig = {
 		...opencode,
-		registerToolOverrides: { ...opencode.registerToolOverrides, read: false },
+		builtInToolDisplays: { ...opencode.builtInToolDisplays, read: false },
 	};
 	assert.equal(detectToolDisplayPreset(modified), "custom");
 });

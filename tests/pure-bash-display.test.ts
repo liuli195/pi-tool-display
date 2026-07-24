@@ -9,7 +9,7 @@ const theme = { fg: (_color: string, text: string) => text, bold: (text: string)
 const render = (component: any, width = 120) => component.render(width).join("\n");
 const output = (text: string, details: object = {}) => ({ content: [{ type: "text", text }], details });
 const resolver = (overrides = {}) => createToolDisplayResolver(
-  () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides, bash: true }, ...overrides }),
+  () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays, bash: true }, ...overrides }),
   createRendererCatalog(),
 );
 

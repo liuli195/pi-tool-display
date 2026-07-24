@@ -44,7 +44,7 @@ export function createToolDisplayResolver(
         const config = getConfig();
         const snapshot = Object.freeze({
           ...config,
-          registerToolOverrides: Object.freeze({ ...config.registerToolOverrides }),
+          builtInToolDisplays: Object.freeze({ ...config.builtInToolDisplays }),
           customToolOverrides: Object.freeze({ ...config.customToolOverrides }),
         });
         const selected = catalog.resolve(Object.freeze({ ...row, arguments: Object.freeze({ ...row.arguments }) }), snapshot, native);

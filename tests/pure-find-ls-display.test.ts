@@ -32,6 +32,6 @@ for (const toolName of ["find", "ls"] as const) {
 
 test("disabled find and ls use native call, result, and shell", () => {
   const native = () => "native";
-  const resolver = createToolDisplayResolver(() => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides, find: false, ls: false } }), createRendererCatalog());
+  const resolver = createToolDisplayResolver(() => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays, find: false, ls: false } }), createRendererCatalog());
   for (const toolName of ["find", "ls"] as const) assert.deepEqual(resolver.resolve({ toolName, arguments: {}, builtIn: false }, { call: native, result: native, shell: "native-shell" }), { call: native, result: native, shell: "native-shell" });
 });

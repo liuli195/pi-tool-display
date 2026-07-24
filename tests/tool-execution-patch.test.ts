@@ -14,7 +14,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { disposeAll, resetDisposed } from "../src/disposable.ts";
 import { registerToolExecutionPatch } from "../src/tool-execution-patch.ts";
-import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
+import { registerToolDisplayApi } from "../src/tool-overrides.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 
 initTheme(undefined, false);
@@ -124,7 +124,7 @@ test("MCP proxy and direct tools use only ordinary custom override configuration
 
 test("unconfigured third-party and built-in tools retain their original renderers", () => {
   const { api, handlers } = apiStub();
-  registerToolExecutionPatch(api, () => ({ ...config({ configured: true }), registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides, read: false } }));
+  registerToolExecutionPatch(api, () => ({ ...config({ configured: true }), builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays, read: false } }));
   try {
     const originalCall = () => ({ render: () => ["original call"] });
     const originalResult = () => ({ render: () => ["original result"] });
@@ -193,7 +193,7 @@ test("pre-upgrade built-in rows without runtime provenance redraw through curren
     diffCollapsedLines: 4,
   };
   try {
-    registerToolDisplayOverrides(api, () => currentConfig);
+    registerToolDisplayApi(() => currentConfig);
     registerToolExecutionPatch(api, () => currentConfig);
     await handlers.session_start?.();
     assert.deepEqual(owners, []);
@@ -254,7 +254,7 @@ test("historical rows follow current built-in ownership and stop refreshing for 
   let historical!: ToolExecutionComponent;
   let historicalEdit!: ToolExecutionComponent;
   try {
-    registerToolDisplayOverrides(first.api, () => first.currentConfig);
+    registerToolDisplayApi(() => first.currentConfig);
     registerToolExecutionPatch(first.api, () => first.currentConfig);
     await first.handlers.session_start?.();
     oldDefinition = createBashTool(process.cwd()) as any;
@@ -275,7 +275,7 @@ test("historical rows follow current built-in ownership and stop refreshing for 
 
   const second = makeRuntime("summary");
   try {
-    registerToolDisplayOverrides(second.api, () => second.currentConfig);
+    registerToolDisplayApi(() => second.currentConfig);
     registerToolExecutionPatch(second.api, () => second.currentConfig);
     await second.handlers.session_start?.();
     delete oldDefinition.name;

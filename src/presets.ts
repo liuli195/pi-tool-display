@@ -7,11 +7,11 @@ export type ToolDisplayPreset = (typeof TOOL_DISPLAY_PRESETS)[number];
 const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> = {
 	opencode: {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
-		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays },
 	},
 	balanced: {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
-		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays },
 		readOutputMode: "summary",
 		searchOutputMode: "count",
 		mcpOutputMode: "summary",
@@ -21,7 +21,7 @@ const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> 
 	},
 	verbose: {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
-		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays },
 		readOutputMode: "preview",
 		searchOutputMode: "preview",
 		mcpOutputMode: "preview",
@@ -35,13 +35,13 @@ const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> 
 
 function toolOverrideOwnershipEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
 	return (
-		a.registerToolOverrides.read === b.registerToolOverrides.read &&
-		a.registerToolOverrides.grep === b.registerToolOverrides.grep &&
-		a.registerToolOverrides.find === b.registerToolOverrides.find &&
-		a.registerToolOverrides.ls === b.registerToolOverrides.ls &&
-		a.registerToolOverrides.bash === b.registerToolOverrides.bash &&
-		a.registerToolOverrides.edit === b.registerToolOverrides.edit &&
-		a.registerToolOverrides.write === b.registerToolOverrides.write
+		a.builtInToolDisplays.read === b.builtInToolDisplays.read &&
+		a.builtInToolDisplays.grep === b.builtInToolDisplays.grep &&
+		a.builtInToolDisplays.find === b.builtInToolDisplays.find &&
+		a.builtInToolDisplays.ls === b.builtInToolDisplays.ls &&
+		a.builtInToolDisplays.bash === b.builtInToolDisplays.bash &&
+		a.builtInToolDisplays.edit === b.builtInToolDisplays.edit &&
+		a.builtInToolDisplays.write === b.builtInToolDisplays.write
 	);
 }
 
@@ -93,7 +93,7 @@ export function getToolDisplayPresetConfig(preset: ToolDisplayPreset): ToolDispl
 	const config = TOOL_DISPLAY_PRESET_CONFIGS[preset];
 	return {
 		...config,
-		registerToolOverrides: { ...config.registerToolOverrides },
+		builtInToolDisplays: { ...config.builtInToolDisplays },
 		customToolOverrides: cloneCustomToolOverrides(config.customToolOverrides),
 	};
 }

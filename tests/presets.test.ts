@@ -17,7 +17,7 @@ test("preset detection matches cloned preset configs and detects custom changes"
   const balanced = getToolDisplayPresetConfig("balanced");
   const anotherBalanced = getToolDisplayPresetConfig("balanced");
 
-  assert.notEqual(balanced.registerToolOverrides, anotherBalanced.registerToolOverrides);
+  assert.notEqual(balanced.builtInToolDisplays, anotherBalanced.builtInToolDisplays);
   assert.equal(detectToolDisplayPreset(balanced), "balanced");
   assert.equal(
     detectToolDisplayPreset({ ...balanced, previewLines: balanced.previewLines + 1 }),

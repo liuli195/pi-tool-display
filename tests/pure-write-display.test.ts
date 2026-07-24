@@ -9,7 +9,7 @@ const theme = { fg: (_color: string, text: string) => text, bold: (text: string)
 const render = (component: any, width = 120) => component.render(width).join("\n");
 const native = () => ({ render: () => ["native write"] });
 const resolver = (enabled = true) => createToolDisplayResolver(
-  () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides, write: enabled } }),
+  () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays, write: enabled } }),
   createRendererCatalog(),
 );
 const plan = (args: Record<string, unknown>) => resolver().resolve(

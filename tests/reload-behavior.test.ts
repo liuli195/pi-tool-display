@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import toolDisplayExtension from "../src/index.ts";
-import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
+import { registerToolDisplayApi } from "../src/tool-overrides.ts";
 import { renderBashCall } from "../src/bash-display.ts";
 import registerNativeUserMessageBox from "../src/user-message-box-native.ts";
 import { createToolDisplayDebugLogger } from "../src/debug-logger.ts";
@@ -86,7 +86,7 @@ function createApiStub(
 }
 
 /**
- * Create a stub for registerToolDisplayOverrides tests that need event-driven
+ * Create a stub for registerToolDisplayApi tests that need event-driven
  * deferred registration (read/edit/grep deferral).
  */
 function createExtensionApiStub(allTools: unknown[] = []): {
@@ -205,7 +205,7 @@ test("2: reload shuts down the old runtime before the new runtime registers curr
 test("2: built-in tool overrides wait for lifecycle ownership discovery", async () => {
   const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 
-  registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+  registerToolDisplayApi(() => DEFAULT_TOOL_DISPLAY_CONFIG);
   assert.equal(registeredTools.length, 0);
   await eventHandlers.session_start?.();
   assert.equal(registeredTools.length, 0);
@@ -710,7 +710,7 @@ test("11: each tool override call clones parameters independently", () => {
   const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 
   // First call
-  registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+  registerToolDisplayApi(() => DEFAULT_TOOL_DISPLAY_CONFIG);
   const firstParamRefs = new Map(
     registeredTools.map((t) => [t.name, t.parameters]),
   );
@@ -724,7 +724,7 @@ test("11: each tool override call clones parameters independently", () => {
 
   // Second call
   const { api: api2, registeredTools: tools2, eventHandlers: handlers2 } = createExtensionApiStub();
-  registerToolDisplayOverrides(api2, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+  registerToolDisplayApi(() => DEFAULT_TOOL_DISPLAY_CONFIG);
   handlers2.before_agent_start?.();
 
   const secondParamRefs = new Map(

@@ -35,8 +35,8 @@ function toOnOff(value: boolean): string {
 	return value ? "on" : "off";
 }
 
-function toolOwnershipSummary(config: ToolDisplayConfig): string {
-	const overrides = config.registerToolOverrides;
+function builtInDisplaySummary(config: ToolDisplayConfig): string {
+	const overrides = config.builtInToolDisplays;
 	return `read:${toOnOff(overrides.read)},grep:${toOnOff(overrides.grep)},find:${toOnOff(overrides.find)},ls:${toOnOff(overrides.ls)},bash:${toOnOff(overrides.bash)},edit:${toOnOff(overrides.edit)},write:${toOnOff(overrides.write)}`;
 }
 
@@ -44,7 +44,7 @@ function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCap
 	const preset = detectToolDisplayPreset(config);
 	const parts = [
 		`preset=${preset}`,
-		`owners={${toolOwnershipSummary(config)}}`,
+		`builtIns={${builtInDisplaySummary(config)}}`,
 		`userBox=${toOnOff(config.enableNativeUserMessageBox)}`,
 		`read=${config.readOutputMode}`,
 		`search=${config.searchOutputMode}`,
@@ -86,8 +86,8 @@ function buildAdvancedNotes(
 ): string[] {
 	const notes = [
 		...extra,
-		"Manual JSON edits also expose registerToolOverrides.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, and diffWordWrap.",
-		`Tool ownership is currently ${toolOwnershipSummary(config)} and still applies after /reload.`,
+		"Manual JSON edits also expose builtInToolDisplays.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, and diffWordWrap.",
+		`Built-in display selection is currently ${builtInDisplaySummary(config)} and applies immediately.`, 
 		`Truncation hints are ${toOnOff(config.showTruncationHints)}${capabilities.hasRtkOptimizer ? `; RTK hints are ${toOnOff(config.showRtkCompactionHints)}.` : "."}`,
 	];
 	return notes;

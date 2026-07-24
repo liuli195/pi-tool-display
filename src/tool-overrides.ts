@@ -1,26 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import type {
   BashToolDetails,
-  EditToolDetails,
-  ExtensionAPI,
   FindToolDetails,
   GrepToolDetails,
   LsToolDetails,
   ReadToolDetails,
-  ToolDefinition,
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
-import {
-  createBashTool,
-  createEditTool,
-  createFindTool,
-  createGrepTool,
-  createLsTool,
-  createReadTool,
-} from "@earendil-works/pi-coding-agent";
-import { Container, Spacer, Text, type Component } from "@earendil-works/pi-tui";
-import { resolvePiAgentDir } from "./agent-dir.js";
+import { Container, Text, type Component } from "@earendil-works/pi-tui";
 import { VisualLinePreviewComponent } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
@@ -36,45 +22,21 @@ import {
   shortenPath,
   splitLines,
 } from "./render-utils.js";
-import { renderEditDiffResult } from "./diff-renderer.js";
 import {
-  buildPendingEditPreviewData,
-  type PendingDiffPreviewData,
-} from "./pending-diff-preview.js";
-import {
-  extractPromptMetadata,
   getTextField,
   toRecord,
 } from "./tool-metadata.js";
-import { BUILT_IN_TOOL_OVERRIDE_NAMES } from "./types.js";
-import { toCustomToolOverrideKind, toCustomToolOutputMode, normalizeCustomToolOverrideEntry } from "./config-store.js";
+import { BUILT_IN_TOOL_DISPLAY_NAMES } from "./types.js";
+import { normalizeCustomToolOverrideEntry } from "./config-store.js";
 import type {
-  BuiltInToolOverrideName,
   CustomToolOverrideConfig,
   ToolDisplayConfig,
 } from "./types.js";
-
-interface BuiltInTools {
-  read: ReturnType<typeof createReadTool>;
-  grep: ReturnType<typeof createGrepTool>;
-  find: ReturnType<typeof createFindTool>;
-  ls: ReturnType<typeof createLsTool>;
-  bash: ReturnType<typeof createBashTool>;
-  edit: ReturnType<typeof createEditTool>;
-}
 
 type ConfigGetter = () => ToolDisplayConfig;
 
 interface RuntimeToolDefinition {
   name?: string;
-  label?: string;
-  description?: string;
-  parameters?: unknown;
-  prepareArguments?: unknown;
-  renderCall?: (args: Record<string, unknown>, theme: RenderTheme, context?: ToolRenderContextLike) => unknown;
-  renderResult?: (result: Record<string, unknown>, options: ToolRenderResultOptions, theme: RenderTheme, context?: ToolRenderContextLike) => unknown;
-  execute?: (toolCallId: string, params: Record<string, unknown>, signal: AbortSignal | undefined, onUpdate: unknown, ctx: { cwd: string }) => Promise<unknown>;
-  renderShell?: unknown;
   [key: string]: unknown;
 }
 
@@ -83,14 +45,6 @@ export interface RenderTheme {
   bg?(color: string, text: string): string;
   bold(text: string): string;
   getBgAnsi?(color: string): string;
-}
-
-interface RtkCompactionInfo {
-  applied: boolean;
-  techniques: string[];
-  truncated: boolean;
-  originalLineCount?: number;
-  compactedLineCount?: number;
 }
 
 interface ToolRenderContextLike {
@@ -104,27 +58,15 @@ interface ToolRenderContextLike {
   expanded?: boolean;
 }
 
-interface PendingDiffPreviewState {
-  key?: string;
-  data?: PendingDiffPreviewData;
+interface RtkCompactionInfo {
+  applied: boolean;
+  techniques: string[];
+  truncated: boolean;
+  originalLineCount?: number;
+  compactedLineCount?: number;
 }
 
-interface PiSettingsShellConfig {
-  shellPath?: unknown;
-  shellCommandPrefix?: unknown;
-}
-
-interface BashToolOverrideOptions {
-  shellPath?: string;
-  commandPrefix?: string;
-}
-
-const builtInToolCache = new Map<string, BuiltInTools>();
-const RUNTIME_BUILT_IN_OVERRIDE = Symbol.for("pi-tool-display.runtimeBuiltInOverride.v1");
-const runtimeBuiltInToolOverrides = new Map<string, { definition: RuntimeToolDefinition; owner: string }>();
 const RTK_COMPACTION_LABEL = "compacted by RTK";
-const EDIT_PENDING_PREVIEW_STATE_KEY = "__piToolDisplayEditPendingPreview";
-
 const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
 const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
 
@@ -159,164 +101,6 @@ type GlobalWithToolDisplayApi = typeof globalThis & {
   [TOOL_DISPLAY_API_KEY]?: ToolDisplayApi;
   [TOOL_DISPLAY_PENDING_DECORATIONS_KEY]?: PendingToolDisplayDecoration[];
 };
-
-function toolOwnerKey(tool: unknown): string | undefined {
-  const sourceInfo = toRecord(toRecord(tool).sourceInfo);
-  const source = getTextField(sourceInfo, "source");
-  const path = getTextField(sourceInfo, "path");
-  return source && path ? JSON.stringify({ source, path, scope: sourceInfo.scope, origin: sourceInfo.origin }) : undefined;
-}
-
-function registerRuntimeTool(pi: ExtensionAPI, tool: RuntimeToolDefinition): void {
-  pi.registerTool(tool as unknown as ToolDefinition);
-  const name = tool.name;
-  if (!name) return;
-
-  Object.defineProperty(tool, RUNTIME_BUILT_IN_OVERRIDE, { value: true });
-  const owner = tryGetAllTools(pi, "Built-in renderer ownership confirmation unavailable; skipped historical renderer publication.")
-    ?.find((candidate) => getTextField(candidate, "name") === name);
-  const ownerKey = toolOwnerKey(owner);
-  if (!ownerKey) return;
-
-  const entry = { definition: tool, owner: ownerKey };
-  runtimeBuiltInToolOverrides.set(name, entry);
-  registerCleanup(() => {
-    if (runtimeBuiltInToolOverrides.get(name) === entry) runtimeBuiltInToolOverrides.delete(name);
-  });
-}
-
-export function isRuntimeBuiltInToolOverride(tool: unknown): boolean {
-  return typeof tool === "object" && tool !== null && (tool as Record<PropertyKey, unknown>)[RUNTIME_BUILT_IN_OVERRIDE] === true;
-}
-
-export function getRuntimeBuiltInToolOverride(pi: ExtensionAPI, toolName: string): RuntimeToolDefinition | undefined {
-  try {
-    if (!pi.getActiveTools().includes(toolName)) return undefined;
-    const entry = runtimeBuiltInToolOverrides.get(toolName);
-    const owner = pi.getAllTools().find((tool) => getTextField(tool, "name") === toolName);
-    return entry && toolOwnerKey(owner) === entry.owner ? entry.definition : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-
-function getToolPrepareArguments(tool: unknown): unknown {
-  const prepareArguments = toRecord(tool).prepareArguments;
-  return typeof prepareArguments === "function" ? prepareArguments : undefined;
-}
-
-function cloneToolParameters(parameters: unknown, seen = new WeakMap<object, unknown>()): unknown {
-  if (parameters === null || typeof parameters !== "object") {
-    return parameters;
-  }
-
-  if (seen.has(parameters)) {
-    return seen.get(parameters);
-  }
-
-  const clone: object = Array.isArray(parameters)
-    ? []
-    : Object.create(Object.getPrototypeOf(parameters) as object | null) as object;
-  seen.set(parameters, clone);
-
-  for (const key of Reflect.ownKeys(parameters)) {
-    const descriptor = Object.getOwnPropertyDescriptor(parameters, key);
-    if (!descriptor) {
-      continue;
-    }
-
-    if ("value" in descriptor) {
-      descriptor.value = cloneToolParameters(descriptor.value as unknown, seen);
-    }
-
-    Object.defineProperty(clone, key, descriptor);
-  }
-
-  return clone;
-}
-
-function clearBuiltInToolCache(): void {
-  builtInToolCache.clear();
-}
-
-function getStringSetting(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-function loadBashToolOverrideOptions(): BashToolOverrideOptions {
-  const settingsPath = join(resolvePiAgentDir(), "settings.json");
-  if (!existsSync(settingsPath)) {
-    return {};
-  }
-
-  try {
-    const rawSettings = JSON.parse(readFileSync(settingsPath, "utf-8")) as PiSettingsShellConfig;
-    return {
-      shellPath: getStringSetting(rawSettings.shellPath),
-      commandPrefix: getStringSetting(rawSettings.shellCommandPrefix),
-    };
-  } catch (error) {
-    logToolDisplayDebug("Failed to read Pi settings for bash tool overrides.", error);
-    return {};
-  }
-}
-
-function getBuiltInTools(cwd: string): BuiltInTools {
-  let tools = builtInToolCache.get(cwd);
-  if (!tools) {
-    tools = createLazyBuiltInTools(cwd);
-    builtInToolCache.set(cwd, tools);
-  }
-  return tools;
-}
-
-function createLazyBuiltInTools(cwd: string): BuiltInTools {
-  const cache = new Map<string, unknown>();
-  const get = <K extends keyof BuiltInTools>(name: K, factory: () => BuiltInTools[K]): BuiltInTools[K] => {
-    if (!cache.has(name)) {
-      cache.set(name, factory());
-    }
-    return cache.get(name) as BuiltInTools[K];
-  };
-  return {
-    get read() { return get("read", () => createReadTool(cwd)); },
-    get grep() { return get("grep", () => createGrepTool(cwd)); },
-    get find() { return get("find", () => createFindTool(cwd)); },
-    get ls() { return get("ls", () => createLsTool(cwd)); },
-    get bash() { return get("bash", () => createBashTool(cwd, loadBashToolOverrideOptions())); },
-    get edit() { return get("edit", () => createEditTool(cwd)); },
-  } as BuiltInTools;
-}
-
-function createLazyToolRecord<T>(
-  bootstrapTools: BuiltInTools,
-  factory: (tool: BuiltInTools[keyof BuiltInTools]) => T,
-): Record<keyof BuiltInTools, T> {
-  const cache = new Map<string, unknown>();
-  const get = (name: keyof BuiltInTools): T => {
-    if (!cache.has(name)) {
-      cache.set(name, factory(bootstrapTools[name]));
-    }
-    return cache.get(name) as T;
-  };
-  return {
-    get read() { return get("read"); },
-    get grep() { return get("grep"); },
-    get find() { return get("find"); },
-    get ls() { return get("ls"); },
-    get bash() { return get("bash"); },
-    get edit() { return get("edit"); },
-  } as Record<keyof BuiltInTools, T>;
-}
-
-function createLazyPromptMetadata(bootstrapTools: BuiltInTools): Record<keyof BuiltInTools, ReturnType<typeof extractPromptMetadata>> {
-  return createLazyToolRecord(bootstrapTools, extractPromptMetadata);
-}
-
-function createLazyClonedParameters(bootstrapTools: BuiltInTools): Record<keyof BuiltInTools, unknown> {
-  return createLazyToolRecord(bootstrapTools, (tool) => cloneToolParameters(tool.parameters));
-}
 
 function formatExpandHint(theme: RenderTheme): string {
   return theme.fg("muted", " • Ctrl+O to expand");
@@ -425,85 +209,6 @@ function isToolError(
   context?: ToolRenderContextLike,
 ): boolean {
   return context?.isError === true || toRecord(result).isError === true;
-}
-
-function toStateRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function getPendingDiffPreviewState(
-  context: ToolRenderContextLike | undefined,
-  stateKey: string,
-): PendingDiffPreviewState | undefined {
-  const carrier = toStateRecord(context?.state);
-  if (!carrier) {
-    return undefined;
-  }
-
-  const current = carrier[stateKey];
-  if (current && typeof current === "object" && !Array.isArray(current)) {
-    return current as PendingDiffPreviewState;
-  }
-
-  const next: PendingDiffPreviewState = {};
-  carrier[stateKey] = next;
-  return next;
-}
-
-function resolvePendingDiffPreview(
-  context: ToolRenderContextLike | undefined,
-  stateKey: string,
-  previewKey: string | undefined,
-  compute: () => PendingDiffPreviewData | undefined,
-): PendingDiffPreviewData | undefined {
-  const previewState = getPendingDiffPreviewState(context, stateKey);
-  if (!previewState) {
-    return compute();
-  }
-
-  if (previewState.key !== previewKey) {
-    previewState.key = previewKey;
-    previewState.data = previewKey ? compute() : undefined;
-  }
-
-  return previewState.data;
-}
-
-function buildPendingDiffCallComponent(
-  summaryText: string,
-  previewData: PendingDiffPreviewData | undefined,
-  context: ToolRenderContextLike | undefined,
-  config: ToolDisplayConfig,
-  theme: RenderTheme,
-): Text | Container {
-  if (!context?.isPartial || !previewData) {
-    return textResult(summaryText);
-  }
-
-  const container = new Container();
-  container.addChild(new Text(summaryText, 0, 0));
-  container.addChild(new Spacer(1));
-
-  if (previewData.notice || typeof previewData.nextContent !== "string") {
-    container.addChild(new Text(theme.fg("warning", previewData.notice || "Preview unavailable."), 0, 0));
-    return container;
-  }
-
-  const oldLines = (previewData.previousContent ?? "").replace(/\r/g, "").split("\n");
-  const newLines = previewData.nextContent.replace(/\r/g, "").split("\n");
-  const diff = `@@ -1,${oldLines.length} +1,${newLines.length} @@\n${oldLines.map((line) => `-${line}`).join("\n")}\n${newLines.map((line) => `+${line}`).join("\n")}`;
-  container.addChild(renderEditDiffResult(
-    { diff },
-    { expanded: context.expanded === true, filePath: previewData.filePath },
-    config,
-    theme,
-    "",
-  ));
-  return container;
 }
 
 function formatLineCountSuffix(
@@ -1135,7 +840,7 @@ function renderMcpResult(
 }
 
 function isBuiltInToolName(toolName: string): boolean {
-  return (BUILT_IN_TOOL_OVERRIDE_NAMES as readonly string[]).includes(toolName);
+  return (BUILT_IN_TOOL_DISPLAY_NAMES as readonly string[]).includes(toolName);
 }
 
 export function getRuntimeCustomToolOverride(
@@ -1195,16 +900,6 @@ export function renderCustomToolResult(
     { ...config, mcpOutputMode: outputMode },
     theme,
   );
-}
-
-function getAdapterKind(tool: RuntimeToolDefinition, adapter: ToolDisplayAdapter): ToolDisplayKind {
-  if (adapter.kind) {
-    return adapter.kind;
-  }
-  if (tool.name === "read" || tool.name === "edit") {
-    return tool.name;
-  }
-  return "generic";
 }
 
 function getAdapterPath(args: unknown, adapter: ToolDisplayAdapter): string | undefined {
@@ -1282,79 +977,6 @@ export function renderReadDisplayResult(
   return renderSearchPreview(hintCtx);
 }
 
-function renderEditDisplayCall(
-  args: unknown,
-  theme: RenderTheme,
-  context: ToolRenderContextLike | undefined,
-  adapter: ToolDisplayAdapter = {},
-  getConfig: ConfigGetter,
- ): Text | Container {
-  const path = shortenPath(getAdapterPath(args, adapter));
-  const lineCount = adapter.getEditLineCount?.(args) ?? getEditLineCount(args);
-  const summaryText = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", path || "...")}${formatLineCountSuffix(lineCount, theme)}`;
-  if (!context?.argsComplete || !context.isPartial) {
-    return textResult(summaryText);
-  }
-
-  const previewKey = JSON.stringify({
-    path: getAdapterPath(args, adapter) ?? null,
-    edits: toRecord(args).edits ?? null,
-    oldText: getStringField(args, "oldText") ?? null,
-    newText: getStringField(args, "newText") ?? null,
-  });
-  const previewData = resolvePendingDiffPreview(
-    context,
-    EDIT_PENDING_PREVIEW_STATE_KEY,
-    previewKey,
-    () => buildPendingEditPreviewData(args, context.cwd),
-  );
-  return buildPendingDiffCallComponent(summaryText, previewData, context, getConfig(), theme);
-}
-
-function renderEditDisplayResult(
-  result: ToolRenderInput & { isError?: boolean },
-  options: ToolRenderResultOptions,
-  theme: RenderTheme,
-  context: ToolRenderContextLike | undefined,
-  adapter: ToolDisplayAdapter = {},
-  getConfig: ConfigGetter,
- ): unknown {
-  const lineCount = adapter.getEditLineCount?.(context?.args) ?? getEditLineCount(context?.args);
-  const { fallbackText, earlyResult } = handleEditOrWriteResult(result, options, context, theme, lineCount, "editing", "Edit failed.");
-  if (earlyResult) {
-    return earlyResult;
-  }
-
-  const config = getConfig();
-  const details = result.details as EditToolDetails | undefined;
-  return renderEditDiffResult(
-    details,
-    { expanded: options.expanded, filePath: getAdapterPath(context?.args, adapter) },
-    config,
-    theme,
-    fallbackText,
-  );
-}
-
-function handleEditOrWriteResult(
-  result: ToolRenderInput,
-  options: ToolRenderResultOptions,
-  context: ToolRenderContextLike | undefined,
-  theme: RenderTheme,
-  lineCount: number,
-  progressLabel: string,
-  errorMessage: string,
-): { fallbackText: string; earlyResult: Text | undefined } {
-  if (options.isPartial) {
-    return { fallbackText: "", earlyResult: new Text(formatInProgressLineCount(progressLabel, lineCount, theme), 0, 0) };
-  }
-  const fallbackText = extractTextOutput(result);
-  if (isToolError(result, context)) {
-    return { fallbackText, earlyResult: textResult(theme.fg("error", fallbackText || errorMessage)) };
-  }
-  return { fallbackText, earlyResult: undefined };
-}
-
 function toProducerAdapter(toolName: string, adapter: ToolDisplayAdapter = {}): ProducerRendererAdapter {
   const kind = adapter.kind === "mcp" ? "mcp" : "generic";
   return {
@@ -1417,109 +1039,10 @@ function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
   return api;
 }
 
-function tryGetAllTools(pi: ExtensionAPI, debugMessage: string): unknown[] | undefined {
-  try {
-    return pi.getAllTools();
-  } catch (error) {
-    logToolDisplayDebug(debugMessage, error);
-    return undefined;
-  }
-}
-
-export function registerToolDisplayOverrides(
-  pi: ExtensionAPI,
-  getConfig: ConfigGetter,
-): void {
-  clearBuiltInToolCache();
+export function registerToolDisplayApi(getConfig: ConfigGetter): void {
   const toolDisplayApi = installToolDisplayApi(getConfig);
   registerCleanup(() => {
     const globalWithApi = globalThis as GlobalWithToolDisplayApi;
-    if (globalWithApi[TOOL_DISPLAY_API_KEY] === toolDisplayApi) {
-      delete globalWithApi[TOOL_DISPLAY_API_KEY];
-    }
-  });
-  const bootstrapTools = getBuiltInTools(process.cwd());
-  const builtInPromptMetadata = createLazyPromptMetadata(bootstrapTools);
-  const clonedParameters = createLazyClonedParameters(bootstrapTools);
-  const registeredBuiltInToolOverrides = new Set<BuiltInToolOverrideName>();
-
-  const isExternallyOwnedBuiltInTool = (toolName: BuiltInToolOverrideName): boolean => {
-    const allTools = tryGetAllTools(pi, "Built-in tool override ownership discovery unavailable; treating the active tool as ownerless.");
-    if (!allTools) {
-      return false;
-    }
-
-    const currentOwner = allTools.find((tool) => getTextField(tool, "name") === toolName);
-    if (!currentOwner) {
-      return false;
-    }
-
-    const sourceInfo = toRecord(toRecord(currentOwner).sourceInfo);
-    const source = getTextField(sourceInfo, "source");
-    if (source !== "builtin") {
-      logToolDisplayDebug("Skipped built-in tool display override because another tool owner is active.", {
-        toolName,
-        source: source ?? "unknown",
-        path: getTextField(sourceInfo, "path") ?? "unknown",
-      });
-      return true;
-    }
-
-    return false;
-  };
-
-  const registerIfOwned = (
-    activeTools: ReadonlySet<string>,
-    toolName: BuiltInToolOverrideName,
-    register: () => void,
-  ): void => {
-    if (
-      (["read", "grep", "find", "ls", "edit", "write"] as string[]).includes(toolName) ||
-      registeredBuiltInToolOverrides.has(toolName) ||
-      !activeTools.has(toolName) ||
-      !getConfig().registerToolOverrides[toolName] ||
-      isExternallyOwnedBuiltInTool(toolName)
-    ) {
-      return;
-    }
-
-    register();
-    registeredBuiltInToolOverrides.add(toolName);
-  };
-
-  function createBuiltinToolBase(toolName: keyof BuiltInTools) {
-    return {
-      description: bootstrapTools[toolName].description,
-      ...builtInPromptMetadata[toolName],
-      parameters: clonedParameters[toolName],
-      prepareArguments: getToolPrepareArguments(bootstrapTools[toolName]),
-      async execute(toolCallId: string, params: Record<string, unknown>, signal: unknown, onUpdate: unknown, ctx: { cwd: string }) {
-        return getBuiltInTools(ctx.cwd)[toolName].execute(
-          toolCallId,
-          params as never,
-          signal as never,
-          onUpdate as never,
-        );
-      },
-    };
-  }
-
-  const registerActiveBuiltInRenderers = (): void => {
-    let activeTools: ReadonlySet<string>;
-    try {
-      activeTools = new Set(pi.getActiveTools());
-    } catch (error) {
-      logToolDisplayDebug("Active tool discovery unavailable; skipped built-in renderer registration.", error);
-      return;
-    }
-
-
-  };
-
-  pi.on("session_start", async () => {
-    registerActiveBuiltInRenderers();
-  });
-  pi.on("before_agent_start", async () => {
-    registerActiveBuiltInRenderers();
+    if (globalWithApi[TOOL_DISPLAY_API_KEY] === toolDisplayApi) delete globalWithApi[TOOL_DISPLAY_API_KEY];
   });
 }
