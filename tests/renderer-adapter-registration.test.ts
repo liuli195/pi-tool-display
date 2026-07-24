@@ -90,6 +90,21 @@ test("equal-priority producer conflicts fail deterministically regardless of ord
   } finally { second(); first(); }
 });
 
+test("reused global API keeps producer intent and remains disposable by the current epoch", () => {
+  resetDisposed();
+  registerToolDisplayApi(() => DEFAULT_TOOL_DISPLAY_CONFIG);
+  const apiSymbol = Symbol.for("pi-tool-display.api.v1");
+  const api = (globalThis as any)[apiSymbol];
+  api.registerAdapter({ id: "epoch-producer", toolName: "epoch_tool", kind: "generic" });
+  registerToolDisplayApi(() => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, previewLines: 1 }));
+  assert.strictEqual((globalThis as any)[apiSymbol], api);
+  assert.ok(createRendererCatalog().resolve({ toolName: "epoch_tool", arguments: {} }, DEFAULT_TOOL_DISPLAY_CONFIG, {}));
+
+  disposeAll();
+  assert.equal((globalThis as any)[apiSymbol], undefined);
+  assert.equal(createRendererCatalog().resolve({ toolName: "epoch_tool", arguments: {} }, DEFAULT_TOOL_DISPLAY_CONFIG, {}), undefined);
+});
+
 test("legacy read and edit adapter kinds retain their specialized display without mutating definitions", () => {
   resetDisposed();
   const read = Object.freeze({ name: "legacy_read", execute: Object.freeze(() => undefined) });

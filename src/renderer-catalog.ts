@@ -35,7 +35,13 @@ export class RendererAdapterConflict extends Error {
   }
 }
 
-const producerAdapters = new Map<string, Map<string, ProducerRendererAdapter>>();
+const PRODUCER_ADAPTERS_KEY = Symbol.for("pi-tool-display.producer-adapters.v1");
+type GlobalWithProducerAdapters = typeof globalThis & {
+  [PRODUCER_ADAPTERS_KEY]?: Map<string, Map<string, ProducerRendererAdapter>>;
+};
+const globalWithProducerAdapters = globalThis as GlobalWithProducerAdapters;
+const producerAdapters = globalWithProducerAdapters[PRODUCER_ADAPTERS_KEY]
+  ??= new Map<string, Map<string, ProducerRendererAdapter>>();
 
 function detachRenderer(renderer: ToolRenderer | undefined, contextIndex: number): ToolRenderer | undefined {
   if (!renderer) return undefined;

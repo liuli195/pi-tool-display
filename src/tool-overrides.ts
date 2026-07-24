@@ -101,6 +101,8 @@ interface PendingToolDisplayDecoration {
 interface ToolDisplayApiState {
   api: ToolDisplayApi;
   getConfig: ConfigGetter;
+  disposers: Set<() => void>;
+  dispose: () => void;
 }
 
 type GlobalWithToolDisplayApi = typeof globalThis & {
@@ -1027,8 +1029,7 @@ function drainPendingToolDisplayDecorations(api: ToolDisplayApi, getConfig: Conf
   entries.length = 0;
 }
 
-function installToolDisplayApi(state: Omit<ToolDisplayApiState, "api">): ToolDisplayApi {
-  const disposers = new Set<() => void>();
+function installToolDisplayApi(state: ToolDisplayApiState): ToolDisplayApi {
   const legacyDisposers = new Map<string, () => void>();
   const api: ToolDisplayApi = {
     version: 1,
@@ -1038,10 +1039,10 @@ function installToolDisplayApi(state: Omit<ToolDisplayApiState, "api">): ToolDis
       const dispose = () => {
         if (disposed) return;
         disposed = true;
-        disposers.delete(dispose);
+        state.disposers.delete(dispose);
         disposeRegistration();
       };
-      disposers.add(dispose);
+      state.disposers.add(dispose);
       return dispose;
     },
     decorateTool<T extends RuntimeToolDefinition>(tool: T, adapter?: ToolDisplayAdapter): T {
@@ -1056,7 +1057,6 @@ function installToolDisplayApi(state: Omit<ToolDisplayApiState, "api">): ToolDis
   };
   (globalThis as GlobalWithToolDisplayApi)[TOOL_DISPLAY_API_KEY] = api;
   drainPendingToolDisplayDecorations(api, () => state.getConfig());
-  registerCleanup(() => { for (const dispose of [...disposers]) dispose(); });
   return api;
 }
 
@@ -1066,15 +1066,25 @@ export function registerToolDisplayApi(getConfig: ConfigGetter): void {
   if (existing && globalWithApi[TOOL_DISPLAY_API_KEY] === existing.api) {
     existing.getConfig = getConfig;
     drainPendingToolDisplayDecorations(existing.api, () => existing.getConfig());
+    registerCleanup(existing.dispose);
     return;
   }
 
-  const state = { getConfig } as ToolDisplayApiState;
+  const state = {
+    getConfig,
+    disposers: new Set<() => void>(),
+    dispose: () => {},
+  } as ToolDisplayApiState;
   const toolDisplayApi = installToolDisplayApi(state);
   state.api = toolDisplayApi;
-  globalWithApi[TOOL_DISPLAY_API_STATE_KEY] = state;
-  registerCleanup(() => {
+  let disposed = false;
+  state.dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    for (const dispose of [...state.disposers]) dispose();
     if (globalWithApi[TOOL_DISPLAY_API_KEY] === toolDisplayApi) delete globalWithApi[TOOL_DISPLAY_API_KEY];
     if (globalWithApi[TOOL_DISPLAY_API_STATE_KEY] === state) delete globalWithApi[TOOL_DISPLAY_API_STATE_KEY];
-  });
+  };
+  globalWithApi[TOOL_DISPLAY_API_STATE_KEY] = state;
+  registerCleanup(state.dispose);
 }
