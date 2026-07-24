@@ -1,5 +1,6 @@
 [
   { "name": "development", "env": "PI_RUNTIME_DEV_ROOT", "required": true },
   { "name": "pi-0.81.1", "version": "0.81.1", "env": "PI_RUNTIME_0_81_1_ROOT", "required": true },
+  { "name": "pi-0.82.0", "version": "0.82.0", "env": "PI_RUNTIME_0_82_0_ROOT", "required": true },
   { "name": "minimum-supported", "version": "0.74.0", "env": "PI_RUNTIME_MIN_ROOT", "required": true }
 ]

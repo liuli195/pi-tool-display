@@ -117,7 +117,7 @@ The deprecated `decorateToolForDisplay(tool, adapter)` migration facade register
 
 ## Compatibility
 
-Supported Pi versions are exactly `0.74.0`, `0.80.3` (the repository development runtime), and `0.81.1`, the versions exercised by the release matrix. Any other version or incompatible private TUI shape emits one concise debug diagnostic and keeps Pi's native rendering and execution.
+Supported Pi versions are `0.74.0`, `0.80.3` (the repository development runtime), and stable releases from `0.81.1` onward. The release matrix exercises `0.74.0`, `0.81.1`, `0.82.0`, and the development runtime. Older, prerelease, or incompatible private TUI shapes emit one concise debug diagnostic and keep Pi's native rendering and execution.
 
 ## Presets
 
@@ -410,7 +410,7 @@ npm run build
 # Run the local real-runtime contract (missing optional runtimes are skipped)
 npm run test:contract:local
 
-# Full three-runtime matrix and complete verification
+# Full four-runtime matrix and complete verification
 # See docs/ownership-verification.md for required PI_RUNTIME_* roots.
 npm test
 npm run typecheck

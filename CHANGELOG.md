@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Support stable Pi releases from `0.81.1` onward, with `0.82.0` added to the real-runtime qualification matrix.
+
 ## [0.6.2] - 2026-07-24
 
 ### Added

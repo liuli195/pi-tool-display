@@ -17,7 +17,13 @@ const STATE = Symbol.for("pi-tool-display.piHostAdapter.v1");
 type HostPrototype = ToolRowHost & { getCallRenderer?: RendererSelector; getResultRenderer?: RendererSelector; [STATE]?: Installation };
 export interface PiHostAdapterInstallation { readonly installed: boolean; dispose(): void }
 
-const supportedVersion = (version: string) => ["0.74.0", "0.80.3", "0.81.1"].includes(version);
+const supportedVersion = (version: string) => {
+  if (["0.74.0", "0.80.3"].includes(version)) return true;
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 0 || (major === 0 && (minor > 81 || (minor === 81 && patch >= 1)));
+};
 const noopInstallation = (): PiHostAdapterInstallation => ({ installed: false, dispose() {} });
 
 export function installPiHostAdapter(

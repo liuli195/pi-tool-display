@@ -15,6 +15,7 @@ Supply all required runtime package roots when running the contract matrix:
 ```sh
 PI_RUNTIME_DEV_ROOT=/path/to/development/pi-coding-agent \
 PI_RUNTIME_0_81_1_ROOT=/path/to/pi-coding-agent-0.81.1 \
+PI_RUNTIME_0_82_0_ROOT=/path/to/pi-coding-agent-0.82.0 \
 PI_RUNTIME_MIN_ROOT=/path/to/minimum-supported/pi-coding-agent \
 npm test
 ```

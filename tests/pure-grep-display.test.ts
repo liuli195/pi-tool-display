@@ -128,10 +128,20 @@ test("Pi Host Adapter retains ownership tracking until an interrupted mixed disp
   assert.strictEqual(target.getResultRenderer, foreignResult);
 });
 
+test("Pi Host Adapter accepts stable Pi versions from 0.81.1 onward", () => {
+  for (const version of ["0.81.1", "0.82.0", "1.0.0"]) {
+    const { host } = syntheticHost();
+    const installation = installPiHostAdapter(host, config("count"), version);
+    assert.equal(installation.installed, true);
+    installation.dispose();
+  }
+});
+
 test("Pi Host Adapter rejects unsupported and non-extensible hosts without descriptor changes", () => {
   for (const [host, version] of [
     [Object.preventExtensions(syntheticHost().host), "0.80.3"],
-    [syntheticHost().host, "9.9.9"],
+    [syntheticHost().host, "0.81.0"],
+    [syntheticHost().host, "0.82.0-beta.1"],
     [{ getCallRenderer() {} }, "0.80.3"],
   ] as const) {
     const before = Object.getOwnPropertyDescriptors(host);

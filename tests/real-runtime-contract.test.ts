@@ -67,10 +67,11 @@ const stableFixturePaths = (ownership: Array<{ name: string; sourceInfo: any }>)
   sourceInfo: { ...sourceInfo, path: sourceInfo.path?.replace(/pi-tool-display-contract-[^\\/]+/, "pi-tool-display-contract") },
 }));
 
-test("runtime matrix pins development, Pi 0.81.1, and the declared minimum", () => {
+test("runtime matrix pins development, Pi 0.81.1, Pi 0.82.0, and the declared minimum", () => {
   assert.deepEqual(matrix.map(({ name, version }) => ({ name, version })), [
     { name: "development", version: undefined },
     { name: "pi-0.81.1", version: "0.81.1" },
+    { name: "pi-0.82.0", version: "0.82.0" },
     { name: "minimum-supported", version: "0.74.0" },
   ]);
   assert.equal(matrix.every(({ required }) => required), true);
