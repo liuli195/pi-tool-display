@@ -104,6 +104,7 @@ interface ToolDisplayApiState {
   api: ToolDisplayApi;
   getConfig: ConfigGetter;
   disposers: Set<() => void>;
+  disposed: boolean;
   dispose: () => void;
 }
 
@@ -1037,6 +1038,7 @@ function installToolDisplayApi(state: ToolDisplayApiState): ToolDisplayApi {
   const api: ToolDisplayApi = {
     version: 1,
     registerAdapter(adapter) {
+      if (state.disposed) throw new Error("Tool display API has been disposed");
       const disposeRegistration = registerProducerRendererAdapter(adapter);
       let disposed = false;
       const dispose = () => {
@@ -1076,6 +1078,7 @@ export function registerToolDisplayApi(getConfig: ConfigGetter): void {
   const state = {
     getConfig,
     disposers: new Set<() => void>(),
+    disposed: false,
     dispose: () => {},
   } as ToolDisplayApiState;
   const toolDisplayApi = installToolDisplayApi(state);
@@ -1084,6 +1087,7 @@ export function registerToolDisplayApi(getConfig: ConfigGetter): void {
   state.dispose = () => {
     if (disposed) return;
     disposed = true;
+    state.disposed = true;
     for (const dispose of [...state.disposers]) dispose();
     if (globalWithApi[TOOL_DISPLAY_API_KEY] === toolDisplayApi) delete globalWithApi[TOOL_DISPLAY_API_KEY];
     if (globalWithApi[TOOL_DISPLAY_API_STATE_KEY] === state) delete globalWithApi[TOOL_DISPLAY_API_STATE_KEY];

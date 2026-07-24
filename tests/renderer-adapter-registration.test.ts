@@ -130,7 +130,12 @@ test("reused global API keeps producer intent and remains disposable by the curr
 
   disposeAll();
   assert.equal((globalThis as any)[apiSymbol], undefined);
+  assert.throws(
+    () => api.registerAdapter({ id: "retired", toolName: "retired_tool", kind: "generic" }),
+    /disposed/,
+  );
   assert.equal(createRendererCatalog().resolve({ toolName: "epoch_tool", arguments: {} }, DEFAULT_TOOL_DISPLAY_CONFIG, {}), undefined);
+  assert.equal(createRendererCatalog().resolve({ toolName: "retired_tool", arguments: {} }, DEFAULT_TOOL_DISPLAY_CONFIG, {}), undefined);
 });
 
 test("legacy read and edit adapter kinds retain their specialized display without mutating definitions", () => {

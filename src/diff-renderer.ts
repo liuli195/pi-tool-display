@@ -1942,13 +1942,16 @@ function applyLineLimit(
 	const logicalLineIds = [...new Set(rows.flatMap((row) => row.logicalLineId === undefined ? [] : [row.logicalLineId]))];
 	if (logicalLineIds.length <= limit) return rows.map((row) => clampDiffLineToWidth(row.text, width));
 	const shownLineIds = new Set(logicalLineIds.slice(0, limit));
-	const shown = rows.filter((row) => row.logicalLineId === undefined || shownLineIds.has(row.logicalLineId));
-	const remaining = rows.length - shown.length;
 	const visibleHunks = new Set(
-		shown
+		rows
+			.filter((row) => row.logicalLineId !== undefined && shownLineIds.has(row.logicalLineId))
 			.map((row) => row.hunkIndex)
 			.filter((hunkIndex): hunkIndex is number => typeof hunkIndex === "number" && hunkIndex > 0),
 	);
+	const shown = rows.filter((row) => row.logicalLineId !== undefined
+		? shownLineIds.has(row.logicalLineId)
+		: row.hunkIndex === null || visibleHunks.has(row.hunkIndex));
+	const remaining = rows.length - shown.length;
 	const hiddenHunks = Math.max(0, totalHunks - visibleHunks.size);
 	const hintText = buildCollapsedDiffHintText(
 		{

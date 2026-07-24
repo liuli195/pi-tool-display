@@ -366,10 +366,13 @@ test("public config mutation invalidates ToolExecution rows already rendered", a
   let invalidations = 0;
   row.invalidate = () => { invalidations++; originalInvalidate(); };
 
-  await runtime.capturedCommands.find(({ name }) => name === "tool-display")?.handler?.("preset balanced", {
-    ui: { notify() {} },
-  });
+  const command = runtime.capturedCommands.find(({ name }) => name === "tool-display")?.handler;
+  await command?.("preset balanced", { ui: { notify() {} } });
   assert.ok(invalidations > 0);
+  row.render(80);
+  const afterFirstMutation = invalidations;
+  await command?.("preset verbose", { ui: { notify() {} } });
+  assert.ok(invalidations > afterFirstMutation);
   for (const { event, handler } of runtime.capturedHandlers) if (event === "session_shutdown") handler({ reason: "quit" });
 });
 

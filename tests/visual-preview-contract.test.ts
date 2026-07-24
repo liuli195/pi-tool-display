@@ -163,6 +163,24 @@ test("Diff visual omission count responds to width while logical selection stays
   assert.ok((counts.get(40) ?? 0) > (counts.get(120) ?? 0));
 });
 
+test("Diff logical budget hides metadata belonging only to omitted hunks", () => {
+  const renderResult = resolveResult("edit", { diffViewMode: "unified", diffCollapsedLines: 1, diffWordWrap: true }, { path: "fixture.txt" });
+  const diff = [
+    "@@ -1,1 +1,1 @@ first-hunk",
+    "-first old",
+    "+first new",
+    "@@ -20,1 +20,1 @@ second-hunk",
+    "-second old",
+    "+second new",
+  ].join("\n");
+  const output = renderResult(result("done", { diff }), options(), theme).render(80).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+
+  assert.match(output, /first-hunk/);
+  assert.match(output, /first old/);
+  assert.doesNotMatch(output, /second-hunk|second old|second new/);
+  assert.match(output, /more visual diff lines/);
+});
+
 test("Diff omission hint uses singular visual-line wording", () => {
   const renderResult = resolveResult("edit", { diffViewMode: "unified", diffCollapsedLines: 1, diffWordWrap: true }, { path: "fixture.txt" });
   const lines = renderResult(result("done", { diff: "-old\n+new" }), options(), theme).render(80);

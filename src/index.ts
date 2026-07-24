@@ -66,6 +66,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     effectiveConfig ??= applyCapabilityConfigGuards(mergedConfig, capabilities);
 
   const uninstallSession = (): void => {
+    invalidateToolExecutionRows();
     disposeSessionInstallation?.();
     disposeSessionInstallation = undefined;
   };
@@ -97,8 +98,9 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
 
     const saved = saveToolDisplayConfig(globalConfig);
     if (!saved.success && saved.error) ctx.ui.notify(saved.error, "error");
-    invalidateToolExecutionRows();
-    installSession();
+    if (!mergedConfig.enabled) uninstallSession();
+    else if (!disposeSessionInstallation) installSession();
+    else invalidateToolExecutionRows();
   };
 
   registerCleanup(uninstallSession);
