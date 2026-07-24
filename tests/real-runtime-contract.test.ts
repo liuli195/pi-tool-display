@@ -57,6 +57,11 @@ test("real capture path rejects context and tool accessors without invoking them
 interface RuntimeMatrixEntry { name: string; version?: string; env: string; required: boolean }
 const matrix = JSON.parse(readFileSync(new URL("./runtime-matrix.json", import.meta.url), "utf8")) as RuntimeMatrixEntry[];
 const plain = (value: string) => value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+const assertUnduplicatedOmissionMarkers = (text: string) => {
+  const omissionRows = text.split("\n").filter((line) => /^\s*\.\.\./.test(line));
+  assert.ok(omissionRows.length > 0);
+  assert.ok(omissionRows.every((line) => line.match(/\.\.\./g)?.length === 1));
+};
 const stableFixturePaths = (ownership: Array<{ name: string; sourceInfo: any }>) => ownership.map(({ name, sourceInfo }) => ({
   name,
   sourceInfo: { ...sourceInfo, path: sourceInfo.path?.replace(/pi-tool-display-contract-[^\\/]+/, "pi-tool-display-contract") },
@@ -131,14 +136,26 @@ for (const entry of matrix) {
     for (const frame of [observation.firstCollapsedOutput, observation.present.tuiOutput.reload]) {
       const text = plain(frame);
       assert.match(text, /edit.*fixture\.txt/);
+      assert.match(text, /diff \+6 -1 split/);
+      assertUnduplicatedOmissionMarkers(text);
+      assert.match(text, /contract cold row 3/);
+      assert.match(text, /contract cold row 4/);
+      assert.doesNotMatch(text, /contract cold hidden row 5/);
       assert.doesNotMatch(text, /12#(?:AA|BB):/);
     }
     assert.match(plain(observation.present.tuiOutput.expandedCold), /12#AA.*old cold/);
     assert.match(plain(observation.present.tuiOutput.expandedReload), /12#BB.*new cold/);
-    assert.match(plain(observation.present.tuiOutput.newCall), /edit.*fixture\.txt/);
-    assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /7#(?:CC|DD):/);
+    assert.match(plain(observation.present.tuiOutput.expandedReload), /contract cold hidden row 5/);
+    const collapsedNewEdit = plain(observation.present.tuiOutput.newCall);
+    assert.match(collapsedNewEdit, /edit.*fixture\.txt/);
+    assertUnduplicatedOmissionMarkers(collapsedNewEdit);
+    assert.match(collapsedNewEdit, /contract new row 3/);
+    assert.match(collapsedNewEdit, /contract new row 4/);
+    assert.doesNotMatch(collapsedNewEdit, /contract new hidden row 5/);
+    assert.doesNotMatch(collapsedNewEdit, /7#(?:CC|DD):/);
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#CC.*old line/);
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /7#DD.*new line/);
+    assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract new hidden row 5/);
 
     for (const frame of [cold, plain(observation.present.tuiOutput.reload)]) {
       assert.match(frame, /write.*written\.txt.*2 lines/);
@@ -355,5 +372,28 @@ for (const entry of matrix) {
         timersAfterDispose: bash.absent.lifecycle.timersAfterDispose,
       }, { reloads: 3, stableWrappers: true, wrappersAfterDispose: 0, descriptorsRestored: true, timersAfterCompletion: 0, timersAfterDispose: 0 });
     }
+
+    const visualBash = await runBashDisplayContract(runtimeRoot, "preview", false, false, "opencode");
+    const assertVisualFolded = (frame: string, marker: string, hidden: string, endMarker?: string) => {
+      const text = plain(frame);
+      const start = text.indexOf(marker);
+      assert.notEqual(start, -1, `${marker} must be visible`);
+      const end = endMarker ? text.indexOf(endMarker, start + marker.length) : -1;
+      const resultSection = text.slice(start, end < 0 ? undefined : end);
+      assert.match(resultSection, /more visual lines .* Ctrl\+O to expand/);
+      assert.doesNotMatch(resultSection, new RegExp(hidden));
+    };
+    for (const frame of [visualBash.firstCollapsedOutput, visualBash.present.tuiOutput.reload]) {
+      assertVisualFolded(frame, "contract success first line", "contract success folded second line", "contract error first line");
+      assertVisualFolded(frame, "contract error first line", "contract error folded second line");
+    }
+    assertVisualFolded(visualBash.present.tuiOutput.partialNewCall, "contract streaming output", "contract streaming folded second line");
+    assertVisualFolded(visualBash.present.tuiOutput.newCall, "contract final output", "contract final folded second line");
+    assertVisualFolded(visualBash.present.tuiOutput.collapsedNewCall, "contract final output", "contract final folded second line");
+    assertVisualFolded(visualBash.present.tuiOutput.errorNewCall, "contract final error", "contract error folded second line");
+    assertVisualFolded(visualBash.present.tuiOutput.collapsedErrorNewCall, "contract final error", "contract error folded second line");
+    assert.match(plain(visualBash.present.tuiOutput.expandedReload), /contract success folded third line/);
+    assert.match(plain(visualBash.present.tuiOutput.expandedNewCall), /contract final folded second line/);
+    assert.match(plain(visualBash.present.tuiOutput.expandedErrorNewCall), /contract error folded second line/);
   });
 }

@@ -316,6 +316,8 @@ async function run(runtimeRoot: string, withExtension: boolean, sessionJsonl: st
       readOutputMode: outputMode === "count" ? "summary" : outputMode,
       previewLines: 1,
       showTruncationHints: true,
+      diffViewMode: "split",
+      diffCollapsedLines: 4,
       customToolOverrides: Object.fromEntries(["generic_fixture", "mcp", "mcp_direct_fixture"].map(name => [name, {
         enabled: true,
         kind: name === "generic_fixture" ? "generic" : "mcp",
@@ -613,7 +615,7 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
     { id: "contract-cold-read", name: "read", arguments: { path: "fixture.txt" }, text: "contract read first line\ncontract read second line\ncontract read third line", details: { truncation: { truncated: true, originalLines: 9 } } },
     { id: "contract-cold-find", name: "find", arguments: { pattern: "*.txt", path: "." }, text: "first.txt\nsecond.txt\nthird.txt", details: {} },
     { id: "contract-cold-ls", name: "ls", arguments: { path: "." }, text: "alpha.txt\nbeta.txt\ngamma.txt", details: {} },
-    { id: "contract-cold-edit", name: "edit", arguments: { path: "fixture.txt", oldText: "old cold", newText: "new cold", oldStart: 12, newStart: 12 }, text: "Edited fixture.txt", details: { diff: "@@ -12,1 +12,1 @@\n- 12#AA:old cold\n+ 12#BB:new cold" } },
+    { id: "contract-cold-edit", name: "edit", arguments: { path: "fixture.txt", oldText: "old cold", newText: "new cold", oldStart: 12, newStart: 12 }, text: "Edited fixture.txt", details: { diff: "      ...\n 11#  :contract cold context line that wraps across the split pane and continues beyond one rendered terminal row\n- 12#AA:old cold\n+ 12#BB:new cold\n+ 13#CC:contract cold row 3\n+ 14#DD:contract cold row 4\n+ 15#EE:contract cold hidden row 5\n+ 16#FF:contract cold hidden row 6\n+ 17#GG:contract cold hidden row 7\n 13#  :}" } },
     { id: "contract-cold-write", name: "write", arguments: { path: "written.txt", content: "cold first line\ncold second line\n" }, text: "Wrote written.txt", details: {} },
   ];
   seed.appendMessage({
@@ -680,7 +682,7 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
         const update = `contract ${name} streaming output`;
         probes[name].updates.push(update);
         onUpdate({ content: [{ type: "text", text: update }], details: {} });
-        return { content: [{ type: "text", text: outputs[name] }], details: name === "read" ? { truncation: { truncated: true, originalLines: 9 } } : name === "edit" ? { diff: "@@ -7,1 +7,1 @@\n-  7#CC:old line\n+  7#DD:new line" } : name === "write" ? { patch: "@@ -4,1 +4,1 @@\n-  4#EE:old supplied\n+  4#FF:new supplied" } : {} };
+        return { content: [{ type: "text", text: outputs[name] }], details: name === "read" ? { truncation: { truncated: true, originalLines: 9 } } : name === "edit" ? { diff: "      ...\n  6#  :contract new context line that wraps across the split pane and continues beyond one rendered terminal row\n-  7#CC:old line\n+  7#DD:new line\n+  8#EE:contract new row 3\n+  9#FF:contract new row 4\n+ 10#GG:contract new hidden row 5\n+ 11#HH:contract new hidden row 6\n+ 12#II:contract new hidden row 7\n  8#  :}" } : name === "write" ? { patch: "@@ -4,1 +4,1 @@\n-  4#EE:old supplied\n+  4#FF:new supplied" } : {} };
       },
     });
     return [...pi.createCodingTools(process.cwd()).filter((tool: any) => !Object.hasOwn(outputs, tool.name)), ...Object.keys(outputs).map(fixture)];
@@ -698,7 +700,7 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
 
 interface ToolProbe { updates: string[]; arguments?: unknown; release?: () => void; calls: number }
 
-async function runBashScenario(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview" | "full" | "summary", createTools: (probe: ToolProbe) => any[], toolName = "grep", injectFailureAfterIntervalInstrumentation = false, injectPreUpdateRender = false): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
+async function runBashScenario(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview" | "full" | "summary", createTools: (probe: ToolProbe) => any[], toolName = "grep", injectFailureAfterIntervalInstrumentation = false, injectPreUpdateRender = false, bashResultMode: "preview" | "opencode" = "preview"): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const hostPrototype = pi.ToolExecutionComponent.prototype;
@@ -716,7 +718,7 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
     process.env.PI_CODING_AGENT_DIR = agentDir;
     await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
     await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify(toolName === "bash"
-      ? { bashCommandMode: outputMode, bashCommandPreviewLines: 1, bashOutputMode: "preview", previewLines: 1, bashErrorOutputMode: "preview", bashErrorPreviewLines: 1 }
+      ? { bashCommandMode: outputMode, bashCommandPreviewLines: 1, bashOutputMode: bashResultMode, bashCollapsedLines: bashResultMode === "opencode" ? 3 : undefined, previewLines: 1, bashErrorOutputMode: "preview", bashErrorPreviewLines: 1 }
       : { searchOutputMode: outputMode, previewLines: 1 }));
     const observerPath = join(agentDir, "thinking-observer.js");
     await writeFile(observerPath, `export default function (pi) {
@@ -1047,11 +1049,12 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
   }
 }
 
-export async function runBashDisplayContract(runtimeRoot: string, commandMode: "full" | "summary" | "preview", injectFailureAfterIntervalInstrumentation = false, injectPreUpdateRender = false): Promise<PureDisplayContractObservation> {
+export async function runBashDisplayContract(runtimeRoot: string, commandMode: "full" | "summary" | "preview", injectFailureAfterIntervalInstrumentation = false, injectPreUpdateRender = false, bashResultMode: "preview" | "opencode" = "preview"): Promise<PureDisplayContractObservation> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const seed = pi.SessionManager.inMemory(process.cwd(), { id: "contract-bash-session" });
   const command = "contract bash command with enough words to wrap across several terminal lines ".repeat(4).trim();
+  const output = (...lines: string[]) => lines.map((line) => bashResultMode === "opencode" ? `${line} ${"wrapped output ".repeat(30).trim()}` : line).join("\n");
   const appendCall = (id: string, args: object, text: string, isError: boolean) => {
     seed.appendMessage({
       role: "assistant", content: [{ type: "toolCall", id, name: "bash", arguments: args }],
@@ -1060,8 +1063,8 @@ export async function runBashDisplayContract(runtimeRoot: string, commandMode: "
     });
     seed.appendMessage({ role: "toolResult", toolCallId: id, toolName: "bash", content: [{ type: "text", text }], isError, timestamp: 2 });
   };
-  appendCall("contract-cold-bash", { command, timeout: 17 }, "contract success first line\ncontract success folded second line\ncontract success folded third line", false);
-  appendCall("contract-cold-bash-error", { command: "contract failing command", timeout: 19 }, "contract error first line\ncontract error folded second line\ncontract error folded third line", true);
+  appendCall("contract-cold-bash", { command, timeout: 17 }, output("contract success first line", "contract success folded second line", "contract success folded third line"), false);
+  appendCall("contract-cold-bash-error", { command: "contract failing command", timeout: 19 }, output("contract error first line", "contract error folded second line", "contract error folded third line"), true);
   const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
   const createTools = (probe: ToolProbe) => [...pi.createCodingTools(process.cwd()).filter((tool: any) => tool.name !== "bash"), {
     name: "bash", label: "Third-party bash", description: "Deterministic same-name Bash contract tool",
@@ -1071,15 +1074,15 @@ export async function runBashDisplayContract(runtimeRoot: string, commandMode: "
       probe.calls++;
       if (probe.calls === 1) {
         probe.updates.push("contract streaming output");
-        onUpdate({ content: [{ type: "text", text: "contract streaming output\ncontract streaming folded second line" }], details: {} });
+        onUpdate({ content: [{ type: "text", text: output("contract streaming output", "contract streaming folded second line") }], details: {} });
         await new Promise<void>((done) => { probe.release = done; });
-        return { content: [{ type: "text", text: "contract final output\ncontract final folded second line" }], details: {} };
+        return { content: [{ type: "text", text: output("contract final output", "contract final folded second line") }], details: {} };
       }
-      return { content: [{ type: "text", text: "contract final error\ncontract error folded second line" }], details: {}, isError: true };
+      return { content: [{ type: "text", text: output("contract final error", "contract error folded second line") }], details: {}, isError: true };
     },
   }];
-  const absent = await runBashScenario(runtimeRoot, false, sessionJsonl, commandMode, createTools, "bash", injectFailureAfterIntervalInstrumentation, injectPreUpdateRender);
-  const present = await runBashScenario(runtimeRoot, true, sessionJsonl, commandMode, createTools, "bash", false, injectPreUpdateRender);
+  const absent = await runBashScenario(runtimeRoot, false, sessionJsonl, commandMode, createTools, "bash", injectFailureAfterIntervalInstrumentation, injectPreUpdateRender, bashResultMode);
+  const present = await runBashScenario(runtimeRoot, true, sessionJsonl, commandMode, createTools, "bash", false, injectPreUpdateRender, bashResultMode);
   return { paths: ["cold", "reload", "new-call"], firstCollapsedOutput: present.tuiOutput.cold, actionsBeforeFirstOutput: present.actionsBeforeFirstOutput, absent, present };
 }
 

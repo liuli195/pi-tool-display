@@ -584,6 +584,24 @@ function renderBashPreviewWithHints(
   return textResult(preview);
 }
 
+function renderBashVisualPreview(
+  lines: string[],
+  maxLines: number,
+  config: ToolDisplayConfig,
+  theme: RenderTheme,
+  details: BashToolDetails | undefined,
+): Component {
+  const preview = new VisualLinePreviewComponent(maxLines, false, theme);
+  preview.setDisplay(buildPreviewText(lines, lines.length, theme, false), maxLines, false);
+  const truncationHints = config.showTruncationHints ? formatBashTruncationHints(details, theme) : "";
+  if (!truncationHints) return preview;
+
+  const container = new Container();
+  container.addChild(preview);
+  container.addChild(textResult(truncationHints.slice(1)));
+  return container;
+}
+
 function prepareBashLivePreview(
   rawOutput: string,
   options: ToolRenderResultOptions,
@@ -606,10 +624,13 @@ function renderBashLivePreview(
   config: ToolDisplayConfig,
   theme: RenderTheme,
   details: BashToolDetails | undefined,
-): Text {
+): Component {
   const prepared = prepareBashLivePreview(rawOutput, options, config);
   if (!prepared) {
     return textResult("");
+  }
+  if (!options.expanded && config.bashOutputMode === "opencode") {
+    return renderBashVisualPreview(prepared.lines, prepared.maxLines, config, theme, details);
   }
   return renderBashPreviewWithHints(prepared.lines, prepared.maxLines, config, theme, options, details);
 }
@@ -679,9 +700,8 @@ export function renderBashResult(
     if (config.showTruncationHints) hidden += formatBashTruncationHints(details, theme);
     return textResult(hidden);
   }
-  let text = buildPreviewText(lines, options.expanded ? lines.length : config.bashCollapsedLines, theme, options.expanded);
-  if (config.showTruncationHints) text += formatBashTruncationHints(details, theme);
-  return textResult(text);
+  if (options.expanded) return renderBashPreviewWithHints(lines, lines.length, config, theme, options, details);
+  return renderBashVisualPreview(lines, config.bashCollapsedLines, config, theme, details);
 }
 
 

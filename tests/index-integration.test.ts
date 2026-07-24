@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test, { after } from "node:test";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import toolDisplayExtension from "../src/index.ts";
+
+const testAgentDir = mkdtempSync(join(tmpdir(), "pi-tool-display-index-"));
+const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+process.env.PI_CODING_AGENT_DIR = testAgentDir;
+const { default: toolDisplayExtension } = await import("../src/index.ts");
+if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+after(() => rmSync(testAgentDir, { recursive: true, force: true }));
 
 // ---------------------------------------------------------------------------
 // Helpers

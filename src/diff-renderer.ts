@@ -64,6 +64,7 @@ interface DiffStats {
 interface RenderedRow {
 	text: string;
 	hunkIndex: number | null;
+	logicalLineId?: number;
 }
 
 interface SplitDiffRow {
@@ -105,6 +106,7 @@ const CANONICAL_LINE_PATTERN = /^([+\- ])(\s*\d+)\|(.*)$/;
 const HASHLINE_ANCHOR_LINE_PATTERN = /^([+\- ])(\s*\d+)#([A-Za-z0-9]+| {2}):(.*)$/;
 const LEGACY_LINE_PATTERN = /^([+\- ])(\s*\d+)\s(.*)$/;
 const HUNK_HEADER_PATTERN = /^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@(.*)$/;
+const OMITTED_CONTEXT_PATTERN = /^ {3,}\.\.\.$/;
 const SPLIT_SEPARATOR = " │ ";
 const MIN_LINE_NUMBER_WIDTH = 2;
 const MIN_SPLIT_COLUMN_WIDTH = 24;
@@ -440,8 +442,10 @@ function parseDiff(diffText: string): ParsedDiff {
 	let oldLineCursor: number | null = null;
 	let newLineCursor: number | null = null;
 	let lineNumberDelta = 0;
+	const rawLines = diffText.replace(/\r/g, "").split("\n");
+	const hasNumberedLines = rawLines.some((line) => parseCanonicalDiffLine(line) !== null);
 
-	for (const rawLine of diffText.replace(/\r/g, "").split("\n")) {
+	for (const rawLine of rawLines) {
 		stats.lines++;
 
 		const hunkMatch = rawLine.match(HUNK_HEADER_PATTERN);
@@ -564,6 +568,11 @@ function parseDiff(diffText: string): ParsedDiff {
 				rawLine,
 				hunkIndex,
 			);
+			continue;
+		}
+
+		if (hasNumberedLines && OMITTED_CONTEXT_PATTERN.test(rawLine)) {
+			entries.push(createMetaEntry("...", hunkIndex));
 			continue;
 		}
 
@@ -1584,11 +1593,12 @@ function highlightDiffLine(
 	return { highlighted, rowBg };
 }
 
-function pushDiffLineRows(rows: RenderedRow[], lines: string[], entry: DiffLineEntry): void {
+function pushDiffLineRows(rows: RenderedRow[], lines: string[], entry: DiffLineEntry, logicalLineId: number): void {
 	rows.push(
 		...lines.map((text) => ({
 			text,
 			hunkIndex: entry.hunkIndex || null,
+			logicalLineId,
 		})),
 	);
 }
@@ -1612,12 +1622,12 @@ function processDiffEntries(
 ): RenderedRow[] {
 	const { width, theme, wordWrap } = ctx;
 	const rows: RenderedRow[] = [];
-	for (const entry of entries) {
+	for (const [logicalLineId, entry] of entries.entries()) {
 		if (entry.kind !== "line") {
 			rows.push(...formatMetaEntryRows(entry, width, theme, wordWrap));
 			continue;
 		}
-		pushDiffLineRows(rows, processLine(entry), entry);
+		pushDiffLineRows(rows, processLine(entry), entry, logicalLineId);
 	}
 	return rows;
 }
@@ -1802,7 +1812,7 @@ function renderSplit(
 		hunkIndex: null,
 	});
 
-	for (const row of rows) {
+	for (const [logicalLineId, row] of rows.entries()) {
 		if (row.meta) {
 			output.push(...formatMetaEntryRows(row.meta, width, theme, wordWrap));
 			continue;
@@ -1841,7 +1851,7 @@ function renderSplit(
 		for (let index = 0; index < rowCount; index++) {
 			const leftCell = leftCells[index] ?? renderSplitBlankCell(leftWidth, splitLineNumberWidth, theme, indicatorMode, hashlineGutter);
 			const rightCell = rightCells[index] ?? renderSplitBlankCell(rightWidth, splitLineNumberWidth, theme, indicatorMode, hashlineGutter);
-			output.push({ text: `${leftCell}${separator}${rightCell}`, hunkIndex: row.hunkIndex });
+			output.push({ text: `${leftCell}${separator}${rightCell}`, hunkIndex: row.hunkIndex, logicalLineId });
 		}
 	}
 
@@ -1941,12 +1951,25 @@ function applyLineLimit(
 		? maxCollapsedLines
 		: DEFAULT_TOOL_DISPLAY_CONFIG.diffCollapsedLines;
 	const limit = expanded ? Math.max(0, expandedLimit) : Math.max(1, collapsedLimit);
-	if (limit === 0 || rows.length <= limit) {
-		return rows.map((row) => clampDiffLineToWidth(row.text, width));
-	}
+	if (limit === 0) return rows.map((row) => clampDiffLineToWidth(row.text, width));
 
-	const shown = rows.slice(0, limit);
-	const remaining = rows.length - shown.length;
+	const logicalLineIds = [...new Set(rows.flatMap((row) => row.logicalLineId === undefined ? [] : [row.logicalLineId]))];
+	let shown: RenderedRow[];
+	let remaining: number;
+	if (expanded || logicalLineIds.length === 0) {
+		if (rows.length <= limit) return rows.map((row) => clampDiffLineToWidth(row.text, width));
+		shown = rows.slice(0, limit);
+		remaining = rows.length - shown.length;
+	} else {
+		if (logicalLineIds.length <= limit) return rows.map((row) => clampDiffLineToWidth(row.text, width));
+		const shownLineIds = new Set(logicalLineIds.slice(0, limit));
+		let lastShownIndex = -1;
+		for (let index = 0; index < rows.length; index++) {
+			if (shownLineIds.has(rows[index]?.logicalLineId ?? -1)) lastShownIndex = index;
+		}
+		shown = rows.slice(0, lastShownIndex + 1);
+		remaining = logicalLineIds.length - shownLineIds.size;
+	}
 	const visibleHunks = new Set(
 		shown
 			.map((row) => row.hunkIndex)

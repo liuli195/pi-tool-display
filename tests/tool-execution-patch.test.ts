@@ -73,6 +73,111 @@ test("real ToolExecution rows apply read/find/ls policy to same-name third-party
   }
 });
 
+test("collapsed Bash output honors the visual-line budget across partial, historical, and reloaded rows", () => {
+  const currentConfig = { ...DEFAULT_TOOL_DISPLAY_CONFIG, bashOutputMode: "opencode" as const, bashCollapsedLines: 10, showTruncationHints: true };
+  const body = Array.from(
+    { length: 9 },
+    (_, index) => `C:/Users/liuli/AppData/Roaming/npm/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/fixture-${index + 1}.js:${2000 + index}: await reloadExtensionsWithLongArguments();`,
+  ).join("\n");
+  const row = new ToolExecutionComponent(
+    "bash",
+    "wrapped-output",
+    { command: "rg reload" },
+    {},
+    createBashTool(process.cwd()),
+    { requestRender() {} } as any,
+    process.cwd(),
+  );
+  const toolResult = {
+    content: [{ type: "text", text: body }],
+    details: { truncation: { truncated: true }, fullOutputPath: "/tmp/full-output" },
+    isError: false,
+  };
+  const renderRow = () => row.render(80).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+  const assertFolded = (rendered: string) => {
+    const visibleRows = rendered.split("\n").filter((line) => line.trim());
+    assert.equal(visibleRows.findIndex((line) => /more visual lines/.test(line)), 11);
+    assert.match(rendered, /more visual lines .* Ctrl\+O to expand/);
+    assert.match(rendered, /output truncated .* full output: \/tmp\/full-output/);
+    assert.doesNotMatch(rendered, /fixture-9/);
+  };
+
+  row.updateResult(toolResult);
+  const first = apiStub();
+  let reloaded: ReturnType<typeof apiStub> | undefined;
+  registerToolExecutionPatch(first.api, () => currentConfig);
+  try {
+    row.setExpanded(false);
+    assertFolded(renderRow());
+
+    row.updateResult(toolResult, true);
+    assertFolded(renderRow());
+
+    row.updateResult(toolResult);
+    assertFolded(renderRow());
+
+    row.setExpanded(true);
+    const expanded = renderRow();
+    assert.match(expanded, /fixture-9/);
+    assert.doesNotMatch(expanded, /more visual lines/);
+
+    first.handlers.session_shutdown?.({ reason: "reload" });
+    reloaded = apiStub();
+    registerToolExecutionPatch(reloaded.api, () => currentConfig);
+    row.setExpanded(false);
+    assertFolded(renderRow());
+  } finally {
+    reloaded?.handlers.session_shutdown?.({ reason: "reload" });
+    first.handlers.session_shutdown?.({ reason: "reload" });
+  }
+});
+
+test("collapsed split diffs count logical content rows, not headers, metadata, or wraps", () => {
+  const { api, handlers } = apiStub();
+  const currentConfig = {
+    ...DEFAULT_TOOL_DISPLAY_CONFIG,
+    diffViewMode: "split" as const,
+    diffCollapsedLines: 4,
+  };
+  const row = new ToolExecutionComponent(
+    "edit",
+    "four-line-diff",
+    { path: ".pi/settings.json", edits: [] },
+    {},
+    createEditTool(process.cwd()),
+    { requestRender() {} } as any,
+    process.cwd(),
+  );
+  row.updateResult({
+    content: [{ type: "text", text: "Done" }],
+    details: { diff: [
+      "      ...",
+      " 105|const HASHLINE_ANCHOR_LINE_PATTERN = /^([+\\- ])(\\s*\\d+)#([A-Za-z0-9]+| {2}):(.*)$/;",
+      " 106|const LEGACY_LINE_PATTERN = /^([+\\- ])(\\s*\\d+)\\s(.*)$/;",
+      " 107|const HUNK_HEADER_PATTERN = /^@@/;",
+      ' 108|const SPLIT_SEPARATOR = " │ ";',
+      "+109|const SPLIT_HEADER_ROW_COUNT = 2;",
+      " 109|const MIN_LINE_NUMBER_WIDTH = 2;",
+    ].join("\n") },
+    isError: false,
+  } as any);
+
+  registerToolExecutionPatch(api, () => currentConfig);
+  try {
+    row.setExpanded(false);
+    const collapsed = row.render(180).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+    assert.equal(collapsed.match(/\.\.\./g)?.length, 1, "trusted omission metadata stays visible once");
+    assert.match(collapsed, /HASHLINE_ANCHOR_LINE_PATTERN/);
+    assert.match(collapsed, /LEGACY_LINE_PATTERN/);
+    assert.match(collapsed, /HUNK_HEADER_PATTERN/);
+    assert.match(collapsed, /SPLIT_SEPARATOR/);
+    assert.doesNotMatch(collapsed, /SPLIT_HEADER_ROW_COUNT/);
+    assert.match(collapsed, /more diff lines .* Ctrl\+O to expand/);
+  } finally {
+    handlers.session_shutdown?.({ reason: "reload" });
+  }
+});
+
 test("configured third-party tools preserve native calls and override results at final renderer selection", () => {
   const { api, handlers } = apiStub();
   const instance = component({
