@@ -117,7 +117,7 @@ The deprecated `decorateToolForDisplay(tool, adapter)` migration facade register
 
 ## Compatibility
 
-The release contract is tested against Pi 0.74.0 (minimum), Pi 0.81.1, and the repository development runtime. Supported 0.x lines are declared in `package.json`; an unverified version or unsupported private TUI shape emits one concise debug diagnostic and keeps Pi's native rendering and execution.
+The supported Pi lines are discontinuous: `0.74.x`, `0.75.x`, and `0.77.x` through `0.81.x`; `0.76.x` is not supported. The release contract is tested against Pi 0.74.0 (minimum), Pi 0.81.1, and the repository development runtime, matching the package peer ranges and runtime host checks. An unsupported version or private TUI shape emits one concise debug diagnostic and keeps Pi's native rendering and execution.
 
 ## Presets
 
