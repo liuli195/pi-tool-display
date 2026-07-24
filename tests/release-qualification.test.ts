@@ -5,6 +5,9 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { createAgentSessionFromServices, createAgentSessionServices, createReadTool, initTheme, SessionManager, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 
+import { installPiHostAdapter } from "../src/pi-host-adapter.js";
+import { createRendererCatalog } from "../src/renderer-catalog.js";
+import { createToolDisplayResolver } from "../src/tool-display-resolver.js";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.js";
 
 initTheme(undefined, false);
