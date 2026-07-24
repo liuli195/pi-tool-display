@@ -117,7 +117,11 @@ The deprecated `decorateToolForDisplay(tool, adapter)` migration facade register
 
 ## Compatibility
 
-Supported Pi versions are `0.74.0`, `0.80.3` (the repository development runtime), and stable releases from `0.81.1` onward. The release matrix exercises `0.74.0`, `0.81.1`, `0.82.0`, and the development runtime. Older, prerelease, or incompatible private TUI shapes emit one concise debug diagnostic and keep Pi's native rendering and execution.
+Supported Pi versions are stable releases from `0.81.1` onward. The release matrix exercises `0.81.1`, `0.82.0`, and the development runtime.
+
+Versions `0.74.0` and `0.75.x`–`0.80.x` are **not supported**. While earlier versions may load the extension through native fallback, they are not tested or qualified, and npm installation may fail with `ERESOLVE` if the peer dependency range does not match. Use Pi `0.81.1` or later for a supported experience.
+
+Older, prerelease, or incompatible private TUI shapes emit one concise debug diagnostic and keep Pi's native rendering and execution.
 
 ## Presets
 
@@ -149,6 +153,18 @@ Actual global path: $PI_CODING_AGENT_DIR/extensions/pi-tool-display/config.json 
 ```
 
 A starter template is included at `config/config.example.json`.
+
+### Project-local config
+
+Trusted projects can override global display settings by placing a `config.json` in their project-local extension directory:
+
+```text
+<project>/.pi/extensions/pi-tool-display/config.json
+```
+
+Project-local config is read-only and only loaded when `isProjectTrusted()` is active (i.e., when the user has approved project-local files). It overlays the global config: any fields defined in the project config override the corresponding global values. Write operations through `/tool-display` always save to the global config.
+
+The `.pi` directory name uses Pi's `CONFIG_DIR_NAME` constant and is not hardcoded.
 
 ### Configuration options
 

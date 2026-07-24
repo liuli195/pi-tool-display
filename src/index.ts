@@ -1,9 +1,13 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
+import {
+  type ExtensionAPI,
+  type ExtensionCommandContext,
+  CONFIG_DIR_NAME,
 } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
 import {
   loadToolDisplayConfig,
+  loadProjectToolDisplayConfig,
+  mergeProjectConfig,
   normalizeToolDisplayConfig,
   saveToolDisplayConfig,
 } from "./config-store.js";
@@ -75,6 +79,19 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     if (pendingLoadError) {
       ctx.ui.notify(pendingLoadError, "warning");
       pendingLoadError = undefined;
+    }
+
+    // Project-local config overlay: read-only, trusted projects only
+    if (ctx.isProjectTrusted()) {
+      const projectConfigPath = join(ctx.cwd, CONFIG_DIR_NAME, "extensions", "pi-tool-display", "config.json");
+      const projectResult = loadProjectToolDisplayConfig(projectConfigPath);
+      if (projectResult.config) {
+        config = mergeProjectConfig(config, projectResult.config);
+        effectiveConfig = undefined;
+      }
+      if (projectResult.error) {
+        ctx.ui.notify(projectResult.error, "warning");
+      }
     }
   });
 

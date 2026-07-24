@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-24
+
+### Added
+- Project-local config overlay: trusted projects can place `config.json` in `<project>/.pi/extensions/pi-tool-display/` to override global display settings. Only read when `isProjectTrusted()` is active; write operations remain global.
+
 ### Changed
-- Support stable Pi releases from `0.81.1` onward, with `0.82.0` added to the real-runtime qualification matrix.
+- All preview renderers (`read`, `search`, `MCP`, `custom`, `Bash`) now limit by terminal visual rows instead of logical line count, using `VisualLinePreviewComponent`. This prevents long single-line output from overflowing the viewport.
+- Removed Bash spinner animation (`setInterval`, frame cycling, elapsed time display) from history rows. Bash command display is now deterministic and does not call `invalidate()`. Pi's native working indicator handles execution feedback.
+- Narrowed peer dependency range to `>=0.81.1` only. Versions `0.74.0` and `0.80.x` are explicitly not supported and may fail at install time.
+- Updated real-runtime qualification matrix to development, Pi 0.81.1, and Pi 0.82.0 only.
 
 ### Fixed
 - Detach producer Adapter arguments and results before rendering so callbacks cannot alter tool execution, model context, or session data.

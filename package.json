@@ -1,6 +1,6 @@
 {
   "name": "pi-tool-display",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "Pure TUI display wrapper for compact Pi tool rows and trustworthy tool-provided diffs, without changing tool execution or model/session data.",
   "type": "module",
   "main": "./index.ts",
@@ -71,8 +71,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "0.74.0 || 0.80.3 || >=0.81.1",
-    "@earendil-works/pi-tui": "0.74.0 || 0.80.3 || >=0.81.1"
+    "@earendil-works/pi-coding-agent": ">=0.81.1",
+    "@earendil-works/pi-tui": ">=0.81.1"
   },
   "overrides": {
     "file-type": ">=21.3.1",

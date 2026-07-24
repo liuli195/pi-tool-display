@@ -37,7 +37,7 @@ try {
     return row.render(120).join("\n");
   };
 
-  await handlers.get("session_start")?.at(-1)?.({}, { ui: { notify() {} } });
+  await handlers.get("session_start")?.at(-1)?.({}, { ui: { notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false });
   assert.doesNotMatch(frame("without-rtk"), /compacted by RTK/);
   assert.equal(snapshots, 1);
   commands = [{ name: "rtk" }];

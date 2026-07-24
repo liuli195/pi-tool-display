@@ -121,16 +121,33 @@ function buildPreviewText(
   theme: RenderTheme,
   expanded: boolean,
 ): string {
+  const { text } = buildPreviewContent(lines, maxLines, theme, expanded);
+  return text;
+}
+
+/**
+ * Build preview text content and remaining line count without embedding the
+ * logical-line truncation hint. Used when rendering through
+ * `VisualLinePreviewComponent`, which handles its own visual-row omission hint.
+ */
+function buildPreviewContent(
+  lines: string[],
+  maxLines: number,
+  theme: RenderTheme,
+  expanded: boolean,
+): { text: string; remaining: number } {
   if (lines.length === 0) {
-    return theme.fg("muted", "↳ (no output)");
+    return { text: theme.fg("muted", "↳ (no output)"), remaining: 0 };
   }
 
   const { shown, remaining } = previewLines(lines, maxLines);
-  let text = shown
+  const text = shown
     .map((line) => theme.fg("toolOutput", sanitizeAnsiForThemedOutput(line)))
     .join("\n");
-  text += formatTruncationHint(remaining, expanded, theme);
-  return text;
+  if (expanded) {
+    return { text: text + formatTruncationHint(remaining, expanded, theme), remaining: 0 };
+  }
+  return { text, remaining };
 }
 
 function prepareOutputLines(
@@ -338,11 +355,11 @@ function handlePartialResult(
   return options.isPartial ? partialResultText(theme, message) : undefined;
 }
 
-function renderSearchPreview(ctx: PreviewHintContext, expandedOnly = false): Text {
+function renderSearchPreview(ctx: PreviewHintContext, expandedOnly = false): Component {
   return renderPreviewText(ctx.lines, ctx.config, ctx.theme, ctx.options, (p) => appendPreviewHints(p, ctx), expandedOnly);
 }
 
-function renderMcpPreview(ctx: McpPreviewHintContext, expandedOnly = false): Text {
+function renderMcpPreview(ctx: McpPreviewHintContext, expandedOnly = false): Component {
   return renderPreviewText(ctx.lines, ctx.config, ctx.theme, ctx.options, (p) => appendMcpPreviewHints(p, ctx), expandedOnly);
 }
 
@@ -451,6 +468,41 @@ function appendPreviewHints(preview: string, ctx: PreviewHintContext): string {
   return appendRtkAndExpandedHints(preview, ctx);
 }
 
+/**
+ * Wrap a VisualLinePreviewComponent with optional hint text below it.
+ * If hints is empty, returns the component directly.
+ */
+function wrapComponentWithHints(
+  component: Component,
+  hints: string,
+): Component {
+  if (!hints) return component;
+  const container = new Container();
+  container.addChild(component);
+  container.addChild(textResult(hints));
+  return container;
+}
+
+function buildPreviewHints(
+  lines: string[],
+  config: ToolDisplayConfig,
+  theme: RenderTheme,
+  options: ToolRenderResultOptions,
+  appendHints: (preview: string) => string,
+  remaining: number,
+  expanded: boolean,
+): string {
+  let hints = "";
+  if (!expanded && remaining > 0) {
+    hints += formatTruncationHint(remaining, false, theme);
+  }
+  hints = appendHints(hints);
+  if (expanded) {
+    hints += formatExpandedPreviewCapHint(lines, config, theme);
+  }
+  return hints;
+}
+
 function renderPreviewText(
   lines: string[],
   config: ToolDisplayConfig,
@@ -458,12 +510,21 @@ function renderPreviewText(
   options: ToolRenderResultOptions,
   appendHints: (preview: string) => string,
   expandedOnly: boolean = false,
-): Text {
+): Component {
   const useExpanded = expandedOnly || options.expanded;
   const maxLines = useExpanded
     ? getExpandedPreviewLineLimit(lines, config)
     : config.previewLines;
-  const preview = buildPreviewText(lines, maxLines, theme, useExpanded);
+
+  if (!useExpanded) {
+    const { text, remaining } = buildPreviewContent(lines, maxLines, theme, false);
+    const preview = new VisualLinePreviewComponent(config.previewLines, false, theme);
+    preview.setDisplay(text, config.previewLines, false);
+    const hints = buildPreviewHints(lines, config, theme, options, appendHints, remaining, false);
+    return wrapComponentWithHints(preview, hints);
+  }
+
+  const preview = buildPreviewText(lines, maxLines, theme, true);
   return textResult(appendHints(preview));
 }
 
@@ -573,14 +634,19 @@ function renderBashPreviewWithHints(
   theme: RenderTheme,
   options: ToolRenderResultOptions,
   details: BashToolDetails | undefined,
-): Text {
-  let preview = buildPreviewText(lines, maxLines, theme, options.expanded);
-  if (config.showTruncationHints) {
-    preview += formatBashTruncationHints(details, theme);
+): Component {
+  if (!options.expanded) {
+    const { text, remaining } = buildPreviewContent(lines, maxLines, theme, false);
+    const preview = new VisualLinePreviewComponent(maxLines, false, theme);
+    preview.setDisplay(text, maxLines, false);
+    let hints = "";
+    if (remaining > 0) hints += formatTruncationHint(remaining, false, theme);
+    if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
+    return wrapComponentWithHints(preview, hints);
   }
-  if (options.expanded) {
-    preview += formatExpandedPreviewCapHint(lines, config, theme);
-  }
+  let preview = buildPreviewText(lines, maxLines, theme, true);
+  if (config.showTruncationHints) preview += formatBashTruncationHints(details, theme);
+  preview += formatExpandedPreviewCapHint(lines, config, theme);
   return textResult(preview);
 }
 
@@ -713,7 +779,7 @@ export function renderSearchResult(
   unitLabel: string,
   details: GrepToolDetails | FindToolDetails | LsToolDetails | undefined,
   pluralLabel?: string,
-): Text {
+): Component {
   if (options.isPartial) {
     return partialResultText(theme, "running...");
   }
@@ -825,7 +891,7 @@ function renderMcpResult(
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
   theme: RenderTheme,
-): Text {
+): Component {
   const partial = handlePartialResult(options, theme, "running...");
   if (partial) {
     return partial;
@@ -914,7 +980,7 @@ export function renderCustomToolResult(
   config: ToolDisplayConfig,
   outputMode: CustomToolOverrideConfig["outputMode"],
   theme: RenderTheme,
-): Text {
+): Component {
   return renderMcpResult(
     result as ToolRenderInput,
     options,
@@ -967,7 +1033,7 @@ export function renderReadDisplayResult(
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
   theme: RenderTheme,
- ): Text {
+ ): Component {
   if (options.isPartial) {
     return partialResultText(theme, "reading...");
   }

@@ -5,8 +5,6 @@ import { renderBashCall } from "../src/bash-display.ts";
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
-const BASH_SPINNER_STATE_KEY = "__piToolDisplayBashSpinner";
-
 interface BashCallRenderTheme {
 	fg(color: string, text: string): string;
 	bold(text: string): string;
@@ -16,9 +14,7 @@ interface BashCallRenderContextLike {
 	executionStarted: boolean;
 	isPartial: boolean;
 	expanded?: boolean;
-	invalidate(): void;
 	lastComponent?: unknown;
-	state?: unknown;
 }
 
 /** Pass-through theme that returns text unchanged */
@@ -42,50 +38,12 @@ function makeContext(overrides: Partial<BashCallRenderContextLike> = {}): BashCa
 	return {
 		executionStarted: false,
 		isPartial: false,
-		invalidate: () => {},
 		...overrides,
 	};
 }
 
 function renderedText(component: Component, width = 120): string {
 	return component.render(width).map((line) => line.trimEnd()).join("\n").trim();
-}
-
-/**
- * Create a spinner context and render. Returns the component plus a cleanup
- * function that transitions to shouldSpin=false (stopping the interval timer).
- */
-function createSpinningBashCall(
-	args: { command?: string; timeout?: number },
-	state: Record<string, unknown>,
-	extra?: Partial<BashCallRenderContextLike>,
-): { text: Component; stop(): void } {
-	const text = renderBashCall(
-		args,
-		createPassThroughTheme(),
-		makeContext({
-			executionStarted: true,
-			isPartial: true,
-			state,
-			...extra,
-		}),
-	);
-	return {
-		text,
-		stop: () => {
-			renderBashCall(
-				args,
-				createPassThroughTheme(),
-				makeContext({
-					executionStarted: true,
-					isPartial: false,
-					state,
-					lastComponent: text,
-					...extra,
-				}),
-			);
-		},
-	};
 }
 
 // ─── Args Shapes ─────────────────────────────────────────────────────────────
@@ -219,7 +177,7 @@ test("renderBashCall applies ANSI color to command with ANSI theme", () => {
 
 // ─── Context States ──────────────────────────────────────────────────────────
 
-test("renderBashCall no spinner when executionStarted is false", () => {
+test("renderBashCall renders command text regardless of executionStarted/isPartial", () => {
 	const text = renderBashCall(
 		{ command: "npm test" },
 		createPassThroughTheme(),
@@ -228,98 +186,13 @@ test("renderBashCall no spinner when executionStarted is false", () => {
 	assert.equal(renderedText(text), "$ npm test");
 });
 
-test("renderBashCall no spinner when isPartial is false even if executionStarted", () => {
+test("renderBashCall renders command text when executionStarted and isPartial are true", () => {
 	const text = renderBashCall(
 		{ command: "npm test" },
 		createPassThroughTheme(),
-		makeContext({ executionStarted: true, isPartial: false }),
+		makeContext({ executionStarted: true, isPartial: true }),
 	);
 	assert.equal(renderedText(text), "$ npm test");
-});
-
-test("renderBashCall shows spinner when executionStarted and isPartial are true", () => {
-	const state: Record<string, unknown> = {};
-	const { text, stop } = createSpinningBashCall({ command: "npm test" }, state);
-	try {
-		const rendered = renderedText(text);
-		assert.match(rendered, /^⠋ \$ npm test · 0s$/);
-	} finally {
-		stop();
-	}
-});
-
-test("renderBashCall spinner animates frame index over time via setInterval", async () => {
-	const state: Record<string, unknown> = {};
-	let invalidateCount = 0;
-	const { text, stop } = createSpinningBashCall(
-		{ command: "npm test" },
-		state,
-		{ invalidate: () => { invalidateCount++; } },
-	);
-	try {
-		const frame0 = renderedText(text);
-		assert.match(frame0, /^⠋/);
-
-		// Wait for at least one interval tick (200ms interval)
-		await new Promise((r) => setTimeout(r, 250));
-
-		const frame1 = renderedText(text);
-		assert.notEqual(frame1, frame0, "spinner frame should advance");
-		assert.match(frame1, /^⠙/);
-		assert.ok(invalidateCount > 0, "invalidate should be called during animation");
-	} finally {
-		stop();
-	}
-});
-
-test("renderBashCall stops spinner and clears timer when shouldSpin becomes false", async () => {
-	const state: Record<string, unknown> = {};
-	const { text, stop } = createSpinningBashCall({ command: "npm test" }, state);
-
-	assert.match(renderedText(text), /^⠋/);
-
-	// Transition to complete state via stop
-	stop();
-	assert.equal(renderedText(text), "$ npm test");
-
-	// Wait to verify no further animation
-	await new Promise((r) => setTimeout(r, 100));
-	assert.equal(renderedText(text), "$ npm test", "no spinner after completion");
-});
-
-test("renderBashCall reuses existing spinner state from context.state", () => {
-	const state: Record<string, unknown> = {};
-	const { text: text1, stop } = createSpinningBashCall({ command: "npm test" }, state);
-	assert.ok(state[BASH_SPINNER_STATE_KEY] !== undefined, "state should have spinner state");
-
-	// Second call with same state
-	const text2 = renderBashCall(
-		{ command: "npm test" },
-		createPassThroughTheme(),
-		makeContext({
-			executionStarted: true,
-			isPartial: true,
-			state,
-			lastComponent: text1,
-		}),
-	);
-	const state2 = state[BASH_SPINNER_STATE_KEY] as Record<string, unknown>;
-	assert.ok(state2 !== undefined);
-	assert.ok(state2.frameIndex !== undefined);
-	stop();
-});
-
-test("renderBashCall stores state under __piToolDisplayBashSpinner key", () => {
-	const state: Record<string, unknown> = {};
-	const { stop } = createSpinningBashCall({ command: "npm test" }, state);
-	try {
-		assert.ok(state[BASH_SPINNER_STATE_KEY] !== undefined);
-		const spinnerState = state[BASH_SPINNER_STATE_KEY] as Record<string, unknown>;
-		assert.equal(typeof spinnerState.frameIndex, "number");
-		assert.equal(typeof spinnerState.startedAt, "number");
-	} finally {
-		stop();
-	}
 });
 
 test("renderBashCall does not create spinner state when state is null/undefined", () => {
@@ -329,127 +202,19 @@ test("renderBashCall does not create spinner state when state is null/undefined"
 		makeContext({
 			executionStarted: true,
 			isPartial: true,
-			state: undefined,
 		}),
 	);
 	assert.equal(renderedText(text), "$ npm test");
-});
-
-test("renderBashCall does not create spinner state when state is a primitive", () => {
-	const text = renderBashCall(
-		{ command: "npm test" },
-		createPassThroughTheme(),
-		makeContext({
-			executionStarted: true,
-			isPartial: true,
-			state: "string-state",
-		}),
-	);
-	assert.equal(renderedText(text), "$ npm test");
-});
-
-test("renderBashCall creates spinner state when state is an array (arrays are objects)", () => {
-	const stateArray: unknown[] = [];
-	const text = renderBashCall(
-		{ command: "npm test" },
-		createPassThroughTheme(),
-		makeContext({
-			executionStarted: true,
-			isPartial: true,
-			state: stateArray,
-		}),
-	);
-	// Arrays are objects in JS, so the implementation treats them as valid state carriers
-	assert.match(renderedText(text), /^⠋/);
-	// Clean up the interval set on the array
-	const spyState = (stateArray as unknown as Record<string, unknown>)[BASH_SPINNER_STATE_KEY] as Record<string, unknown> | undefined;
-	if (spyState?.timer) {
-		clearInterval(spyState.timer as ReturnType<typeof setInterval>);
-	}
-});
-
-// ─── Elapsed Time Formatting ─────────────────────────────────────────────────
-
-test("renderBashCall shows elapsed seconds when spinning and under 60s", () => {
-	const state: Record<string, unknown> = {};
-	state[BASH_SPINNER_STATE_KEY] = { frameIndex: 0, startedAt: Date.now() };
-	const { text, stop } = createSpinningBashCall({ command: "npm test" }, state);
-	try {
-		assert.match(renderedText(text), /· \d+s$/);
-	} finally {
-		stop();
-	}
-});
-
-// ─── Multiple Concurrent Bash Calls ──────────────────────────────────────────
-
-test("multiple concurrent bash calls have independent spinner states", () => {
-	const stateA: Record<string, unknown> = {};
-	const stateB: Record<string, unknown> = {};
-
-	const { text: textA, stop: stopA } = createSpinningBashCall({ command: "npm test" }, stateA);
-	const { text: textB, stop: stopB } = createSpinningBashCall({ command: "npm build" }, stateB);
-	try {
-		const aKey = stateA[BASH_SPINNER_STATE_KEY] as Record<string, unknown>;
-		const bKey = stateB[BASH_SPINNER_STATE_KEY] as Record<string, unknown>;
-		assert.ok(aKey !== bKey, "each bash call gets its own spinner state object");
-
-		// Each renders independently with its own command
-		assert.match(renderedText(textA), /npm test/);
-		assert.match(renderedText(textB), /npm build/);
-
-		// Complete stateA independently (spinner stops for A)
-		stopA();
-		assert.equal(renderedText(textA), "$ npm test", "A spinner stopped after stopA");
-
-		// stateB should still show spinner prefix (frame may not have advanced yet)
-		assert.match(renderedText(textB), /^⠋/, "B should still show spinner after A completed");
-	} finally {
-		stopA();
-		stopB();
-	}
-});
-
-// ─── Rapid Invalidate / Repeated Calls ───────────────────────────────────────
-
-test("renderBashCall handles repeated calls without creating multiple timers", () => {
-	const state: Record<string, unknown> = {};
-	let invalidateCount = 0;
-
-	const { text, stop } = createSpinningBashCall(
-		{ command: "npm test" },
-		state,
-		{ invalidate: () => { invalidateCount++; } },
-	);
-
-	// Call renderBashCall repeatedly with same state (simulating rapid re-renders)
-	for (let i = 0; i < 5; i++) {
-		renderBashCall(
-			{ command: "npm test" },
-			createPassThroughTheme(),
-			makeContext({
-				executionStarted: true,
-				isPartial: true,
-				state,
-				lastComponent: text,
-				invalidate: () => { invalidateCount++; },
-			}),
-		);
-	}
-
-	const spinnerState = state[BASH_SPINNER_STATE_KEY] as Record<string, unknown>;
-	// Only one timer should be active (timer is only set if !spinnerState.timer)
-	const timerCount = spinnerState.timer !== undefined ? 1 : 0;
-	assert.equal(timerCount, 1, "multiple renderBashCall calls should not create multiple timers");
-
-	stop();
 });
 
 // ─── lastComponent Preservation ──────────────────────────────────────────────
 
-test("renderBashCall preserves the same component reference", () => {
-	const initialState: Record<string, unknown> = {};
-	const { text: first, stop } = createSpinningBashCall({ command: "npm test" }, initialState);
+test("renderBashCall preserves the same component reference via lastComponent", () => {
+	const first = renderBashCall(
+		{ command: "npm test" },
+		createPassThroughTheme(),
+		makeContext({ executionStarted: true, isPartial: true }),
+	);
 
 	const second = renderBashCall(
 		{ command: "npm test" },
@@ -457,13 +222,56 @@ test("renderBashCall preserves the same component reference", () => {
 		makeContext({
 			executionStarted: true,
 			isPartial: false,
-			state: initialState,
 			lastComponent: first,
 		}),
 	);
 
 	assert.equal(first, second, "should return the same component instance via lastComponent");
-	stop();
+});
+
+// ─── No Spinner Animation ────────────────────────────────────────────────────
+
+test("renderBashCall does not use setInterval or invalidate for animation", () => {
+	const originalSetInterval = globalThis.setInterval;
+	let intervalCreated = false;
+	globalThis.setInterval = ((fn: (...args: unknown[]) => unknown, ms?: number, ..._args: unknown[]) => {
+		intervalCreated = true;
+		return originalSetInterval(fn, ms ?? 0);
+	}) as typeof globalThis.setInterval;
+
+	try {
+		const text = renderBashCall(
+			{ command: "npm test" },
+			createPassThroughTheme(),
+			makeContext({ executionStarted: true, isPartial: true }),
+		);
+		assert.equal(renderedText(text), "$ npm test");
+		assert.equal(intervalCreated, false, "no setInterval should be created");
+	} finally {
+		globalThis.setInterval = originalSetInterval;
+	}
+});
+
+test("renderBashCall renders deterministic output for partial execution", () => {
+	const text = renderBashCall(
+		{ command: "npm test" },
+		createPassThroughTheme(),
+		makeContext({ executionStarted: true, isPartial: true }),
+	);
+	// No spinner frame, no elapsed time — just the command
+	assert.equal(renderedText(text), "$ npm test");
+});
+
+test("renderBashCall does not show elapsed time or spinner frames", () => {
+	const text = renderBashCall(
+		{ command: "npm test", timeout: 30 },
+		createPassThroughTheme(),
+		makeContext({ executionStarted: true, isPartial: true }),
+	);
+	const rendered = renderedText(text);
+	assert.doesNotMatch(rendered, /^⠋/, "no spinner frame");
+	assert.doesNotMatch(rendered, /· \d+s$/, "no elapsed time");
+	assert.equal(rendered, "$ npm test (timeout 30s)");
 });
 
 // ─── Edge Cases ──────────────────────────────────────────────────────────────

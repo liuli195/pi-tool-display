@@ -1,6 +1,6 @@
 # Spec: Pure Display Tool Rendering
 
-> Status: Approved direction; implementation pending
+> Status: Partially implemented (v0.7.0)
 >
 > Scope: Refactor `pi-tool-display` into a pure TUI display wrapper and tool beautifier.
 

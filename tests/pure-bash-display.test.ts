@@ -59,3 +59,31 @@ test("Bash Host Adapter changes only renderer selection and does not stack on re
   assert.strictEqual(host.getResultRenderer, originalResult);
   first.dispose();
 });
+
+test("Visual line preview limits long single-line output by visual rows, not logical lines", () => {
+  const resolver = createToolDisplayResolver(
+    () => ({
+      ...DEFAULT_TOOL_DISPLAY_CONFIG,
+      builtInToolDisplays: { ...DEFAULT_TOOL_DISPLAY_CONFIG.builtInToolDisplays, bash: true },
+      bashOutputMode: "opencode",
+      bashCollapsedLines: 2,
+    }),
+    createRendererCatalog(),
+  );
+  const plan = resolver.resolve(
+    { toolName: "bash", arguments: { command: "echo test" }, builtIn: true },
+    {},
+  );
+  // 400-char single line at width 40 wraps to ~10 visual rows
+  const longLine = "A".repeat(400);
+  const result = plan.result!(
+    { content: [{ type: "text", text: longLine }], details: {} },
+    { expanded: false, isPartial: false },
+    theme,
+    { args: { command: "echo test" } },
+  );
+  const rows = result.render(40);
+  // Should be capped at 2 (collapsedLines) + 1 (hint line) = 3
+  assert.ok(rows.length <= 3, `expected <= 3 rows but got ${rows.length}`);
+  assert.match(rows[rows.length - 1], /more visual lines/);
+});

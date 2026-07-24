@@ -289,3 +289,47 @@ export function saveToolDisplayConfig(config: ToolDisplayConfig, configFile = CO
 export function getToolDisplayConfigPath(): string {
 	return CONFIG_FILE;
 }
+
+/**
+ * Load a project-local config file. Returns a partial config that can be
+ * merged over the global config. Only call this when the project is trusted.
+ */
+export function loadProjectToolDisplayConfig(
+	projectConfigFile: string,
+): { config: Partial<ToolDisplayConfig> | undefined; error?: string } {
+	if (!existsSync(projectConfigFile)) {
+		return { config: undefined };
+	}
+	try {
+		const rawText = readFileSync(projectConfigFile, "utf-8");
+		const rawConfig = JSON.parse(rawText) as unknown;
+		return { config: normalizeToolDisplayConfig(rawConfig) };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return {
+			config: undefined,
+			error: `Failed to parse project config ${projectConfigFile}: ${message}`,
+		};
+	}
+}
+
+/**
+ * Merge a project-local partial config over a global config. Only defined
+ * fields in the project config override the global values.
+ */
+export function mergeProjectConfig(
+	globalConfig: ToolDisplayConfig,
+	projectConfig: Partial<ToolDisplayConfig>,
+): ToolDisplayConfig {
+	const merged = { ...globalConfig };
+	// Only copy defined top-level fields from project config; skip re-normalization
+	// to preserve global defaults for fields the project config intentionally omits.
+	for (const key of Object.keys(projectConfig) as Array<keyof ToolDisplayConfig>) {
+		const value = projectConfig[key];
+		if (value !== undefined) {
+			// @ts-expect-error — safe: key is a valid ToolDisplayConfig field
+			merged[key] = value;
+		}
+	}
+	return merged;
+}

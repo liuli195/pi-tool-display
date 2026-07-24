@@ -111,7 +111,7 @@ test("entry point never registers tools across initialization, lifecycle, config
   toolDisplayExtension(api);
   assert.deepEqual(capturedTools, []);
 
-  const ctx = { hasUI: false, ui: { notify() {}, theme: { fg: (_c: string, text: string) => text } } } as unknown as ExtensionCommandContext;
+  const ctx = { hasUI: false, ui: { notify() {}, theme: { fg: (_c: string, text: string) => text } }, cwd: process.cwd(), isProjectTrusted: () => false } as unknown as ExtensionCommandContext;
   for (const event of ["session_start", "before_agent_start", "before_agent_start", "session_shutdown"]) {
     for (const captured of capturedHandlers.filter((entry) => entry.event === event)) {
       await captured.handler(event === "session_shutdown" ? { reason: "reload" } : {}, ctx);
@@ -137,6 +137,8 @@ test("session_start handler refreshes capabilities and notifies pending errors",
       theme: { fg: (_c: string, t: string) => t },
       notify: (_msg: string, _level: string) => { /* no-op */ },
     },
+    cwd: process.cwd(),
+    isProjectTrusted: () => false,
   };
 
   // Should not throw
@@ -283,7 +285,7 @@ test("session_start handler tolerates being called multiple times", async () => 
   const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
   assert.ok(sessionHandler);
 
-  const ctx = { ui: { theme: {}, notify: () => {} } };
+  const ctx = { ui: { theme: {}, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false };
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
   await assert.doesNotReject(async () => sessionHandler({}, ctx));
@@ -292,7 +294,7 @@ test("session_start handler tolerates being called multiple times", async () => 
 test("display policy installs without registering executable definitions", async () => {
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
-  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} } });
+  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false });
   assert.equal(capturedTools.length, 0);
 
   for (const tool of capturedTools) {
