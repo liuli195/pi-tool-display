@@ -16,6 +16,7 @@ interface Installation {
   patchedResult: RendererSelector;
   active: boolean;
   rows: Set<ToolRowHost>;
+  owner: object;
 }
 const STATE = Symbol.for("pi-tool-display.piHostAdapter.v1");
 type HostPrototype = ToolRowHost & { getCallRenderer?: RendererSelector; getResultRenderer?: RendererSelector; [STATE]?: Installation };
@@ -48,8 +49,10 @@ export function installPiHostAdapter(
 function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVersion: string): PiHostAdapterInstallation {
   const existing = ownState(prototype);
   if (existing && ownValue(prototype, "getCallRenderer") === existing.patchedCall && ownValue(prototype, "getResultRenderer") === existing.patchedResult) {
+    const owner = {};
     existing.resolver = resolver;
-    return { installed: true, dispose: () => dispose(prototype, existing) };
+    existing.owner = owner;
+    return { installed: true, dispose: () => dispose(prototype, existing, owner) };
   }
   const call = Object.getOwnPropertyDescriptor(prototype, "getCallRenderer");
   const result = Object.getOwnPropertyDescriptor(prototype, "getResultRenderer");
@@ -65,7 +68,8 @@ function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVers
     label: typeof instance.toolDefinition?.label === "string" ? instance.toolDefinition.label : undefined,
     builtIn: instance.builtInToolDefinition?.name === (instance.toolDefinition?.name ?? instance.toolName),
   });
-  const state = { call, result, resolver, active: true, rows: new Set<ToolRowHost>() } as Installation;
+  const owner = {};
+  const state = { call, result, resolver, active: true, rows: new Set<ToolRowHost>(), owner } as Installation;
   const patchedCall: RendererSelector = function (...args: any[]) {
     const native = originalCall.apply(this, args);
     if (!state.active) return native;
@@ -87,9 +91,9 @@ function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVers
     Object.defineProperty(prototype, "getResultRenderer", { ...result, value: patchedResult });
   } catch {
     rollback(prototype, state);
-    return { installed: false, dispose: () => dispose(prototype, state) };
+    return { installed: false, dispose: () => dispose(prototype, state, owner) };
   }
-  return { installed: true, dispose: () => dispose(prototype, state) };
+  return { installed: true, dispose: () => dispose(prototype, state, owner) };
 }
 
 function ownState(prototype: HostPrototype): Installation | undefined {
@@ -115,7 +119,8 @@ function rollback(prototype: HostPrototype, state: Installation): void {
   try { if (ownState(prototype) === state) delete prototype[STATE]; } catch {}
 }
 
-function dispose(prototype: HostPrototype, state: Installation): void {
+function dispose(prototype: HostPrototype, state: Installation, owner: object): void {
+  if (state.owner !== owner) return;
   state.active = false;
   state.rows.clear();
   rollback(prototype, state);

@@ -7,7 +7,6 @@ import {
   type PatchableUserMessagePrototype,
   type UserMessageTheme,
 } from "./user-message-box-renderer.js";
-import { unregisterUserMessageRenderPrototypePatch } from "./user-message-box-patch.js";
 import type { ToolDisplayConfig } from "./types.js";
 
 function getUserMessagePrototype(): PatchableUserMessagePrototype {
@@ -19,9 +18,8 @@ export default function registerNativeUserMessageBox(
   getConfig: () => ToolDisplayConfig,
   theme: UserMessageTheme | undefined,
 ): () => void {
-  const prototype = getUserMessagePrototype();
-  patchNativeUserMessagePrototype(
-    prototype,
+  const disposePatch = patchNativeUserMessagePrototype(
+    getUserMessagePrototype(),
     () => theme,
     () => getConfig().enableNativeUserMessageBox,
   );
@@ -30,6 +28,6 @@ export default function registerNativeUserMessageBox(
   return () => {
     if (disposed) return;
     disposed = true;
-    unregisterUserMessageRenderPrototypePatch(prototype);
+    disposePatch();
   };
 }

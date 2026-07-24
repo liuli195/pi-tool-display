@@ -137,6 +137,20 @@ test("Pi Host Adapter disposal deactivates its wrapper beneath a later foreign w
   assert.equal(invalidations, 0);
 });
 
+test("Pi Host Adapter disposers affect only their own resolver attachment", () => {
+  const { host } = syntheticHost();
+  const first = installPiHostAdapter(host, config("count"), "0.81.1");
+  const second = installPiHostAdapter(host, config("preview"), "0.81.1");
+  const patchedResult = host.getResultRenderer;
+
+  first.dispose();
+  assert.strictEqual(host.getResultRenderer, patchedResult);
+  assert.match(render(host.getResultRenderer.call({ toolName: "grep", args: { pattern: "x" }, builtInToolDefinition: { name: "grep" } })(output, { expanded: false, isPartial: false }, theme)), /a:1/);
+
+  second.dispose();
+  assert.notStrictEqual(host.getResultRenderer, patchedResult);
+});
+
 test("Pi Host Adapter retains ownership tracking until an interrupted mixed disposal can finish", () => {
   const target = syntheticHost().host;
   const pristineCall = Object.getOwnPropertyDescriptor(target, "getCallRenderer")!;
