@@ -145,14 +145,14 @@ function writeRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConf
 
 function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>, native: NativeRendererSlots): DisplayPlan {
   const path = typeof row.arguments.path === "string" ? row.arguments.path : typeof row.arguments.file_path === "string" ? row.arguments.file_path : "...";
-  const renderCall: ToolRenderer = (args: unknown, theme: RenderTheme, context?: { isPartial?: boolean; argsComplete?: boolean }) => {
+  const renderCall: ToolRenderer = (args: unknown, theme: RenderTheme, context?: { isPartial?: boolean; argsComplete?: boolean; expanded?: boolean }) => {
     const title = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", shortenPath(path))}`;
     const diff = context?.isPartial && context.argsComplete ? replacementDiff(args) ?? suppliedDiff(args) : undefined;
     if (!diff) return new Text(title, 0, 0);
     const container = new Container();
     container.addChild(new Text(title, 0, 0));
     container.addChild(new Spacer(1));
-    container.addChild(renderEditDiffResult({ diff }, { expanded: true, filePath: path }, config as ToolDisplayConfig, theme, ""));
+    container.addChild(renderEditDiffResult({ diff }, { expanded: context?.expanded === true, filePath: path }, config as ToolDisplayConfig, theme, ""));
     return container;
   };
   const renderResult: ToolRenderer = (result: any, options: ToolRenderResultOptions, theme: RenderTheme, context?: { isError?: boolean }) => {

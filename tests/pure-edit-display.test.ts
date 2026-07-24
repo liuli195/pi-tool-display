@@ -36,6 +36,25 @@ test("edit renders supplied old/new evidence without mutating bytes", () => {
   assert.equal(JSON.stringify(result), beforeResult);
 });
 
+test("pending edit diff honors the collapsed row state", () => {
+  const args = {
+    path: "a.ts",
+    oldText: Array.from({ length: 30 }, (_, index) => `old ${index}`).join("\n"),
+    newText: Array.from({ length: 30 }, (_, index) => `new ${index}`).join("\n"),
+  };
+  const selected = plan(args);
+
+  const collapsed = render(selected.call!(args, theme, { isPartial: true, argsComplete: true, expanded: false }));
+  const expanded = render(selected.call!(args, theme, { isPartial: true, argsComplete: true, expanded: true }));
+
+  assert.match(collapsed, /more diff lines/);
+  assert.doesNotMatch(collapsed, /old 29|new 29/);
+  const plainExpanded = expanded.replace(/\x1b\[[0-9;]*m/g, "");
+  assert.doesNotMatch(plainExpanded, /more diff lines/);
+  assert.match(plainExpanded, /old 29/);
+  assert.match(plainExpanded, /new 29/);
+});
+
 test("edit preserves explicit result diff line and hashline evidence across folding", () => {
   const diff = "@@ -7,1 +7,1 @@\n-  7#AB:old value\n+  7#CD:new value";
   const selected = plan({ path: "a.ts", oldText: "old", newText: "new" });
