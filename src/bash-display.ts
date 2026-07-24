@@ -45,7 +45,6 @@ export class VisualLinePreviewComponent implements Component {
 		private previewLines: number,
 		private expanded: boolean,
 		private theme: BashCallRenderTheme,
-		/** When true, expanded mode bypasses all limits (for command display). */
 		private expandedBypass: boolean = false,
 	) {}
 
