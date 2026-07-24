@@ -1,7 +1,7 @@
 {
   "name": "pi-tool-display",
   "version": "0.6.1",
-  "description": "Compact tool call rendering, diff visualization, and output truncation extension for Pi coding agent. Hides, collapses, and truncates verbose tool output for cleaner TUI display.",
+  "description": "Pure TUI display wrapper for compact Pi tool rows and trustworthy tool-provided diffs, without changing tool execution or model/session data.",
   "type": "module",
   "main": "./index.ts",
   "exports": {
@@ -49,16 +49,16 @@
     "diff",
     "output-mode"
   ],
-  "author": "MasuRii",
+  "author": "liuli195",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MasuRii/pi-tool-display.git"
+    "url": "git+https://github.com/liuli195/pi-tool-display.git"
   },
   "bugs": {
-    "url": "https://github.com/MasuRii/pi-tool-display/issues"
+    "url": "https://github.com/liuli195/pi-tool-display/issues"
   },
-  "homepage": "https://github.com/MasuRii/pi-tool-display#readme",
+  "homepage": "https://github.com/liuli195/pi-tool-display#readme",
   "engines": {
     "node": ">=20"
   },
@@ -71,8 +71,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0",
-    "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0"
+    "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0 || ^0.81.0",
+    "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0 || ^0.81.0"
   },
   "overrides": {
     "file-type": ">=21.3.1",

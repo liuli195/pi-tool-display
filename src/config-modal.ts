@@ -87,7 +87,8 @@ function buildAdvancedNotes(
 	const notes = [
 		...extra,
 		"Manual JSON edits also expose builtInToolDisplays.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, and diffWordWrap.",
-		`Built-in display selection is currently ${builtInDisplaySummary(config)} and applies immediately.`,
+		`Built-in display selection is currently ${builtInDisplaySummary(config)} and applies immediately without changing tool ownership, activation, schemas, or execution.`,
+		"Diffs use only patches or before/after data supplied by the tool; missing evidence is never reconstructed.",
 		`Truncation hints are ${toOnOff(config.showTruncationHints)}${capabilities.hasRtkOptimizer ? `; RTK hints are ${toOnOff(config.showRtkCompactionHints)}.` : "."}`,
 	];
 	return notes;
@@ -606,7 +607,7 @@ export async function runToolDisplayCommandHandler(
 
 export function registerToolDisplayCommand(pi: ExtensionAPI, controller: ToolDisplayConfigController): void {
 	pi.registerCommand("tool-display", {
-		description: "Configure tool output rendering (OpenCode-style)",
+		description: "Configure pure TUI tool-row rendering",
 		handler: async (args, ctx) => {
 			await runToolDisplayCommandHandler(args, ctx, controller);
 		},

@@ -25,6 +25,7 @@ export interface ToolDisplayApi {
 }
 export interface DecorateToolForDisplayOptions { suppressDecorateErrors?: boolean }
 export declare function getToolDisplayApi(): ToolDisplayApi | undefined;
+/** Registers presentation intent only. Tool definitions, schemas, ownership, activation, execution, context, and sessions are unchanged. */
 export declare function registerRendererAdapter(adapter: RendererAdapter): () => void;
 /** @deprecated Use registerRendererAdapter. */
 export declare function queueToolDisplayDecoration<T extends RuntimeToolDefinition>(tool: T, adapter?: ToolDisplayAdapter): void;

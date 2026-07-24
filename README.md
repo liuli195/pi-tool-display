@@ -8,9 +8,9 @@
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y01PSSVR)
 
-OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mariozechner/pi).
+A pure TUI display wrapper for the [Pi coding agent](https://github.com/mariozechner/pi).
 
-`pi-tool-display` keeps tool calls compact by default, adds richer diff rendering for file edits, and improves the native user prompt box.
+`pi-tool-display` keeps tool rows compact, renders trustworthy tool-provided diffs, and improves the native user prompt box without changing tools, model context, messages, or sessions.
 
 <img width="1360" height="752" alt="image" src="https://github.com/user-attachments/assets/777944a2-18b2-4642-b035-2c703a5abb1b" />
 
@@ -27,7 +27,7 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 - **Opt-in MCP-style rendering** with hidden, summary, and preview modes through custom tool overrides
 - **Opt-in custom tool overrides** for noisy extension tools, defaulting to generic rendering unless `kind: "mcp"` is selected
 - **Adaptive edit/write diffs** with split or unified layouts, syntax highlighting, inline emphasis, and narrow-pane width clamping
-- **Workspace-scoped projected pending edit/write previews** that show `pending edit`, `pending overwrite`, and `pending create` diffs while partial tool calls are still streaming
+- **Trustworthy diff rendering only** from explicit patches or before/after data already supplied by the tool; missing diffs are never reconstructed
 - **Progressive collapsed diff hints** that shorten automatically on small terminal widths instead of overflowing
 - **Hashline-anchor diff gutters** that preserve `LINE#HASH` labels from anchored read/edit output when those lines are rendered in diffs
 - **Three presets**: `opencode`, `balanced`, and `verbose`
@@ -59,7 +59,7 @@ pi install npm:pi-tool-display
 ### Git repository
 
 ```bash
-pi install git:github.com/MasuRii/pi-tool-display
+pi install git:github.com/liuli195/pi-tool-display
 ```
 
 ## Usage
@@ -111,9 +111,13 @@ const dispose = registerRendererAdapter({
 dispose();
 ```
 
-Registration is display-only, deterministic, disposable, and does not expose or mutate the executable tool definition. Retain the returned disposer even when registering before `pi-tool-display` loads: after the pending intent is drained, that same disposer delegates to the live registration and remains idempotent before or after the drain.
+Registration is display-only, deterministic, disposable, and does not expose or mutate the executable tool definition, schema, ownership, active state, or execution. Retain the returned disposer even when registering before `pi-tool-display` loads: after the pending intent is drained, that same disposer delegates to the live registration and remains idempotent before or after the drain.
 
 The deprecated `decorateToolForDisplay(tool, adapter)` migration facade registers the same display intent and returns the exact original tool unchanged. Its registration lasts only for the current `pi-tool-display` load epoch; repeated calls for the same tool and adapter ID in that epoch replace the previous intent, and consumers must call it again after reload. New integrations should retain the disposer from `registerRendererAdapter` instead.
+
+## Compatibility
+
+The release contract is tested against Pi 0.74.0 (minimum), Pi 0.81.1, and the repository development runtime. Supported 0.x lines are declared in `package.json`; an unverified version or unsupported private TUI shape emits one concise debug diagnostic and keeps Pi's native rendering and execution.
 
 ## Presets
 
@@ -359,7 +363,6 @@ pi-tool-display/
 │   ├── disposable.ts                # Reload-safe cleanup registry for display patches and timers
 │   ├── diff-renderer.ts             # Edit/write diff rendering engine
 │   ├── line-width-safety.ts         # Width clamping helpers for narrow panes
-│   ├── pending-diff-preview.ts      # Partial edit/write preview projection helpers
 │   ├── presets.ts                   # Preset definitions and matching
 │   ├── render-utils.ts              # Shared rendering helpers
 │   ├── tool-overrides.ts            # Built-in, MCP, and custom display renderers plus Adapter API
