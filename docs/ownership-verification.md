@@ -1,33 +1,28 @@
-# Tool ownership verification
+# Pure display verification
 
-Verified on 2026-07-23 with Node 24.15.0 on Windows. The CLI environment had Pi 0.81.1; the project's pinned test dependency was Pi 0.80.3.
+The extension changes only TUI rendering. It must not register or replace tools, mutate tool definitions or execution callbacks, change active tool ownership, alter model-visible context, or rewrite serialized session data.
 
-## Automated smoke coverage
+## Automated verification
 
 ```sh
-npx tsx --test tests/tool-overrides-registration.test.ts tests/reload-behavior.test.ts
-# 37 passed, 0 failed
+npx tsx --test tests/index-integration.test.ts tests/renderer-adapter-registration.test.ts tests/real-runtime-contract.test.ts
 ```
 
-The focused tests simulate `pi-hashline-edit-pro` owning `read`/`edit` and
-`pi-patty-bg-tasks` owning `bash`, including late registration, missing
-`sourceInfo`/`source`, inactive `find`/`ls`, and an actual
-`session_shutdown(reload) -> new extension instance -> session_start(reload)`
-sequence. They also instantiate Pi's `ToolExecutionComponent` renderer
-selection and assert that the installed Pi runtime awaits
-`rebindCurrentSession()` (which emits `session_start`) before
-`renderInitialMessages()` constructs restored-history rows.
+`index-integration.test.ts` verifies zero tool registrations across initialization, session lifecycle events, and configuration changes. `renderer-adapter-registration.test.ts` verifies producer adapters select display renderers without mutating tool definitions. `real-runtime-contract.test.ts` compares extension-present and extension-absent behavior against every required runtime in `tests/runtime-matrix.json`, including cold start, reload, new calls, ownership, execution, model-visible input, and session serialization.
 
-The named third-party packages were not installed in this environment, so no
-interactive package smoke test was claimed; their ownership behavior is
-covered by deterministic ExtensionAPI simulations using the same tool names
-and provenance shapes.
-
-## Full verification
+Supply all required runtime package roots when running the contract matrix:
 
 ```sh
-npm test            # 690 passed, 0 failed
-npm run typecheck   # passed
-npm run build       # passed
-git diff --check    # passed
+PI_RUNTIME_DEV_ROOT=/path/to/development/pi-coding-agent \
+PI_RUNTIME_0_81_1_ROOT=/path/to/pi-coding-agent-0.81.1 \
+PI_RUNTIME_MIN_ROOT=/path/to/minimum-supported/pi-coding-agent \
+npm test
+```
+
+Complete verification also requires:
+
+```sh
+npm run typecheck
+npm run build
+git diff --check
 ```

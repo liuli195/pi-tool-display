@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRendererCatalog, registerProducerRendererAdapter } from "../src/renderer-catalog.ts";
+import { disposeAll, resetDisposed } from "../src/disposable.ts";
+import { registerToolDisplayApi } from "../src/tool-overrides.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 
 const row = { toolName: "third_party", arguments: {}, builtIn: false } as const;
@@ -21,4 +23,28 @@ test("equal-priority producer conflicts fail deterministically regardless of ord
   try {
     assert.throws(() => createRendererCatalog().resolve(row, DEFAULT_TOOL_DISPLAY_CONFIG, {}), /a \(mcp\), z \(generic\)/);
   } finally { second(); first(); }
+});
+
+test("legacy read and edit adapter kinds retain their specialized display without mutating definitions", () => {
+  resetDisposed();
+  const read = Object.freeze({ name: "legacy_read", execute: Object.freeze(() => undefined) });
+  const edit = Object.freeze({ name: "legacy_edit", execute: Object.freeze(() => undefined) });
+  const config = { ...DEFAULT_TOOL_DISPLAY_CONFIG, readOutputMode: "summary" as const };
+  try {
+    registerToolDisplayApi(() => config);
+    const api = (globalThis as any)[Symbol.for("pi-tool-display.api.v1")];
+    assert.strictEqual(api.decorateTool(read, { kind: "read", pathFields: ["target"] }), read);
+    assert.strictEqual(api.decorateTool(edit, { kind: "edit", pathFields: ["target"] }), edit);
+
+    const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
+    const readPlan = createRendererCatalog().resolve({ toolName: "legacy_read", arguments: { target: "folder/file.txt", offset: 2, limit: 3 } }, config, {});
+    assert.match(readPlan!.call!({ target: "folder/file.txt", offset: 2, limit: 3 }, theme).render(120).join("\n"), /read.*folder[\\/]file\.txt:2-4/);
+    assert.match(readPlan!.result!({ content: [{ type: "text", text: "one\ntwo" }] }, { expanded: false }, theme).render(120).join("\n"), /loaded 2 lines/);
+
+    const editPlan = createRendererCatalog().resolve({ toolName: "legacy_edit", arguments: { target: "folder/file.txt", oldText: "old", newText: "new" } }, config, {});
+    assert.match(editPlan!.call!({ target: "folder/file.txt", oldText: "old", newText: "new" }, theme, {}).render(120).join("\n"), /edit.*folder[\\/]file\.txt.*1 line/);
+    assert.match(editPlan!.result!({ content: [{ type: "text", text: "Edited" }] }, { expanded: false }, theme, { args: { target: "folder/file.txt", oldText: "old", newText: "new" } }).render(120).join("\n"), /Edited/);
+    assert.equal(read.execute(), undefined);
+    assert.equal(edit.execute(), undefined);
+  } finally { disposeAll(); }
 });

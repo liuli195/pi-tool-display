@@ -8,6 +8,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Text, type Component } from "@earendil-works/pi-tui";
 import { VisualLinePreviewComponent } from "./bash-display.js";
+import { renderEditDiffResult } from "./diff-renderer.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
 import { registerProducerRendererAdapter, type ProducerRendererAdapter } from "./renderer-catalog.js";
@@ -902,6 +903,11 @@ export function renderCustomToolResult(
   );
 }
 
+function getAdapterKind(tool: RuntimeToolDefinition, adapter: ToolDisplayAdapter): ToolDisplayKind {
+  if (adapter.kind) return adapter.kind;
+  return tool.name === "read" || tool.name === "edit" ? tool.name : "generic";
+}
+
 function getAdapterPath(args: unknown, adapter: ToolDisplayAdapter): string | undefined {
   const explicitPath = adapter.getPath?.(args);
   if (explicitPath) {
@@ -977,19 +983,58 @@ export function renderReadDisplayResult(
   return renderSearchPreview(hintCtx);
 }
 
-function toProducerAdapter(toolName: string, adapter: ToolDisplayAdapter = {}): ProducerRendererAdapter {
-  const kind = adapter.kind === "mcp" ? "mcp" : "generic";
+function renderEditDisplayCall(
+  args: unknown,
+  theme: RenderTheme,
+  adapter: ToolDisplayAdapter = {},
+): Text {
+  const path = shortenPath(getAdapterPath(args, adapter));
+  const lineCount = adapter.getEditLineCount?.(args) ?? getEditLineCount(args);
+  return textResult(`${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", path || "...")}${formatLineCountSuffix(lineCount, theme)}`);
+}
+
+function renderEditDisplayResult(
+  result: ToolRenderInput & { isError?: boolean },
+  options: ToolRenderResultOptions,
+  theme: RenderTheme,
+  context: ToolRenderContextLike | undefined,
+  adapter: ToolDisplayAdapter,
+  getConfig: ConfigGetter,
+): unknown {
+  const lineCount = adapter.getEditLineCount?.(context?.args) ?? getEditLineCount(context?.args);
+  if (options.isPartial) return textResult(formatInProgressLineCount("editing", lineCount, theme));
+  const fallback = extractTextOutput(result);
+  if (isToolError(result, context)) return textResult(theme.fg("error", fallback || "Edit failed."));
+  return renderEditDiffResult(
+    result.details,
+    { expanded: options.expanded, filePath: getAdapterPath(context?.args, adapter) },
+    getConfig(),
+    theme,
+    fallback,
+  );
+}
+
+function toProducerAdapter(toolName: string, adapter: ToolDisplayAdapter = {}, getConfig: ConfigGetter): ProducerRendererAdapter {
+  const kind = getAdapterKind({ name: toolName }, adapter);
   return {
     id: adapter.id ?? toolName,
     toolName,
-    kind,
+    kind: kind === "mcp" ? "mcp" : "generic",
     overrideCallRenderer: adapter.overrideExistingRenderers,
-    renderCall: adapter.renderCall,
-    renderResult: adapter.renderResult,
+    renderCall: adapter.renderCall ?? (kind === "read"
+      ? (args, theme) => renderReadDisplayCall(args, theme, adapter)
+      : kind === "edit"
+        ? (args, theme) => renderEditDisplayCall(args, theme, adapter)
+        : undefined),
+    renderResult: adapter.renderResult ?? (kind === "read"
+      ? (result, options, theme) => renderReadDisplayResult(result, options, getConfig(), theme)
+      : kind === "edit"
+        ? (result, options, theme, context) => renderEditDisplayResult(result, options, theme, context, adapter, getConfig)
+        : undefined),
   };
 }
 
-function drainPendingToolDisplayDecorations(api: ToolDisplayApi): void {
+function drainPendingToolDisplayDecorations(api: ToolDisplayApi, getConfig: ConfigGetter): void {
   const globalWithApi = globalThis as GlobalWithToolDisplayApi;
   const entries = globalWithApi[TOOL_DISPLAY_PENDING_DECORATIONS_KEY];
   delete globalWithApi[TOOL_DISPLAY_PENDING_DECORATIONS_KEY];
@@ -999,7 +1044,7 @@ function drainPendingToolDisplayDecorations(api: ToolDisplayApi): void {
     const toolName = entry?.toolName;
     if (!toolName) continue;
     try {
-      entry.liveDispose = api.registerAdapter(toProducerAdapter(toolName, entry.adapter));
+      entry.liveDispose = api.registerAdapter(toProducerAdapter(toolName, entry.adapter, getConfig));
       if (entry.disposed) entry.liveDispose();
     } catch (error) { logToolDisplayDebug("Tool display Adapter registration failed.", error); }
   }
@@ -1028,13 +1073,13 @@ function installToolDisplayApi(_getConfig: ConfigGetter): ToolDisplayApi {
       if (!toolName) throw new Error("Tool display compatibility registration requires tool.name");
       const key = `${toolName}:${adapter?.id ?? toolName}`;
       legacyDisposers.get(key)?.();
-      const dispose = api.registerAdapter(toProducerAdapter(toolName, adapter));
+      const dispose = api.registerAdapter(toProducerAdapter(toolName, adapter, _getConfig));
       legacyDisposers.set(key, dispose);
       return tool;
     },
   };
   (globalThis as GlobalWithToolDisplayApi)[TOOL_DISPLAY_API_KEY] = api;
-  drainPendingToolDisplayDecorations(api);
+  drainPendingToolDisplayDecorations(api, _getConfig);
   registerCleanup(() => { for (const dispose of [...disposers]) dispose(); });
   return api;
 }
