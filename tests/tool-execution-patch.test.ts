@@ -222,85 +222,74 @@ test("pre-upgrade built-in rows without runtime provenance redraw through curren
   }
 });
 
-test("historical rows follow current built-in ownership and stop refreshing for third-party owners", async () => {
+test("historical rows refresh display without changing ownership or execution", () => {
+  const owners = [
+    { name: "bash", sourceInfo: { source: "local", path: "third-party.ts" } },
+    { name: "edit", sourceInfo: { source: "built-in" } },
+  ];
   const makeRuntime = (outputMode: "preview" | "summary") => {
     const handlers: Record<string, (event?: unknown) => unknown> = {};
-    const registered: Record<string, unknown>[] = [];
-    let owners: Record<string, unknown>[] = [];
     const api = {
       on: (event: string, handler: (event?: unknown) => unknown) => { handlers[event] = handler; },
       getActiveTools: () => ["bash", "edit"],
       getAllTools: () => owners,
-      registerTool: (tool: Record<string, unknown>) => {
-        registered.push(tool);
-        owners = [
-          ...owners.filter((owner) => owner.name !== tool.name),
-          { name: tool.name, sourceInfo: { source: "local", path: "pi-tool-display.ts" } },
-        ];
-      },
     } as unknown as ExtensionAPI;
-    const currentConfig = {
-      ...DEFAULT_TOOL_DISPLAY_CONFIG,
-      bashOutputMode: outputMode,
-      diffViewMode: "unified" as const,
-      diffCollapsedLines: outputMode === "summary" ? 1 : 24,
+    return {
+      api,
+      handlers,
+      currentConfig: {
+        ...DEFAULT_TOOL_DISPLAY_CONFIG,
+        bashOutputMode: outputMode,
+        diffViewMode: "unified" as const,
+        diffCollapsedLines: outputMode === "summary" ? 1 : 24,
+      },
     };
-    return { api, handlers, registered, currentConfig, setOwners: (next: Record<string, unknown>[]) => { owners = next; } };
   };
+  const definitions = [createBashTool(process.cwd()), createEditTool(process.cwd())] as any[];
+  const pristine = definitions.map((definition) => ({
+    descriptors: Object.getOwnPropertyDescriptors(definition),
+    execute: definition.execute,
+  }));
   const ui = { requestRender() {} } as any;
+  const historical = new ToolExecutionComponent("bash", "old-call", { command: "printf one" }, {}, definitions[0], ui, process.cwd());
+  historical.updateResult({ ...result, isError: false });
+  const historicalEdit = new ToolExecutionComponent("edit", "old-edit", { path: "file.ts", edits: [] }, {}, definitions[1], ui, process.cwd());
+  historicalEdit.updateResult({
+    content: [{ type: "text", text: "Done" }],
+    details: { diff: "@@ -1,3 +1,3 @@\n-old one\n-old two\n-old three\n+new one\n+new two\n+new three" },
+    isError: false,
+  });
 
-  const first = makeRuntime("preview");
-  let oldDefinition: any;
-  let historical!: ToolExecutionComponent;
-  let historicalEdit!: ToolExecutionComponent;
-  try {
-    registerToolDisplayApi(() => first.currentConfig);
-    registerToolExecutionPatch(first.api, () => first.currentConfig);
-    await first.handlers.session_start?.();
-    oldDefinition = createBashTool(process.cwd()) as any;
-    const oldEditDefinition = first.registered.find((tool) => tool.name === "edit") as any;
-    historical = new ToolExecutionComponent("bash", "old-call", { command: "printf one" }, {}, oldDefinition, ui, process.cwd());
-    historical.updateResult({ ...result, isError: false });
-    historicalEdit = new ToolExecutionComponent("edit", "old-edit", { path: "file.ts", edits: [] }, {}, oldEditDefinition, ui, process.cwd());
-    historicalEdit.updateResult({
-      content: [{ type: "text", text: "Done" }],
-      details: { diff: "@@ -1,3 +1,3 @@\n-old one\n-old two\n-old three\n+new one\n+new two\n+new three" },
-      isError: false,
-    });
-  } finally {
-    first.handlers.session_shutdown?.({ reason: "reload" });
-    disposeAll();
-    resetDisposed();
+  for (const outputMode of ["preview", "summary"] as const) {
+    const runtime = makeRuntime(outputMode);
+    try {
+      registerToolDisplayApi(() => runtime.currentConfig);
+      registerToolExecutionPatch(runtime.api, () => runtime.currentConfig);
+      historical.setExpanded(false);
+      historicalEdit.setExpanded(false);
+      if (outputMode === "summary") {
+        assert.match(plainRender(historical), /↳ 2 lines returned .*Ctrl\+O to expand/);
+        assert.doesNotMatch(plainRender(historicalEdit), /new three/);
+      }
+      historical.setExpanded(true);
+      assert.match(plainRender(historical), /one\s+two/);
+      historicalEdit.setExpanded(true);
+      assert.match(plainRender(historicalEdit), /new three/);
+    } finally {
+      runtime.handlers.session_shutdown?.({ reason: "reload" });
+      disposeAll();
+      resetDisposed();
+    }
   }
 
-  const second = makeRuntime("summary");
-  try {
-    registerToolDisplayApi(() => second.currentConfig);
-    registerToolExecutionPatch(second.api, () => second.currentConfig);
-    await second.handlers.session_start?.();
-    delete oldDefinition.name;
-    historical.setExpanded(false);
-    assert.match(plainRender(historical), /↳ 2 lines returned .*Ctrl\+O to expand/);
-    historical.setExpanded(true);
-    assert.match(plainRender(historical), /one\s+two/);
-    historical.setExpanded(false);
-    assert.match(plainRender(historical), /↳ 2 lines returned .*Ctrl\+O to expand/);
-    historicalEdit.setExpanded(false);
-    assert.doesNotMatch(plainRender(historicalEdit), /new three/);
-    historicalEdit.setExpanded(true);
-    assert.match(plainRender(historicalEdit), /new three/);
-    historicalEdit.setExpanded(false);
-    assert.doesNotMatch(plainRender(historicalEdit), /new three/);
-
-    second.setOwners([{ name: "bash", sourceInfo: { source: "local", path: "third-party.ts" } }]);
-    historical.setExpanded(false);
-    assert.match(plainRender(historical), /↳ 2 lines returned .*Ctrl\+O to expand/);
-
-  } finally {
-    second.handlers.session_shutdown?.({ reason: "reload" });
-    disposeAll();
-    resetDisposed();
-  }
+  assert.deepEqual(owners, [
+    { name: "bash", sourceInfo: { source: "local", path: "third-party.ts" } },
+    { name: "edit", sourceInfo: { source: "built-in" } },
+  ]);
+  definitions.forEach((definition, index) => {
+    assert.strictEqual(definition.execute, pristine[index].execute);
+    assert.deepEqual(Object.getOwnPropertyDescriptors(definition), pristine[index].descriptors);
+  });
 });
 
 test("reload restores the prototype and reinstallation does not stack wrappers", () => {

@@ -87,7 +87,7 @@ function buildAdvancedNotes(
 	const notes = [
 		...extra,
 		"Manual JSON edits also expose builtInToolDisplays.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, and diffWordWrap.",
-		`Built-in display selection is currently ${builtInDisplaySummary(config)} and applies immediately.`, 
+		`Built-in display selection is currently ${builtInDisplaySummary(config)} and applies immediately.`,
 		`Truncation hints are ${toOnOff(config.showTruncationHints)}${capabilities.hasRtkOptimizer ? `; RTK hints are ${toOnOff(config.showRtkCompactionHints)}.` : "."}`,
 	];
 	return notes;
