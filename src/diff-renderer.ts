@@ -1948,9 +1948,13 @@ function applyLineLimit(
 			.map((row) => row.hunkIndex)
 			.filter((hunkIndex): hunkIndex is number => typeof hunkIndex === "number" && hunkIndex > 0),
 	);
-	const shown = rows.filter((row) => row.logicalLineId !== undefined
+	const lastShownContentIndex = rows.reduce(
+		(lastIndex, row, index) => row.logicalLineId !== undefined && shownLineIds.has(row.logicalLineId) ? index : lastIndex,
+		-1,
+	);
+	const shown = rows.filter((row, index) => row.logicalLineId !== undefined
 		? shownLineIds.has(row.logicalLineId)
-		: row.hunkIndex === null || visibleHunks.has(row.hunkIndex));
+		: index <= lastShownContentIndex);
 	const remaining = rows.length - shown.length;
 	const hiddenHunks = Math.max(0, totalHunks - visibleHunks.size);
 	const hintText = buildCollapsedDiffHintText(

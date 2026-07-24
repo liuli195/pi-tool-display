@@ -131,6 +131,7 @@ test("Pi Host Adapter disposal deactivates its wrapper beneath a later foreign w
 
   assert.match(render(host.getResultRenderer.call(row)(output, { expanded: false, isPartial: false }, theme)), /3 matches/);
   installation.dispose();
+  assert.equal(invalidations, 0);
   assert.equal(render(host.getResultRenderer.call(row)(output, { expanded: false, isPartial: false }, theme)), "native result");
   invalidatePiHostAdapterRows(host);
   assert.equal(invalidations, 0);

@@ -52,6 +52,7 @@ export function createToolDisplayResolver(
     resolve(row, native) {
       try {
         const config = getConfig();
+        if (!config.enabled) return native;
         if (config !== source) {
           source = config;
           snapshot = Object.freeze({

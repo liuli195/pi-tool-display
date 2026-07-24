@@ -181,6 +181,29 @@ test("Diff logical budget hides metadata belonging only to omitted hunks", () =>
   assert.match(output, /more visual diff lines/);
 });
 
+test("Diff logical budget hides file metadata belonging to omitted files", () => {
+  const renderResult = resolveResult("edit", { diffViewMode: "unified", diffCollapsedLines: 1, diffWordWrap: true }, { path: "fixture.txt" });
+  const diff = [
+    "diff --git a/first.txt b/first.txt",
+    "--- a/first.txt",
+    "+++ b/first.txt",
+    "@@ -1 +1 @@",
+    "-first old",
+    "+first new",
+    "diff --git a/second.txt b/second.txt",
+    "--- a/second.txt",
+    "+++ b/second.txt",
+    "@@ -1 +1 @@",
+    "-second old",
+    "+second new",
+  ].join("\n");
+  const output = renderResult(result("done", { diff }), options(), theme).render(80).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+
+  assert.match(output, /first\.txt|first old/);
+  assert.doesNotMatch(output, /second\.txt|second old|second new/);
+  assert.match(output, /more visual diff lines/);
+});
+
 test("Diff omission hint uses singular visual-line wording", () => {
   const renderResult = resolveResult("edit", { diffViewMode: "unified", diffCollapsedLines: 1, diffWordWrap: true }, { path: "fixture.txt" });
   const lines = renderResult(result("done", { diff: "-old\n+new" }), options(), theme).render(80);
