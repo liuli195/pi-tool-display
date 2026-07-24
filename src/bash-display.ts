@@ -45,6 +45,8 @@ export class VisualLinePreviewComponent implements Component {
 		private previewLines: number,
 		private expanded: boolean,
 		private theme: BashCallRenderTheme,
+		/** When true, expanded mode bypasses all limits (for command display). */
+		private expandedBypass: boolean = false,
 	) {}
 
 	setDisplay(text: string, previewLines: number, expanded: boolean): void {
@@ -55,9 +57,12 @@ export class VisualLinePreviewComponent implements Component {
 
 	render(width: number): string[] {
 		const lines = this.text.render(width);
-		if (this.expanded || lines.length <= this.previewLines) return lines;
+		if (this.expanded && this.expandedBypass) return lines;
+		if (lines.length <= this.previewLines) return lines;
 
-		const hint = this.theme.fg("muted", `... (${lines.length - this.previewLines} more visual lines • Ctrl+O to expand)`);
+		const hint = this.expanded
+			? this.theme.fg("muted", `... (${lines.length - this.previewLines} more visual rows • display capped)`)
+			: this.theme.fg("muted", `... (${lines.length - this.previewLines} more visual lines • Ctrl+O to expand)`);
 		return [...lines.slice(0, this.previewLines), truncateToWidth(hint, width)];
 	}
 
@@ -96,7 +101,7 @@ export function renderBashCall(
 	const expanded = context.expanded === true || config.bashCommandMode === "full";
 	const text = context.lastComponent instanceof BashCallComponent
 		? context.lastComponent
-		: new BashCallComponent(previewLines, expanded, theme);
+		: new BashCallComponent(previewLines, expanded, theme, true);
 	text.setDisplay(buildBashCallText(args, theme), previewLines, expanded);
 	return text;
 }

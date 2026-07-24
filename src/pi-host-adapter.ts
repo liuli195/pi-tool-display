@@ -19,7 +19,6 @@ type HostPrototype = ToolRowHost & { getCallRenderer?: RendererSelector; getResu
 export interface PiHostAdapterInstallation { readonly installed: boolean; dispose(): void }
 
 const supportedVersion = (version: string) => {
-  if (["0.74.0", "0.80.3"].includes(version)) return true;
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (!match) return false;
   const [major, minor, patch] = match.slice(1).map(Number);

@@ -8,7 +8,6 @@ import {
   loadToolDisplayConfig,
   readProjectToolDisplayConfig,
   mergeProjectConfig,
-  applyConfigDelta,
   normalizeToolDisplayConfig,
   saveToolDisplayConfig,
 } from "./config-store.js";
@@ -26,9 +25,6 @@ import { registerToolDisplayCommand } from "./config-command.js";
 
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
   const initial = loadToolDisplayConfig();
-  if (!initial.config.enabled) {
-    return;
-  }
 
   resetDisposed();
 
@@ -39,25 +35,23 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
 
   // Global config (written to disk). Project overlay is applied on top at runtime.
   let globalConfig: ToolDisplayConfig = initial.config;
-  let config: ToolDisplayConfig = globalConfig;
+  let mergedConfig: ToolDisplayConfig = globalConfig;
   let pendingLoadError = initial.error;
   let capabilities: ToolDisplayCapabilities = {
     hasRtkOptimizer: false,
   };
   let effectiveConfig: ToolDisplayConfig | undefined;
+  let projectOverlay: Partial<ToolDisplayConfig> | undefined;
 
   const refreshCapabilities = (): void => {
     capabilities = detectToolDisplayCapabilities(pi, process.cwd());
     effectiveConfig = undefined;
   };
 
-  const getConfig = (): ToolDisplayConfig => config;
+  const getConfig = (): ToolDisplayConfig => mergedConfig;
   const getCapabilities = (): ToolDisplayCapabilities => capabilities;
   const getEffectiveConfig = (): ToolDisplayConfig =>
-    effectiveConfig ??= applyCapabilityConfigGuards(config, capabilities);
-
-  // Track the current project overlay so setConfig can compute deltas.
-  let projectOverlay: Partial<ToolDisplayConfig> | undefined;
+    effectiveConfig ??= applyCapabilityConfigGuards(mergedConfig, capabilities);
 
   const setConfig = (
     next: ToolDisplayConfig,
@@ -67,14 +61,13 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     // Then apply only those changes to globalConfig so project values
     // don't leak to disk.
     const delta: Partial<ToolDisplayConfig> = {};
-    const current = config;
     for (const key of Object.keys(next) as Array<keyof ToolDisplayConfig>) {
-      if (JSON.stringify(next[key]) !== JSON.stringify(current[key])) {
+      if (JSON.stringify(next[key]) !== JSON.stringify(mergedConfig[key])) {
         (delta as Record<string, unknown>)[key] = next[key];
       }
     }
-    globalConfig = applyConfigDelta(globalConfig, delta);
-    config = projectOverlay ? mergeProjectConfig(globalConfig, projectOverlay) : globalConfig;
+    globalConfig = mergeProjectConfig(globalConfig, delta);
+    mergedConfig = projectOverlay ? mergeProjectConfig(globalConfig, projectOverlay) : globalConfig;
     effectiveConfig = undefined;
 
     const saved = saveToolDisplayConfig(globalConfig);
@@ -83,12 +76,8 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     }
   };
 
-  registerToolDisplayApi(getEffectiveConfig);
-  registerToolExecutionPatch(pi, getEffectiveConfig);
-  registerNativeUserMessageBox(pi, getConfig);
-
-  registerToolDisplayCommand(pi, { getConfig, setConfig, getCapabilities });
-
+  // Always register session_start so project config can load even when
+  // global enabled is false — the enabled check gates rendering, not config.
   pi.on("session_start", async (_event, ctx) => {
     refreshCapabilities();
     if (pendingLoadError) {
@@ -100,26 +89,39 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     // previous session/project does not bleed into this session.
     const fresh = loadToolDisplayConfig();
     globalConfig = fresh.config;
-    config = globalConfig;
+    mergedConfig = globalConfig;
     effectiveConfig = undefined;
 
-    // Project-local config overlay: read-only, trusted projects only
+    // Project-local config overlay: read-only, trusted projects only.
+    // Loaded regardless of global enabled — project may override it.
     projectOverlay = undefined;
     if (ctx.isProjectTrusted()) {
       const projectConfigPath = join(ctx.cwd, CONFIG_DIR_NAME, "extensions", "pi-tool-display", "config.json");
       const projectResult = readProjectToolDisplayConfig(projectConfigPath);
       if (projectResult.config) {
         projectOverlay = projectResult.config;
-        config = mergeProjectConfig(globalConfig, projectOverlay);
+        mergedConfig = mergeProjectConfig(globalConfig, projectOverlay);
         effectiveConfig = undefined;
       }
       if (projectResult.error) {
         ctx.ui.notify(projectResult.error, "warning");
       }
     }
+
+    // If the effective config (after project overlay) is disabled, skip
+    // registering rendering infrastructure.
+    if (!mergedConfig.enabled) {
+      return;
+    }
+
+    registerToolDisplayApi(getEffectiveConfig);
+    registerToolExecutionPatch(pi, getEffectiveConfig);
+    registerNativeUserMessageBox(pi, getConfig);
+    registerToolDisplayCommand(pi, { getConfig, setConfig, getCapabilities });
   });
 
   pi.on("before_agent_start", async () => {
+    if (!mergedConfig.enabled) return;
     refreshCapabilities();
   });
 }

@@ -98,9 +98,12 @@ test("entry point registers expected lifecycle handlers", () => {
   assert.ok(beforeAgentStartCount >= 1, "at least one before_agent_start handler registered");
 });
 
-test("entry point registers tool-display command", () => {
-  const { api, capturedCommands } = createApiStub();
+test("entry point registers tool-display command on session_start", async () => {
+  const { api, capturedCommands, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
+
+  // Command registration now happens inside session_start
+  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, { ui: { notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false });
 
   const cmdNames = capturedCommands.map((c) => c.name);
   assert.ok(cmdNames.includes("tool-display"), "tool-display command registered");
@@ -162,11 +165,10 @@ test("multiple calls to toolDisplayExtension are idempotent", async () => {
   // Call twice
   toolDisplayExtension(api);
   toolDisplayExtension(api);
-  for (const { event, handler } of capturedHandlers) if (event === "before_agent_start") await handler();
+  // Registration now happens inside session_start
+  const sessionCtx = { ui: { theme: {}, notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false };
+  for (const { event, handler } of capturedHandlers) if (event === "session_start") await handler({}, sessionCtx);
 
-  // Second call should not throw. Tools may be registered again (that's up
-  // to the extension loader to deduplicate), but the extension itself must
-  // not crash.
   const toolNames = capturedTools.map((t) => t.name);
   assert.equal(toolNames.some((name) => ["read", "grep", "find", "ls", "edit", "write"].includes(name)), false);
   assert.equal(toolNames.length, 0);
@@ -198,21 +200,24 @@ test("entry point capability discovery tolerates source metadata", () => {
   assert.doesNotThrow(() => toolDisplayExtension(api));
 });
 
-test("graceful degradation: extension throws when registerCommand is missing", () => {
+test("graceful degradation: extension throws when registerCommand is missing", async () => {
   // Simulate a minimal stub missing registerCommand
+  const capturedHandlers: Array<{ event: string; handler: Function }> = [];
   const minimalApi = {
     registerTool(): void { /* no-op */ },
-    on(): void { /* no-op */ },
+    on(event: string, handler: Function): void { capturedHandlers.push({ event, handler }); },
     getAllTools(): unknown[] { return []; },
     getCommands(): Array<{ name: string }> { return []; },
   } as unknown as ExtensionAPI;
 
-  // registerToolDisplayCommand calls pi.registerCommand directly, so this
-  // is expected to throw in a peer-dep mismatch scenario.
-  assert.throws(
-    () => toolDisplayExtension(minimalApi),
+  // Initialization succeeds (registration deferred to session_start)
+  toolDisplayExtension(minimalApi);
+  // session_start triggers registerCommand which is missing
+  const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
+  await assert.rejects(
+    async () => sessionHandler?.({}, { ui: { notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false }),
     /registerCommand/i,
-    "missing registerCommand should propagate",
+    "missing registerCommand should propagate on session_start",
   );
 });
 
@@ -248,7 +253,7 @@ test("lifecycle events fire in expected order during a session lifecycle", async
   await beforeHandler();
   await sessionHandler(
     {},
-    { ui: { theme: { fg: (_c: string, t: string) => t }, notify: () => {} } },
+    { ui: { theme: { fg: (_c: string, t: string) => t }, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false },
   );
 
   // All handlers executed without throwing - this is the main assertion
@@ -263,7 +268,7 @@ test("session_start handler tolerates missing ctx.ui", async () => {
   assert.ok(sessionHandler);
 
   // ctx with no ui (edge case from older pi versions)
-  await assert.doesNotReject(async () => sessionHandler({}, {}));
+  await assert.doesNotReject(async () => sessionHandler({}, { cwd: process.cwd(), isProjectTrusted: () => false }));
 });
 
 test("before_agent_start handler tolerates being called multiple times", async () => {

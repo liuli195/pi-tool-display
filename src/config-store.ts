@@ -331,7 +331,7 @@ export function readProjectToolDisplayConfig(
 	}
 }
 
-const NESTED_OBJECT_KEYS = new Set(["builtInToolDisplays", "customToolOverrides"]);
+const NESTED_OBJECT_KEYS: ReadonlySet<string> = new Set(["builtInToolDisplays", "customToolOverrides"]);
 
 /**
  * Merge a project-local partial config over a global config. Only keys
@@ -364,14 +364,4 @@ export function mergeProjectConfig(
 	return normalizeToolDisplayConfig(merged);
 }
 
-/**
- * Apply a partial config delta to a base config. Used by setConfig to
- * persist only user-changed fields to disk, preventing project overlay
- * values from leaking into the global config file.
- */
-export function applyConfigDelta(
-	base: ToolDisplayConfig,
-	delta: Partial<ToolDisplayConfig>,
-): ToolDisplayConfig {
-	return mergeProjectConfig(base, delta);
-}
+

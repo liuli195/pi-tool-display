@@ -34,6 +34,15 @@ interface ToolLike {
   [key: string]: unknown;
 }
 
+const sessionCtx = { ui: { theme: {}, notify: () => {} }, cwd: process.cwd(), isProjectTrusted: () => false };
+
+/** Invoke all captured session_start handlers (simulates Pi calling the extension). */
+async function invokeSessionStart(capturedHandlers: CapturedHandler[]): Promise<void> {
+  for (const { event, handler } of capturedHandlers) {
+    if (event === "session_start") await handler({}, sessionCtx);
+  }
+}
+
 /**
  * Create a minimal ExtensionAPI stub that captures registrations for later
  * inspection. Mirrors the pattern from index-integration.test.ts.
@@ -172,16 +181,17 @@ test("3: bash renderBashCall returns consistent component for same lastComponent
 // 5. User message box cleanup
 // ---------------------------------------------------------------------------
 
-test("5: UserMessageComponent prototype is patched on first call and safe on reload", () => {
-  const { api } = createApiStub();
+test("5: UserMessageComponent prototype is patched on first call and safe on reload", async () => {
+  const { api, capturedHandlers } = createApiStub();
 
   const proto = UserMessageComponent.prototype as PatchableUserMessagePrototype;
 
   // Before any patching
   const originalRenderBefore = proto.__piUserMessageOriginalRender;
 
-  // First call patches it
+  // First call + session_start triggers patching
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   assert.ok(
     proto.__piUserMessageNativePatched,
     "prototype is marked as patched after first call",
@@ -194,7 +204,8 @@ test("5: UserMessageComponent prototype is patched on first call and safe on rel
   const firstOriginalRender = proto.__piUserMessageOriginalRender;
 
   // Reload (second call) should be safe
-  assert.doesNotThrow(() => toolDisplayExtension(api));
+  toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
 
   assert.ok(
     proto.__piUserMessageNativePatched,
@@ -207,7 +218,7 @@ test("5: UserMessageComponent prototype is patched on first call and safe on rel
   );
 });
 
-test("5: patchNativeUserMessagePrototype can be called multiple times safely", () => {
+test("5: patchNativeUserMessagePrototype can be called multiple times safely", async () => {
   const proto = UserMessageComponent.prototype as PatchableUserMessagePrototype;
 
   // Track the original render before any patching (tests share process state,
@@ -216,7 +227,9 @@ test("5: patchNativeUserMessagePrototype can be called multiple times safely", (
   const wasAlreadyPatched = !!proto.__piUserMessageNativePatched;
 
   // Patch via full extension (uses a fresh api stub each time)
-  assert.doesNotThrow(() => toolDisplayExtension(createApiStub().api));
+  const { api, capturedHandlers } = createApiStub();
+  toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
 
   // After calling, the prototype should be patched
   assert.ok(
@@ -247,9 +260,9 @@ test("5: patchNativeUserMessagePrototype can be called multiple times safely", (
   );
 
   // Re-patching via another extension call is safe (no throw)
-  assert.doesNotThrow(() => {
-    toolDisplayExtension(createApiStub().api);
-  });
+  const { api: api2, capturedHandlers: handlers2 } = createApiStub();
+  toolDisplayExtension(api2);
+  await invokeSessionStart(handlers2);
 
   // The patched flag and original render ref remain stable
   assert.ok(
@@ -266,10 +279,11 @@ test("5: patchNativeUserMessagePrototype can be called multiple times safely", (
 // 6. Command unregistration / re-registration
 // ---------------------------------------------------------------------------
 
-test("6: /tool-display command is registered on first call and re-registered on reload", () => {
-  const { api, capturedCommands } = createApiStub();
+test("6: /tool-display command is registered on first call and re-registered on reload", async () => {
+  const { api, capturedCommands, capturedHandlers } = createApiStub();
 
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const firstToolDisplayCmds = capturedCommands.filter(
     (c) => c.name === "tool-display",
   );
@@ -277,6 +291,7 @@ test("6: /tool-display command is registered on first call and re-registered on 
 
   // Reload
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const secondToolDisplayCmds = capturedCommands.filter(
     (c) => c.name === "tool-display",
   );
@@ -353,19 +368,22 @@ test("8: session_start handler can be invoked after reload without errors", asyn
 // 9. Double reload safety
 // ---------------------------------------------------------------------------
 
-test("9: calling toolDisplayExtension three times (double reload) is safe", () => {
-  const { api, capturedTools, capturedCommands } = createApiStub();
+test("9: calling toolDisplayExtension three times (double reload) is safe", async () => {
+  const { api, capturedTools, capturedCommands, capturedHandlers } = createApiStub();
 
-  // First call
+  // First call + session_start
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const afterFirst = { tools: capturedTools.length, cmds: capturedCommands.length };
 
-  // First reload
+  // First reload + session_start
   toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const afterSecond = { tools: capturedTools.length, cmds: capturedCommands.length };
 
-  // Second reload (double reload)
-  assert.doesNotThrow(() => toolDisplayExtension(api));
+  // Second reload (double reload) + session_start
+  toolDisplayExtension(api);
+  await invokeSessionStart(capturedHandlers);
   const afterThird = { tools: capturedTools.length, cmds: capturedCommands.length };
 
   // Tool registration is deferred until owners and active tools are known.
@@ -574,19 +592,21 @@ test("14: open settings modal onClose callback can be invoked multiple times", (
   assert.ok(true, "onClose can be called multiple times safely");
 });
 
-test("14: extension re-initialization does not leave stale modal references", () => {
+test("14: extension re-initialization does not leave stale modal references", async () => {
   // When the extension is re-loaded, the old controller and modal closures
   // are replaced. The new extension function creates fresh closures.
   // This test verifies the old references don't interfere.
 
-  const { api: api1, capturedCommands: cmds1 } = createApiStub();
+  const { api: api1, capturedCommands: cmds1, capturedHandlers: handlers1 } = createApiStub();
   toolDisplayExtension(api1);
+  await invokeSessionStart(handlers1);
 
   const firstCommandHandler = cmds1.find((c) => c.name === "tool-display")?.handler;
 
   // Reload
-  const { api: api2, capturedCommands: cmds2 } = createApiStub();
+  const { api: api2, capturedCommands: cmds2, capturedHandlers: handlers2 } = createApiStub();
   toolDisplayExtension(api2);
+  await invokeSessionStart(handlers2);
 
   const secondCommandHandler = cmds2.find((c) => c.name === "tool-display")?.handler;
 

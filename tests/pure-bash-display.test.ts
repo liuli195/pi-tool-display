@@ -48,9 +48,9 @@ test("Bash Host Adapter changes only renderer selection and does not stack on re
   const row = { toolName: "bash", args: { command: "echo ok" }, toolDefinition: definition, builtInToolDefinition: definition };
   const pristine = Object.getOwnPropertyDescriptors(definition);
 
-  const first = installPiHostAdapter(host, resolver(), "0.80.3");
+  const first = installPiHostAdapter(host, resolver(), "0.81.1");
   const patchedCall = host.getCallRenderer;
-  const second = installPiHostAdapter(host, resolver(), "0.80.3");
+  const second = installPiHostAdapter(host, resolver(), "0.81.1");
   assert.strictEqual(host.getCallRenderer, patchedCall);
   assert.match(render(host.getCallRenderer.call(row)!(row.args, theme, { executionStarted: false, isPartial: false })), /echo ok/);
   assert.deepEqual(Object.getOwnPropertyDescriptors(definition), pristine);

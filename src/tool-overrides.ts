@@ -511,13 +511,10 @@ function renderPreviewText(
     return wrapComponentWithHints(preview, hints);
   }
 
-  // Expanded path: use VisualLinePreviewComponent with a visual row cap
-  // to prevent long single-line content from flooding the viewport.
   const { text } = buildPreviewContent(lines, maxLines, theme);
   const visualCap = getExpandedVisualRowCap(config);
   const preview = new VisualLinePreviewComponent(visualCap, true, theme);
   preview.setDisplay(text, visualCap, true);
-  // appendHints already includes expanded cap hint via appendRtkAndExpandedHints
   const hints = appendHints("");
   return wrapComponentWithHints(preview, hints);
 }
@@ -630,9 +627,9 @@ function renderBashPreviewWithHints(
   details: BashToolDetails | undefined,
 ): Component {
   const { text, remaining } = buildPreviewContent(lines, maxLines, theme);
-  const visualCap = options.expanded ? getExpandedVisualRowCap(config) : maxLines;
-  const preview = new VisualLinePreviewComponent(visualCap, options.expanded, theme);
-  preview.setDisplay(text, visualCap, options.expanded);
+  const visualLimit = options.expanded ? getExpandedVisualRowCap(config) : maxLines;
+  const preview = new VisualLinePreviewComponent(visualLimit, options.expanded, theme);
+  preview.setDisplay(text, visualLimit, options.expanded);
   let hints = "";
   if (!options.expanded && remaining > 0) hints += formatTruncationHint(remaining, false, theme);
   if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
@@ -647,7 +644,7 @@ function renderBashVisualPreview(
   theme: RenderTheme,
   details: BashToolDetails | undefined,
 ): Component {
-  const { text, remaining } = buildPreviewContent(lines, lines.length, theme);
+  const { text, remaining } = buildPreviewContent(lines, maxLines, theme);
   const preview = new VisualLinePreviewComponent(maxLines, false, theme);
   preview.setDisplay(text, maxLines, false);
   let hints = "";
@@ -712,9 +709,10 @@ function renderBashErrorResult(
     if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);
     if (options.expanded) hints += formatExpandedPreviewCapHint(lines, config, theme);
 
-    if (!options.expanded && config.bashErrorOutputMode === "preview") {
-      const preview = new VisualLinePreviewComponent(config.bashErrorPreviewLines, false, theme);
-      preview.setDisplay(body, config.bashErrorPreviewLines, false);
+    if (config.bashErrorOutputMode === "preview" || options.expanded) {
+      const visualLimit = options.expanded ? getExpandedVisualRowCap(config) : config.bashErrorPreviewLines;
+      const preview = new VisualLinePreviewComponent(visualLimit, options.expanded, theme);
+      preview.setDisplay(body, visualLimit, options.expanded);
       container.addChild(wrapComponentWithHints(preview, hints));
     } else {
       container.addChild(textResult(body + hints));
