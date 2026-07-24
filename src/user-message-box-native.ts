@@ -48,7 +48,7 @@ export default function registerNativeUserMessageBox(
   patchUserMessageRender(getTheme, isEnabled);
 
   pi.on("session_shutdown", async (event: { reason?: string }) => {
-    if (event?.reason !== "reload") return;
+    if (event?.reason !== "reload" && event?.reason !== "quit") return;
     restoreUserMessageRender();
     activeTheme = undefined;
     registeredNativeUserMessageApis.delete(pi);

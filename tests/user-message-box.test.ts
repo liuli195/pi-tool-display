@@ -5,6 +5,7 @@ import {
 } from "../src/user-message-box-markdown.ts";
 import {
   patchUserMessageRenderPrototype,
+  unregisterUserMessageRenderPrototypePatch,
   type PatchableUserMessagePrototype,
 } from "../src/user-message-box-patch.ts";
 import {
@@ -561,6 +562,40 @@ test("patchRenderPrototype reapplies when version is different (upgrade)", () =>
   });
   assert.deepEqual(prototype.render(42), ["v7:orig:42"]);
   assert.equal(prototype.__piUserMessagePatchVersion, 7);
+  unregisterUserMessageRenderPrototypePatch(prototype);
+  assert.strictEqual(prototype.render, originalRender);
+});
+
+test("unregister leaves a later foreign render patch intact", () => {
+  const originalRender = (width: number) => [`orig:${width}`];
+  const prototype: PatchableUserMessagePrototype = { render: originalRender };
+  patchUserMessageRenderPrototype(prototype, 7, (baseRender) => width => [`ours:${baseRender(width)}`]);
+  const installedRender = prototype.render;
+  const foreignRender = (width: number) => [`foreign:${installedRender(width)}`];
+  prototype.render = foreignRender;
+
+  unregisterUserMessageRenderPrototypePatch(prototype);
+
+  assert.strictEqual(prototype.render, foreignRender);
+  assert.deepEqual(prototype.render(5), ["foreign:orig:5"]);
+  assert.equal(prototype.__piUserMessagePatchOwner, undefined);
+});
+
+test("unregister restores the original render descriptor", () => {
+  const originalRender = (width: number) => [`orig:${width}`];
+  const prototype = {} as PatchableUserMessagePrototype;
+  Object.defineProperty(prototype, "render", {
+    value: originalRender,
+    configurable: true,
+    enumerable: false,
+    writable: true,
+  });
+  const originalDescriptor = Object.getOwnPropertyDescriptor(prototype, "render");
+  patchUserMessageRenderPrototype(prototype, 7, () => () => ["patched"]);
+
+  unregisterUserMessageRenderPrototypePatch(prototype);
+
+  assert.deepEqual(Object.getOwnPropertyDescriptor(prototype, "render"), originalDescriptor);
 });
 
 test("patchRenderPrototype saves original render when __piUserMessageOriginalRender is absent", () => {

@@ -1,3 +1,4 @@
+import { Text } from "@earendil-works/pi-tui";
 import type { ToolDisplayConfig } from "./types.js";
 import { RendererAdapterConflict, type DisplayPlan, type NativeRendererSlots, type RendererCatalog, type ToolRenderer, type ToolRowDescriptor } from "./renderer-catalog.js";
 
@@ -12,19 +13,26 @@ export type ToolDisplayDiagnostic =
 export type ToolDisplayDiagnosticSink = (diagnostic: ToolDisplayDiagnostic) => void;
 
 function failOpen(custom: ToolRenderer | undefined, native: ToolRenderer | undefined, diagnose: (error: unknown) => void): ToolRenderer | undefined {
-  if (!custom || custom === native || !native) return custom ?? native;
+  if (!custom || custom === native) return custom ?? native;
   return function (this: unknown, ...args: any[]) {
     const owner = this;
+    const fallback = () => native?.apply(owner, args) ?? new Text("Tool display unavailable.", 0, 0);
+    let failed = false;
     let rendered: any;
     try { rendered = custom.apply(owner, args); }
-    catch (error) { diagnose(error); return native.apply(owner, args); }
+    catch (error) { diagnose(error); return fallback(); }
     if (!rendered || typeof rendered.render !== "function") return rendered;
     return {
       render(width: number) {
+        if (failed) return fallback().render(width);
         try { return rendered.render(width); }
-        catch (error) { diagnose(error); return native.apply(owner, args)?.render(width); }
+        catch (error) { failed = true; diagnose(error); return fallback().render(width); }
       },
-      invalidate() { rendered.invalidate?.(); },
+      invalidate() {
+        if (failed) return;
+        try { rendered.invalidate?.(); }
+        catch (error) { failed = true; diagnose(error); }
+      },
     };
   };
 }

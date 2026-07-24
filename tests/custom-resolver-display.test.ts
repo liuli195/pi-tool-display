@@ -81,6 +81,23 @@ test("runtime diagnostics identify conflicts and renderer failures once each per
   } finally { second(); first(); }
 });
 
+test("renderer failures without a native slot return a safe component", () => {
+  let diagnostics = 0;
+  const display = createToolDisplayResolver(() => DEFAULT_TOOL_DISPLAY_CONFIG, {
+    resolve: () => ({
+      call: () => ({
+        render() { return ["custom"]; },
+        invalidate() { throw new Error("invalidate broke"); },
+      }),
+    }),
+  }, () => { diagnostics++; });
+  const component = display.resolve({ toolName: "broken", arguments: {} }, {}).call!({}, theme, {});
+
+  assert.doesNotThrow(() => component.invalidate());
+  assert.match(component.render(80).join("\n"), /display unavailable/i);
+  assert.equal(diagnostics, 1);
+});
+
 test("producer conflicts fail open with one diagnostic regardless of registration order", () => {
   const first = registerProducerRendererAdapter({ id: "first", toolName: "conflict", kind: "generic" });
   const second = registerProducerRendererAdapter({ id: "second", toolName: "conflict", kind: "mcp" });

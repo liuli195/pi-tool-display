@@ -14,7 +14,7 @@ import {
 } from "./capabilities.js";
 import { registerToolDisplayApi } from "./tool-overrides.js";
 import { registerToolExecutionPatch } from "./tool-execution-patch.js";
-import { disposeAll, resetDisposed } from "./disposable.js";
+import { disposeAll, disposeSession, resetDisposed } from "./disposable.js";
 import registerNativeUserMessageBox from "./user-message-box-native.js";
 import type { ToolDisplayConfig } from "./types.js";
 import { registerToolDisplayCommand } from "./config-command.js";
@@ -28,9 +28,8 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   resetDisposed();
 
   pi.on("session_shutdown", (event: { reason: string }) => {
-    if (event.reason === "reload") {
-      disposeAll();
-    }
+    disposeSession();
+    if (event.reason === "reload" || event.reason === "quit") disposeAll();
   });
 
   let config: ToolDisplayConfig = initial.config;

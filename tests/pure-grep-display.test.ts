@@ -87,6 +87,9 @@ test("Pi Host Adapter is transactional, idempotent, receiver-safe, and conflict-
     const second = installPiHostAdapter(host, config("preview"), "0.80.3");
     assert.equal(second.installed, true);
     assert.strictEqual(host.getResultRenderer, installed.getResultRenderer.value);
+    const grepRow = { toolName: "grep", args: { pattern: "x" }, builtInToolDefinition: { name: "grep" } };
+    const refreshedRenderer = host.getResultRenderer.call(grepRow);
+    assert.match(render(refreshedRenderer(output, { expanded: false, isPartial: false }, theme)), /a:1/);
 
     const foreign = function () { return "foreign"; };
     const foreignDescriptor = { ...installed.getResultRenderer, value: foreign };

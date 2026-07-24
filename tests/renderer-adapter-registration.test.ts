@@ -3,6 +3,7 @@ import test from "node:test";
 import { createRendererCatalog, registerProducerRendererAdapter } from "../src/renderer-catalog.ts";
 import { disposeAll, resetDisposed } from "../src/disposable.ts";
 import { registerToolDisplayApi } from "../src/tool-overrides.ts";
+import { createToolDisplayResolver } from "../src/tool-display-resolver.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 
 const row = { toolName: "third_party", arguments: {}, builtIn: false } as const;
@@ -15,6 +16,57 @@ test("producer registration is disposable, deterministic, and leaves its input u
   dispose(); dispose();
   assert.equal(catalog.resolve(row, DEFAULT_TOOL_DISPLAY_CONFIG, {}), undefined);
   assert.deepEqual(adapter, { id: "producer-a", toolName: "third_party", kind: "generic" });
+});
+
+test("producer callbacks receive detached arguments, results, and context args", () => {
+  const args = { nested: { path: "original.txt" } };
+  const result = { content: [{ type: "text", text: "original" }], details: { count: 1 } };
+  const context = { args, state: {} };
+  const dispose = registerProducerRendererAdapter({
+    id: "mutating-producer",
+    toolName: "third_party",
+    kind: "generic",
+    overrideCallRenderer: true,
+    renderCall(received: typeof args, _theme: unknown, receivedContext: typeof context) {
+      received.nested.path = "changed.txt";
+      receivedContext.args.nested.path = "changed-again.txt";
+      return { render: () => ["call"] };
+    },
+    renderResult(received: typeof result) {
+      received.content[0].text = "changed";
+      received.details.count = 2;
+      return { render: () => ["result"] };
+    },
+  });
+  try {
+    const plan = createRendererCatalog().resolve(
+      { ...row, arguments: args },
+      DEFAULT_TOOL_DISPLAY_CONFIG,
+      {},
+    )!;
+    plan.call!(args, {}, context);
+    plan.result!(result, {}, {}, context);
+    assert.deepEqual(args, { nested: { path: "original.txt" } });
+    assert.deepEqual(result, { content: [{ type: "text", text: "original" }], details: { count: 1 } });
+    assert.strictEqual(context.args, args);
+  } finally { dispose(); }
+});
+
+test("uncloneable producer data falls back without invoking the callback", () => {
+  let invoked = false;
+  const dispose = registerProducerRendererAdapter({
+    id: "clone-failure",
+    toolName: "third_party",
+    kind: "generic",
+    renderResult() { invoked = true; },
+  });
+  try {
+    const nativeResult = () => ({ render: () => ["native"] });
+    const plan = createToolDisplayResolver(() => DEFAULT_TOOL_DISPLAY_CONFIG, createRendererCatalog())
+      .resolve(row, { result: nativeResult });
+    assert.deepEqual(plan.result!({ details: { callback() {} } }, {}, {}).render(), ["native"]);
+    assert.equal(invoked, false);
+  } finally { dispose(); }
 });
 
 test("equal-priority producer conflicts fail deterministically regardless of order", () => {

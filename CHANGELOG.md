@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Support stable Pi releases from `0.81.1` onward, with `0.82.0` added to the real-runtime qualification matrix.
 
+### Fixed
+- Detach producer Adapter arguments and results before rendering so callbacks cannot alter tool execution, model context, or session data.
+- Preserve later third-party user-message patches and keep host rendering installed across `/new`, `/resume`, and `/fork` session switches.
+- Clear Bash animation timers and row state at session boundaries, and safely contain renderer component failures without a native fallback.
+
 ## [0.6.2] - 2026-07-24
 
 ### Added

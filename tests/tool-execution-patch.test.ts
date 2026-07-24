@@ -397,6 +397,22 @@ test("historical rows refresh display without changing ownership or execution", 
   });
 });
 
+test("session switches keep the installed host renderer patch", () => {
+  const prototype = ToolExecutionComponent.prototype as any;
+  const originalCall = prototype.getCallRenderer;
+  const runtime = apiStub();
+  registerToolExecutionPatch(runtime.api, () => config({ configured: true }));
+  const patchedCall = prototype.getCallRenderer;
+  assert.notStrictEqual(patchedCall, originalCall);
+
+  for (const reason of ["new", "resume", "fork"]) {
+    runtime.handlers.session_shutdown?.({ reason });
+    assert.strictEqual(prototype.getCallRenderer, patchedCall);
+  }
+  runtime.handlers.session_shutdown?.({ reason: "quit" });
+  assert.strictEqual(prototype.getCallRenderer, originalCall);
+});
+
 test("reload restores the prototype and reinstallation does not stack wrappers", () => {
   const prototype = ToolExecutionComponent.prototype as any;
   const originalCall = prototype.getCallRenderer;

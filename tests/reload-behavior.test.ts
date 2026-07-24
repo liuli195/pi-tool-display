@@ -10,6 +10,7 @@ import { renderBashCall } from "../src/bash-display.ts";
 import registerNativeUserMessageBox from "../src/user-message-box-native.ts";
 import { createToolDisplayDebugLogger } from "../src/debug-logger.ts";
 import type { PatchableUserMessagePrototype } from "../src/user-message-box-patch.ts";
+import { disposeSession, registerSessionCleanup } from "../src/disposable.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,8 +115,21 @@ test("1: after reload, new lifecycle handlers are registered", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Bash override cleanup (spinner timer)
+// 3. Session cleanup and Bash spinner lifecycle
 // ---------------------------------------------------------------------------
+
+test("3: session cleanup runs once per registration and accepts the next session", () => {
+  let cleanups = 0;
+  registerSessionCleanup(() => cleanups++);
+  disposeSession();
+  disposeSession();
+  assert.equal(cleanups, 1);
+
+  registerSessionCleanup(() => cleanups++);
+  disposeSession();
+  assert.equal(cleanups, 2);
+});
+
 
 test("3: bash spinner interval is created during partial execution and cleared on completion", () => {
   const originalSetInterval = globalThis.setInterval;
@@ -189,6 +203,56 @@ test("3: bash spinner interval is created during partial execution and cleared o
       }
     }
   }
+});
+
+test("3: session cleanup clears an active Bash spinner and its row state", () => {
+  const originalClearInterval = globalThis.clearInterval;
+  const clearedIntervals: ReturnType<typeof setInterval>[] = [];
+  globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => {
+    clearedIntervals.push(id);
+    originalClearInterval(id);
+  }) as typeof globalThis.clearInterval;
+  const state: Record<string, unknown> = {};
+  try {
+    renderBashCall({ command: "sleep 5" }, stubTheme, {
+      executionStarted: true,
+      isPartial: true,
+      invalidate: () => {},
+      state,
+    });
+    disposeSession();
+    assert.ok(clearedIntervals.length > 0);
+    assert.deepEqual(state, {});
+  } finally {
+    globalThis.clearInterval = originalClearInterval;
+    disposeSession();
+  }
+});
+
+test("3: session cleanup clears Bash row state even without an animation timer", () => {
+  const state: Record<string, unknown> = {};
+  renderBashCall({ command: "sleep 5" }, stubTheme, {
+    executionStarted: true,
+    isPartial: true,
+    state,
+  });
+
+  disposeSession();
+
+  assert.deepEqual(state, {});
+});
+
+test("3: session cleanup clears every row state sharing a tool call", () => {
+  const firstState: Record<string, unknown> = {};
+  const secondState: Record<string, unknown> = {};
+  const context = { executionStarted: true, isPartial: true, toolCallId: "shared" };
+  renderBashCall({ command: "sleep 5" }, stubTheme, { ...context, state: firstState });
+  renderBashCall({ command: "sleep 5" }, stubTheme, { ...context, state: secondState });
+
+  disposeSession();
+
+  assert.deepEqual(firstState, {});
+  assert.deepEqual(secondState, {});
 });
 
 test("3: multiple consecutive bash render calls do not create duplicate timers", () => {

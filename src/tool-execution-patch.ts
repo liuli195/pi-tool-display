@@ -11,5 +11,7 @@ export function registerToolExecutionPatch(pi: ExtensionAPI, getConfig: () => To
     VERSION,
     message => logToolDisplayDebug(message),
   );
-  pi.on("session_shutdown", installation.dispose);
+  pi.on("session_shutdown", (event: { reason?: string }) => {
+    if (event.reason === "reload" || event.reason === "quit") installation.dispose();
+  });
 }

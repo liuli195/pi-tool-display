@@ -10,6 +10,7 @@ interface ToolRowHost {
 interface Installation {
   call: PropertyDescriptor;
   result: PropertyDescriptor;
+  resolver: ToolDisplayResolver;
   patchedCall: RendererSelector;
   patchedResult: RendererSelector;
 }
@@ -45,6 +46,7 @@ export function installPiHostAdapter(
 function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVersion: string): PiHostAdapterInstallation {
   const existing = ownState(prototype);
   if (existing && ownValue(prototype, "getCallRenderer") === existing.patchedCall && ownValue(prototype, "getResultRenderer") === existing.patchedResult) {
+    existing.resolver = resolver;
     return { installed: true, dispose: () => dispose(prototype, existing) };
   }
   const call = Object.getOwnPropertyDescriptor(prototype, "getCallRenderer");
@@ -61,15 +63,17 @@ function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVers
     label: typeof instance.toolDefinition?.label === "string" ? instance.toolDefinition.label : undefined,
     builtIn: instance.builtInToolDefinition?.name === (instance.toolDefinition?.name ?? instance.toolName),
   });
+  const state = { call, result, resolver } as Installation;
   const patchedCall: RendererSelector = function (...args: any[]) {
     const native = originalCall.apply(this, args);
-    return resolver.resolve(row(this), { call: native }).call;
+    return state.resolver.resolve(row(this), { call: native }).call;
   };
   const patchedResult: RendererSelector = function (...args: any[]) {
     const native = originalResult.apply(this, args);
-    return resolver.resolve(row(this), { result: native }).result;
+    return state.resolver.resolve(row(this), { result: native }).result;
   };
-  const state: Installation = { call, result, patchedCall, patchedResult };
+  state.patchedCall = patchedCall;
+  state.patchedResult = patchedResult;
 
   try {
     Object.defineProperty(prototype, STATE, { value: state, configurable: true });

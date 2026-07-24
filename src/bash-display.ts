@@ -1,6 +1,6 @@
 import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "./types.js";
-import { registerCleanup, registerTimer } from "./disposable.js";
+import { registerSessionCleanup } from "./disposable.js";
 
 const BASH_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const BASH_SPINNER_INTERVAL_MS = 200;
@@ -23,6 +23,8 @@ interface BashSpinnerState {
 	frameIndex: number;
 	startedAt?: number;
 	timer?: ReturnType<typeof setInterval>;
+	unregisterCleanup?: () => void;
+	carriers?: Set<BashSpinnerStateCarrier>;
 }
 
 interface BashSpinnerStateCarrier {
@@ -80,27 +82,40 @@ function getOrCreateSpinnerState(
 	if (!state) {
 		state = { frameIndex: 0 };
 		spinnerStatesByToolCallId.set(toolCallId, state);
+		const created = state;
+		created.unregisterCleanup = registerSessionCleanup(() => {
+			created.unregisterCleanup = undefined;
+			stopSpinner(toolCallId, created);
+		});
 	}
 	if (carrier) {
+		state.carriers ??= new Set();
+		state.carriers.add(carrier);
 		carrier[BASH_SPINNER_STATE_KEY] = state;
 	}
 	return state;
 }
 
-function stopSpinner(toolCallId: string | undefined, state: BashSpinnerState | undefined): void {
-	if (!state) {
-		return;
-	}
+function stopSpinner(
+	toolCallId: string | undefined,
+	state: BashSpinnerState | undefined,
+	carrier?: BashSpinnerStateCarrier,
+): void {
+	if (!state) return;
 
-	if (state.timer) {
-		clearInterval(state.timer);
-		state.timer = undefined;
-	}
+	state.unregisterCleanup?.();
+	state.unregisterCleanup = undefined;
+	if (state.timer) clearInterval(state.timer);
+	state.timer = undefined;
 	state.frameIndex = 0;
 	state.startedAt = undefined;
-	if (toolCallId) {
-		spinnerStatesByToolCallId.delete(toolCallId);
+	if (toolCallId) spinnerStatesByToolCallId.delete(toolCallId);
+	if (carrier) state.carriers?.add(carrier);
+	for (const stateCarrier of state.carriers ?? []) {
+		if (stateCarrier[BASH_SPINNER_STATE_KEY] === state) delete stateCarrier[BASH_SPINNER_STATE_KEY];
+		if (stateCarrier[BASH_SPINNER_TOOL_CALL_ID_KEY] === toolCallId) delete stateCarrier[BASH_SPINNER_TOOL_CALL_ID_KEY];
 	}
+	state.carriers?.clear();
 }
 
 function formatElapsed(elapsedMs: number): string {
@@ -211,7 +226,7 @@ export function renderBashCall(
 	const shouldSpin = context.executionStarted && context.isPartial;
 
 	if (!shouldSpin) {
-		stopSpinner(toolCallId, spinnerState);
+		stopSpinner(toolCallId, spinnerState, carrier);
 		setDisplay(buildBashCallText(args, theme));
 		return text;
 	}
@@ -232,12 +247,6 @@ export function renderBashCall(
 				context.invalidate?.();
 			}, BASH_SPINNER_INTERVAL_MS);
 			spinnerState.timer = timer;
-			registerTimer(timer);
-			registerCleanup(() => {
-				if (spinnerStatesByToolCallId.get(toolCallId || "") === spinnerState) {
-					stopSpinner(toolCallId, spinnerState);
-				}
-			});
 		}
 	}
 

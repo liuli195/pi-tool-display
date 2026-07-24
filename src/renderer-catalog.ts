@@ -37,8 +37,28 @@ export class RendererAdapterConflict extends Error {
 
 const producerAdapters = new Map<string, Map<string, ProducerRendererAdapter>>();
 
+function detachRenderer(renderer: ToolRenderer | undefined, contextIndex: number): ToolRenderer | undefined {
+  if (!renderer) return undefined;
+  return function (this: unknown, ...args: any[]) {
+    const detached = [...args];
+    detached[0] = structuredClone(args[0]);
+    const context = args[contextIndex];
+    if (context && typeof context === "object") {
+      detached[contextIndex] = {
+        ...context,
+        ...(Object.hasOwn(context, "args") ? { args: structuredClone(context.args) } : {}),
+      };
+    }
+    return renderer.apply(this, detached);
+  };
+}
+
 export function registerProducerRendererAdapter(adapter: ProducerRendererAdapter): () => void {
-  const registered = Object.freeze({ ...adapter });
+  const registered = Object.freeze({
+    ...adapter,
+    renderCall: detachRenderer(adapter.renderCall, 2),
+    renderResult: detachRenderer(adapter.renderResult, 3),
+  });
   const adapters = producerAdapters.get(registered.toolName) ?? new Map<string, ProducerRendererAdapter>();
   if (adapters.has(registered.id)) throw new Error(`Renderer Adapter '${registered.id}' is already registered for ${registered.toolName}`);
   adapters.set(registered.id, registered);
