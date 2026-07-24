@@ -117,9 +117,9 @@ The deprecated `decorateToolForDisplay(tool, adapter)` migration facade register
 
 ## Compatibility
 
-Supported Pi releases are exactly `0.81.1` and `0.82.0`; the release matrix also exercises the development runtime. Other versions use native rendering when installation is otherwise possible.
+Supported Pi releases are `0.81.1` and later stable versions. The release matrix currently qualifies `0.81.1`, `0.82.0`, and the development runtime as representative points.
 
-Versions below `0.81.1` and unverified releases after `0.82.0` are **not supported**. The peer dependency range, Host Adapter gate, and release matrix intentionally match this verified set.
+Versions below `0.81.1` and prerelease version strings are **not supported**. The peer dependency range and Host Adapter gate accept stable releases from `0.81.1` onward; the qualification matrix does not limit that support range.
 
 Older, prerelease, or incompatible private TUI shapes emit one concise debug diagnostic and keep Pi's native rendering and execution.
 

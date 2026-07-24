@@ -67,7 +67,7 @@ const stableFixturePaths = (ownership: Array<{ name: string; sourceInfo: any }>)
   sourceInfo: { ...sourceInfo, path: sourceInfo.path?.replace(/pi-tool-display-contract-[^\\/]+/, "pi-tool-display-contract") },
 }));
 
-test("runtime matrix pins development, Pi 0.81.1, and Pi 0.82.0", () => {
+test("runtime matrix qualifies representative supported Pi versions", () => {
   assert.deepEqual(matrix.map(({ name, version }) => ({ name, version })), [
     { name: "development", version: undefined },
     { name: "pi-0.81.1", version: "0.81.1" },
@@ -76,8 +76,8 @@ test("runtime matrix pins development, Pi 0.81.1, and Pi 0.82.0", () => {
   assert.equal(matrix.every(({ required }) => required), true);
   assert.equal(matrix.find(({ name }) => name === "development")?.env, "PI_RUNTIME_DEV_ROOT");
   const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8"));
-  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], "0.81.1 || 0.82.0");
-  assert.equal(packageJson.peerDependencies["@earendil-works/pi-tui"], "0.81.1 || 0.82.0");
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-coding-agent"], ">=0.81.1");
+  assert.equal(packageJson.peerDependencies["@earendil-works/pi-tui"], ">=0.81.1");
 });
 
 for (const entry of matrix) {

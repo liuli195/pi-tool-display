@@ -10,12 +10,14 @@
 | --- | --- | --- |
 | #36 超长单行绕过预览限制 | **已解决** | 非 Diff 完整正文在最终组件按视觉行预算；Diff 按逻辑 Diff 行预算并报告省略视觉 Diff 行 |
 | #14/#19 Bash 滚动跳底/闪烁 | **已解决** | 删除 spinner、elapsed tick、`setInterval` 和历史行定时 `invalidate()`；真实 runtime 断言无 animated frame |
-| #20/PR #31 Pi 版本兼容 | **已明确支持边界** | peer、Host gate、README 与矩阵统一为已验证的 `0.81.1`、`0.82.0`；两者及 development contract 通过 |
+| #20/PR #31 Pi 版本兼容 | **已解决** | peer 与 Host gate 支持所有稳定版 `>=0.81.1`；矩阵以 `0.81.1`、`0.82.0` 和 development 作为代表性验证点 |
 | PR #27 project-local config | **已解决（只读 overlay）** | 仅 trusted project 读取；显式 global mutation 不持久化 overlay；嵌套 custom 字段保留 siblings |
 
-验证结果：647 个非真实运行时测试通过；development、Pi 0.81.1、Pi 0.82.0 的真实 runtime contract 全部通过。扩展禁用、session transition 与 reload 使用 owned disposer 恢复或重装 native display seam。
+最终验证结果：664/664 测试通过；development、Pi 0.81.1、Pi 0.82.0 的真实 runtime contract 全部通过。扩展禁用、session transition 与 reload 使用 owned disposer 恢复或重装 native display seam。验证矩阵是抽样资格验证，不会把支持范围收窄到这两个稳定版本。
 
 ## 原始审计发现（历史基线）
+
+> 以下“当前证据”和“仍存在”判断冻结于原始审计基线 `4be7765`，不代表实施后的当前 HEAD；当前结论以文首“实施复核结论”为准。
 
 ### P1 — 预览预算按逻辑行计数，超长单行仍能填满 viewport（#36）
 
@@ -75,7 +77,7 @@
 
 **建议**
 
-- 不支持中间版本，只支持`>=0.81.1` 、在 README 和安装错误说明中明确：这些版本不是支持目标；不要暗示“unsupported runtime native fallback”可以覆盖 npm 已拒绝安装的情况。[README compatibility](https://github.com/liuli195/pi-tool-display/blob/4be77657339311093ef07b647d52004221e75416/README.md#L97-L103)。
+- 支持所有稳定版 `>=0.81.1`，并在 README 中区分“支持范围”和“代表性验证矩阵”；不要把抽测版本误写为仅支持的精确版本。[README compatibility](https://github.com/liuli195/pi-tool-display/blob/main/README.md#L97-L103)。
 
 ### P3 — project-local config 尚未实现（PR #27）
 

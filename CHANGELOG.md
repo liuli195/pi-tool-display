@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Apply non-Diff collapsed and expanded preview budgets to terminal visual rows, with one extra omission-hint row reporting the exact omitted visual rows.
 - Keep Diff body budgets in logical Diff lines while reporting omitted visual Diff lines.
-- Limit supported Pi peers to the verified `0.81.1` and `0.82.0` releases, matching the Host Adapter and runtime matrix.
+- Support stable Pi releases from `0.81.1` onward; the Host Adapter accepts the peer range while the runtime matrix qualifies `0.81.1`, `0.82.0`, and development.
 
 ### Fixed
 - Pass complete Bash, Read, Search, MCP, and custom-tool output to the final visual renderer instead of pre-truncating logical lines.
