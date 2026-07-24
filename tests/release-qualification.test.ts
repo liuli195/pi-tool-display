@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { createAgentSessionFromServices, createAgentSessionServices, createReadTool, initTheme, SessionManager, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
+import { promisify } from "node:util";
+import { createAgentSessionFromServices, createAgentSessionServices, initTheme, SessionManager, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
+
+const execFileAsync = promisify(execFile);
 
 import { installPiHostAdapter } from "../src/pi-host-adapter.js";
 import { createRendererCatalog } from "../src/renderer-catalog.js";
@@ -102,49 +106,9 @@ test("production loader path performs no registry scans/rebuild loops and linear
 });
 
 test("real capability lifecycle changes the first frame with one immutable snapshot per epoch", async () => {
-  const agentDir = await mkdtemp(join(tmpdir(), "pi-tool-display-capability-"));
-  await mkdir(join(agentDir, "extensions", "pi-tool-display"), { recursive: true });
-  await writeFile(join(agentDir, "extensions", "pi-tool-display", "config.json"), JSON.stringify({ readOutputMode: "preview", showRtkCompactionHints: true }));
-  const previous = process.env.PI_CODING_AGENT_DIR;
-  process.env.PI_CODING_AGENT_DIR = agentDir;
-  let commands: Array<{ name: string }> = [];
-  const handlers = new Map<string, Function[]>();
-  const readTool = createReadTool(process.cwd());
-  const api = {
-    on(event: string, handler: Function) { handlers.set(event, [...(handlers.get(event) ?? []), handler]); },
-    registerCommand() {}, getAllTools() { return [readTool]; }, getCommands() { return commands; },
-  } as any;
-  const entries = Object.entries;
-  let snapshots = 0;
-  Object.entries = ((value: object) => {
-    if (new Error().stack?.includes("tool-display-resolver")) snapshots++;
-    return entries(value);
-  }) as typeof Object.entries;
-  try {
-    const { default: toolDisplayExtension } = await import(`../src/index.js?capability=${Date.now()}`);
-    toolDisplayExtension(api);
-    const frame = (id: string) => {
-      const row = new ToolExecutionComponent("read", id, { path: "fixture" }, {}, readTool, { requestRender() {} } as any, process.cwd());
-      const value = { content: [{ type: "text", text: "one\ntwo" }], details: { rtkCompaction: { applied: true, techniques: ["dedupe"] } }, isError: false };
-      row.updateResult(value as any);
-      row.setExpanded(true);
-      return row.render(120).join("\n");
-    };
-    await handlers.get("session_start")?.at(-1)?.({}, { ui: { notify() {} } });
-    assert.doesNotMatch(frame("without-rtk"), /compacted by RTK/);
-    assert.equal(snapshots, 1);
-    commands = [{ name: "rtk" }];
-    await handlers.get("before_agent_start")?.at(-1)?.();
-    assert.match(frame("with-rtk"), /compacted by RTK/);
-    assert.equal(snapshots, 2);
-    assert.match(frame("same-epoch"), /compacted by RTK/);
-    assert.equal(snapshots, 2);
-  } finally {
-    Object.entries = entries;
-    await handlers.get("session_shutdown")?.at(-1)?.({ reason: "reload" });
-    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
-    await rm(agentDir, { recursive: true, force: true });
-  }
+  await execFileAsync(process.execPath, ["--import", "tsx", resolve(import.meta.dirname, "support", "release-capability-lifecycle.ts")], {
+    cwd: resolve(import.meta.dirname, ".."),
+  });
 });
 
 test("unsupported host shape reports one concise diagnostic and preserves native execution", () => {
