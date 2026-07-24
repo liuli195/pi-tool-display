@@ -118,8 +118,12 @@ for (const entry of matrix) {
       }
     }
     for (const frame of [observation.present.tuiOutput.expandedCold, observation.present.tuiOutput.expandedReload]) {
-      assert.match(plain(frame), /contract read first line/);
-      assert.match(plain(frame), /contract read third line/);
+      const text = plain(frame);
+      assert.match(text, /contract read first line/);
+      assert.match(text, /contract read third line/);
+      assert.match(text, /old-schema result preserved/);
+      assert.match(text, /aborted result preserved/);
+      assert.match(text, /image-bearing result preserved/);
     }
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /contract read final third line/);
     for (const frame of [observation.firstCollapsedOutput, observation.present.tuiOutput.reload]) {
@@ -233,6 +237,11 @@ for (const entry of matrix) {
         assert.deepEqual(Object.keys(callbacks).sort(), run.hostCallbacks.keys);
       }
       assert.match(run.sessionSerializationAfterDispose, /contract-cold-read/);
+      assert.match(run.sessionSerializationAfterDispose, /old-schema result preserved/);
+      assert.match(run.sessionSerializationAfterDispose, /aborted result preserved/);
+      assert.match(run.sessionSerializationAfterDispose, /"isError":true/);
+      assert.match(run.sessionSerializationAfterDispose, /aW1hZ2UtYnl0ZXM=/);
+      assert.match(run.sessionSerializationAfterDispose, /"mimeType":"image\/png"/);
       assert.match(plain(run.tuiOutput.reload), /read/);
       assert.match(plain(run.tuiOutput.newCall), /read|find|ls/);
     }

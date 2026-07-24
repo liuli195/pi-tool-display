@@ -29,12 +29,6 @@ export interface ProducerRendererAdapter {
 export interface RendererCatalog {
   resolve(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfig>, native: NativeRendererSlots): DisplayPlan | undefined;
 }
-export interface DisplayPerformanceObserver {
-  snapshotBuilt?(): void;
-  catalogLookup?(): void;
-  producerRegistryScanned?(): void;
-  hostRebuilt?(): void;
-}
 export class RendererAdapterConflict extends Error {
   constructor(readonly toolName: string, readonly adapters: readonly { id: string; kind: ProducerRendererAdapter["kind"] }[]) {
     super(`Renderer Adapter conflict for ${toolName}: ${adapters.map(({ id, kind }) => `${id} (${kind})`).join(", ")}`);
@@ -154,10 +148,9 @@ function editRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConfi
   return { call: failOpen(renderCall, native.call), result: failOpen(renderResult, native.result), shell: "default" };
 }
 
-export function createRendererCatalog(_pi?: ExtensionAPI, observer: DisplayPerformanceObserver = {}): RendererCatalog {
+export function createRendererCatalog(_pi?: ExtensionAPI): RendererCatalog {
   return {
     resolve(row, config, native) {
-      observer.catalogLookup?.();
       if (row.toolName === "read" && config.builtInToolDisplays.read) return {
         ...native,
         call: (args: unknown, theme: RenderTheme) => renderReadDisplayCall(args, theme),
@@ -187,7 +180,6 @@ export function createRendererCatalog(_pi?: ExtensionAPI, observer: DisplayPerfo
       const configured = getRuntimeCustomToolOverride(row.toolName, config as ToolDisplayConfig);
       const producers = producerAdapters.get(row.toolName);
       if (!configured?.enabled && producers && producers.size > 1) {
-        observer.producerRegistryScanned?.();
         throw new RendererAdapterConflict(
           row.toolName,
           [...producers.values()].map(({ id, kind }) => ({ id, kind })).sort((a, b) => a.id.localeCompare(b.id) || a.kind.localeCompare(b.kind)),

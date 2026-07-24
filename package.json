@@ -71,8 +71,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0 || ^0.81.0",
-    "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0 || ^0.81.0"
+    "@earendil-works/pi-coding-agent": "0.74.0 || 0.80.3 || 0.81.1",
+    "@earendil-works/pi-tui": "0.74.0 || 0.80.3 || 0.81.1"
   },
   "overrides": {
     "file-type": ">=21.3.1",

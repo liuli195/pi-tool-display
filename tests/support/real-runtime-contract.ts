@@ -618,6 +618,19 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
       content: [{ type: "text", text: output }], isError: false, timestamp: 4 + index * 2,
     });
   }
+  const lifecycleResults = [
+    { id: "contract-old-schema", text: "old-schema result preserved", isError: false, content: [{ type: "text", text: "old-schema result preserved" }] },
+    { id: "contract-aborted", text: "aborted result preserved", isError: true, content: [{ type: "text", text: "aborted result preserved" }] },
+    { id: "contract-image", text: "image-bearing result preserved", isError: false, content: [{ type: "image", data: "aW1hZ2UtYnl0ZXM=", mimeType: "image/png" }, { type: "text", text: "image-bearing result preserved" }] },
+  ];
+  for (const [index, fixture] of lifecycleResults.entries()) {
+    seed.appendMessage({
+      role: "assistant", content: [{ type: "toolCall", id: fixture.id, name: "generic_fixture", arguments: { schema: fixture.id === "contract-old-schema" ? "old" : "current" } }],
+      api: "contract", provider: "contract", model: "contract", stopReason: "toolUse",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 20 + index * 2,
+    });
+    seed.appendMessage({ role: "toolResult", toolCallId: fixture.id, toolName: "generic_fixture", content: fixture.content, isError: fixture.isError, timestamp: 21 + index * 2 });
+  }
   seed.appendThinkingLevelChange("medium");
   const sessionJsonl = `${(seed as any).fileEntries.map((entry: unknown) => JSON.stringify(entry)).join("\n")}\n`;
   const createTools = (probes: Record<string, { updates: string[]; arguments?: unknown }>) => {

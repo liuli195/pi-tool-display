@@ -1,5 +1,5 @@
 import type { ToolDisplayConfig } from "./types.js";
-import { RendererAdapterConflict, type DisplayPerformanceObserver, type DisplayPlan, type NativeRendererSlots, type RendererCatalog, type ToolRenderer, type ToolRowDescriptor } from "./renderer-catalog.js";
+import { RendererAdapterConflict, type DisplayPlan, type NativeRendererSlots, type RendererCatalog, type ToolRenderer, type ToolRowDescriptor } from "./renderer-catalog.js";
 
 export interface ToolDisplayResolver {
   resolve(row: ToolRowDescriptor, native: NativeRendererSlots): DisplayPlan;
@@ -33,7 +33,6 @@ export function createToolDisplayResolver(
   getConfig: () => Readonly<ToolDisplayConfig>,
   catalog: RendererCatalog,
   onDiagnostic: ToolDisplayDiagnosticSink = () => {},
-  observer: DisplayPerformanceObserver = {},
 ): ToolDisplayResolver {
   const diagnosed = new Set<string>();
   let source: Readonly<ToolDisplayConfig> | undefined;
@@ -52,7 +51,6 @@ export function createToolDisplayResolver(
             builtInToolDisplays: Object.freeze({ ...config.builtInToolDisplays }),
             customToolOverrides: Object.freeze(Object.fromEntries(Object.entries(config.customToolOverrides).map(([name, override]) => [name, Object.freeze({ ...override })]))),
           });
-          observer.snapshotBuilt?.();
         }
         const selected = catalog.resolve(Object.freeze({ ...row, arguments: Object.freeze({ ...row.arguments }) }), snapshot!, native);
         if (!selected) return native;
