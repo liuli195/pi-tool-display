@@ -24,7 +24,7 @@ test("Bash resolves call and independently folded success/error results from ori
   assert.notStrictEqual(plan.result, nativeResult);
   assert.match(render(plan.call!({ command: "echo " + "word ".repeat(30) }, theme, { executionStarted: false, isPartial: false }), 30), /more visual lines/);
   assert.match(render(plan.result!(output("alpha\nbeta\ngamma"), { expanded: false, isPartial: false }, theme, { args: { command: "echo ok" } })), /3 lines returned/);
-  assert.match(render(plan.result!(output("failure detail that wraps across the terminal width"), { expanded: false, isPartial: false }, theme, { args: { command: "false" }, isError: true }), 20), /command failed[\s\S]*more visua/);
+  assert.match(render(plan.result!(output("failure detail that wraps across the terminal width"), { expanded: false, isPartial: false }, theme, { args: { command: "false" }, isError: true }), 20), /command failed[\s\S]*(?:more visua|… \(\+\d+\))/);
 });
 
 test("Bash partial, empty, truncation, and expanded output retain presentation behavior", () => {

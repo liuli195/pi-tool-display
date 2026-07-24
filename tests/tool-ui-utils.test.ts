@@ -373,7 +373,7 @@ test("collapsed diff hint keeps full guidance when width allows", () => {
     codePointWidthOps,
   );
 
-  assert.equal(hint, "… (12 more diff lines • 2 more hunks • Ctrl+O to expand)");
+  assert.equal(hint, "… (12 more visual diff lines • 2 more hunks • Ctrl+O to expand)");
 });
 
 test("line width clamp never returns text wider than the requested width", () => {

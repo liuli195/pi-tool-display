@@ -1,4 +1,4 @@
-import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "./types.js";
 
 interface BashCallArgs {
@@ -57,12 +57,16 @@ export class VisualLinePreviewComponent implements Component {
 	render(width: number): string[] {
 		const lines = this.text.render(width);
 		if (this.expanded && this.expandedBypass) return lines;
-		if (lines.length <= this.previewLines) return lines;
+		const budget = Math.max(0, Math.floor(this.previewLines));
+		if (lines.length <= budget) return lines;
 
-		const hint = this.expanded
-			? this.theme.fg("muted", `... (${lines.length - this.previewLines} more visual rows • display capped)`)
-			: this.theme.fg("muted", `... (${lines.length - this.previewLines} more visual lines • Ctrl+O to expand)`);
-		return [...lines.slice(0, this.previewLines), truncateToWidth(hint, width)];
+		const omitted = lines.length - budget;
+		const unit = omitted === 1 ? "line" : "lines";
+		const candidates = this.expanded
+			? [`… (${omitted} more visual ${unit} • display capped)`, `… (${omitted} more visual ${unit})`, `… (+${omitted})`, "…"]
+			: [`… (${omitted} more visual ${unit} • Ctrl+O to expand)`, `… (${omitted} more visual ${unit})`, `… (+${omitted})`, "…"];
+		const hint = candidates.find((candidate) => visibleWidth(candidate) <= width) ?? truncateToWidth("…", width, "");
+		return [...lines.slice(0, budget), this.theme.fg("muted", hint)];
 	}
 
 	invalidate(): void {

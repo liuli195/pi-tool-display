@@ -618,7 +618,7 @@ test("buildCollapsedDiffHintText: wide width shows full hint with lines and hunk
   );
   assert.equal(
     hint,
-    "… (42 more diff lines • 3 more hunks • Ctrl+O to expand)",
+    "… (42 more visual diff lines • 3 more hunks • Ctrl+O to expand)",
   );
 });
 
@@ -628,7 +628,7 @@ test("buildCollapsedDiffHintText: remaining lines only, no hunks", () => {
     80,
     codePointWidthOps,
   );
-  assert.equal(hint, "… (10 more diff lines • Ctrl+O to expand)");
+  assert.equal(hint, "… (10 more visual diff lines • Ctrl+O to expand)");
 });
 
 test("buildCollapsedDiffHintText: zero remaining lines and zero hunks", () => {
@@ -637,8 +637,7 @@ test("buildCollapsedDiffHintText: zero remaining lines and zero hunks", () => {
     80,
     codePointWidthOps,
   );
-  // "0 more diff lines" passed to pluralize → "0 more diff lines"
-  assert.equal(hint, "… (0 more diff lines • Ctrl+O to expand)");
+  assert.equal(hint, "… (0 more visual diff lines • Ctrl+O to expand)");
 });
 
 test("buildCollapsedDiffHintText: narrow width forces shorter variants", () => {

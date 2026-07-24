@@ -1940,22 +1940,10 @@ function applyLineLimit(
 	if (limit === 0) return rows.map((row) => clampDiffLineToWidth(row.text, width));
 
 	const logicalLineIds = [...new Set(rows.flatMap((row) => row.logicalLineId === undefined ? [] : [row.logicalLineId]))];
-	let shown: RenderedRow[];
-	let remaining: number;
-	if (expanded || logicalLineIds.length === 0) {
-		if (rows.length <= limit) return rows.map((row) => clampDiffLineToWidth(row.text, width));
-		shown = rows.slice(0, limit);
-		remaining = rows.length - shown.length;
-	} else {
-		if (logicalLineIds.length <= limit) return rows.map((row) => clampDiffLineToWidth(row.text, width));
-		const shownLineIds = new Set(logicalLineIds.slice(0, limit));
-		let lastShownIndex = -1;
-		for (let index = 0; index < rows.length; index++) {
-			if (shownLineIds.has(rows[index]?.logicalLineId ?? -1)) lastShownIndex = index;
-		}
-		shown = rows.slice(0, lastShownIndex + 1);
-		remaining = logicalLineIds.length - shownLineIds.size;
-	}
+	if (logicalLineIds.length <= limit) return rows.map((row) => clampDiffLineToWidth(row.text, width));
+	const shownLineIds = new Set(logicalLineIds.slice(0, limit));
+	const shown = rows.filter((row) => row.logicalLineId === undefined || shownLineIds.has(row.logicalLineId));
+	const remaining = rows.length - shown.length;
 	const visibleHunks = new Set(
 		shown
 			.map((row) => row.hunkIndex)
@@ -1966,6 +1954,7 @@ function applyLineLimit(
 		{
 			remainingLines: remaining,
 			hiddenHunks,
+			expanded,
 		},
 		width,
 		DIFF_WIDTH_OPS,

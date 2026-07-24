@@ -89,7 +89,7 @@ test("renderBashCall previews long commands by visual line", () => {
 	);
 	const lines = text.render(60);
 	assert.equal(lines.length, 3);
-	assert.match(lines[2] ?? "", /more visual lines.*Ctrl\+O to expand/);
+	assert.match(lines[2] ?? "", /more visual lines?.*Ctrl\+O to expand/);
 });
 
 test("renderBashCall expands the complete command", () => {

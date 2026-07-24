@@ -175,7 +175,7 @@ test("collapsed split diffs count logical content rows, not headers, metadata, o
     assert.match(collapsed, /HUNK_HEADER_PATTERN/);
     assert.match(collapsed, /SPLIT_SEPARATOR/);
     assert.doesNotMatch(collapsed, /SPLIT_HEADER_ROW_COUNT/);
-    assert.match(collapsed, /more diff lines .* Ctrl\+O to expand/);
+    assert.match(collapsed, /more visual diff lines .* Ctrl\+O to expand/);
   } finally {
     handlers.session_shutdown?.({ reason: "reload" });
   }
