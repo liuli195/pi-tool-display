@@ -655,7 +655,7 @@ export async function runPureDisplayContract(runtimeRoot: string, mode: "hidden"
 
 interface ToolProbe { updates: string[]; arguments?: unknown; release?: () => void; calls: number }
 
-async function runBashScenario(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview" | "full" | "summary", createTools: (probe: ToolProbe) => any[], toolName = "grep", injectFailureAfterIntervalInstrumentation = false): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
+async function runBashScenario(runtimeRoot: string, withExtension: boolean, sessionJsonl: string, outputMode: "hidden" | "count" | "preview" | "full" | "summary", createTools: (probe: ToolProbe) => any[], toolName = "grep", injectFailureAfterIntervalInstrumentation = false, injectPreUpdateRender = false): Promise<RunObservation & { actionsBeforeFirstOutput: string[] }> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const hostPrototype = pi.ToolExecutionComponent.prototype;
@@ -738,7 +738,9 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
     mode.ui.doRender = function (...args: unknown[]) {
       const result = doRender.apply(this, args);
       renderPasses++;
-      for (const waiter of renderWaiters.splice(0).filter(({ after }) => renderPasses > after)) waiter.done();
+      const ready = renderWaiters.filter(({ after }) => renderPasses > after);
+      for (const waiter of ready) renderWaiters.splice(renderWaiters.indexOf(waiter), 1);
+      for (const waiter of ready) waiter.done();
       return result;
     };
     const waitForRenderAfter = (after: number) => renderPasses > after ? Promise.resolve() : new Promise<void>((done) => renderWaiters.push({ after, done }));
@@ -747,13 +749,17 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
       track("theme", mode.themeController, "setThemeInstance");
       track("theme", mode.themeController, "preview");
     }
+    const rendersBeforeInit = renderPasses;
     await mode.init();
-    await waitForOutput(terminal, toolName === "bash" ? "contract bash command" : withExtension && outputMode === "count" ? "3 matches" : "contract fixture first line");
+    mode.ui.doRender();
+    await waitForRenderAfter(rendersBeforeInit);
     const cold = terminal.output;
     terminal.take();
     const actionsAtFirstOutput = [...actionsBeforeFirstOutput];
+    const rendersBeforeExpandCold = renderPasses;
     mode.toggleToolOutputExpansion();
-    await waitForOutput(terminal, toolName === "bash" ? "contract success first line" : "contract fixture first line");
+    mode.ui.doRender();
+    await waitForRenderAfter(rendersBeforeExpandCold);
     const expandedCold = terminal.take();
 
     mode.toggleToolOutputExpansion();
@@ -762,14 +768,18 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
     let reload = "";
     for (let reloadIndex = 0; reloadIndex < 3; reloadIndex++) {
       pristineProducers.push(snapshotCallbackProducer(runtime.session.agent));
+      const rendersBeforeReload = renderPasses;
       await mode.handleReloadCommand();
       initializedProducers.push(snapshotCallbackProducer(runtime.session.agent));
       stableWrappers &&= wrapperCount() === (withExtension ? 1 : 0) && validWrapper();
-      await waitForOutput(terminal, toolName === "bash" ? "contract bash command" : withExtension && outputMode === "count" ? "3 matches" : outputMode === "hidden" ? "grep" : "contract fixture first line");
+      mode.ui.doRender();
+      await waitForRenderAfter(rendersBeforeReload);
       reload = terminal.take();
     }
+    const rendersBeforeExpandReload = renderPasses;
     mode.toggleToolOutputExpansion();
-    await waitForOutput(terminal, toolName === "bash" ? "contract success folded third line" : outputMode === "hidden" ? "grep" : "contract folded third line");
+    mode.ui.doRender();
+    await waitForRenderAfter(rendersBeforeExpandReload);
     const expandedReload = terminal.take();
     mode.toggleToolOutputExpansion();
     terminal.take();
@@ -798,12 +808,13 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
     const timerBaseline = animationTimers.size;
     const waitForIntervalTick = () => new Promise<void>((done) => intervalTicks.push(done));
     const observedEvents: any[] = [];
-    let resolveToolUpdate!: () => void;
-    const toolUpdate = new Promise<void>((done) => { resolveToolUpdate = done; });
+    let resolveToolUpdate!: (renderGeneration: number) => void;
+    const toolUpdate = new Promise<number>((done) => { resolveToolUpdate = done; });
     unsubscribe = runtime.session.subscribe((event: any) => {
       if (event.toolCallId === toolCallId) {
         observedEvents.push(event);
-        if (event.type === "tool_execution_update") resolveToolUpdate();
+        if (injectPreUpdateRender && event.type === "tool_execution_start") mode.ui.doRender();
+        if (event.type === "tool_execution_update") resolveToolUpdate(renderPasses);
       }
     });
     const ai = await importRuntimePackage(root, "pi-ai");
@@ -832,9 +843,9 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
     let timersWhilePartial = timerBaseline, timersAfterCompletion = timerBaseline;
     let prompt: Promise<void>;
     try {
-      const rendersBeforePrompt = renderPasses;
       prompt = runtime.session.agent.prompt("run contract probe");
-      await Promise.all([toolUpdate, waitForRenderAfter(rendersBeforePrompt)]);
+      const renderGenerationAtUpdate = await toolUpdate;
+      await waitForRenderAfter(renderGenerationAtUpdate);
       partialNewCall = terminal.take();
       timersWhilePartial = animationTimers.size;
       if (animationTimers.size > timerBaseline) {
@@ -843,27 +854,39 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
         await waitForRenderAfter(rendersBeforeAnimation);
         animatedPartialNewCall = terminal.take();
       }
+      const rendersBeforeCompletion = renderPasses;
       probeObservation.release?.();
       await prompt;
-      await waitForOutput(terminal, toolName === "bash" ? "contract final output" : withExtension && outputMode === "count" ? "1 match" : outputMode === "hidden" ? "grep" : "contract final output");
+      mode.ui.doRender();
+      await waitForRenderAfter(rendersBeforeCompletion);
       newCall = terminal.take();
       timersAfterCompletion = animationTimers.size;
+      const rendersBeforeExpandNew = renderPasses;
       mode.toggleToolOutputExpansion();
-      await waitForOutput(terminal, outputMode === "hidden" ? "grep" : "contract final output");
+      mode.ui.doRender();
+      await waitForRenderAfter(rendersBeforeExpandNew);
       expandedNewCall = terminal.take();
+      const rendersBeforeCollapseNew = renderPasses;
       mode.toggleToolOutputExpansion();
-      await waitForOutput(terminal, toolName === "bash" ? "contract final output" : "grep");
+      mode.ui.doRender();
+      await waitForRenderAfter(rendersBeforeCollapseNew);
       collapsedNewCall = terminal.take();
       if (toolName === "bash") {
         toolCallId = "contract-new-call-error";
+        const rendersBeforeError = renderPasses;
         await runtime.session.agent.prompt("run failing contract probe");
-        await waitForOutput(terminal, "contract final error");
+        mode.ui.doRender();
+        await waitForRenderAfter(rendersBeforeError);
         errorNewCall = terminal.take();
+        const rendersBeforeExpandError = renderPasses;
         mode.toggleToolOutputExpansion();
-        await waitForOutput(terminal, "contract final error");
+        mode.ui.doRender();
+        await waitForRenderAfter(rendersBeforeExpandError);
         expandedErrorNewCall = terminal.take();
+        const rendersBeforeCollapseError = renderPasses;
         mode.toggleToolOutputExpansion();
-        await waitForOutput(terminal, "contract final error");
+        mode.ui.doRender();
+        await waitForRenderAfter(rendersBeforeCollapseError);
         collapsedErrorNewCall = terminal.take();
       }
     } finally {
@@ -981,7 +1004,7 @@ async function runBashScenario(runtimeRoot: string, withExtension: boolean, sess
   }
 }
 
-export async function runBashDisplayContract(runtimeRoot: string, commandMode: "full" | "summary" | "preview", injectFailureAfterIntervalInstrumentation = false): Promise<PureDisplayContractObservation> {
+export async function runBashDisplayContract(runtimeRoot: string, commandMode: "full" | "summary" | "preview", injectFailureAfterIntervalInstrumentation = false, injectPreUpdateRender = false): Promise<PureDisplayContractObservation> {
   const root = packageRoot(resolve(runtimeRoot));
   const pi = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const seed = pi.SessionManager.inMemory(process.cwd(), { id: "contract-bash-session" });
@@ -1012,8 +1035,8 @@ export async function runBashDisplayContract(runtimeRoot: string, commandMode: "
       return { content: [{ type: "text", text: "contract final error\ncontract error folded second line" }], details: {}, isError: true };
     },
   }];
-  const absent = await runBashScenario(runtimeRoot, false, sessionJsonl, commandMode, createTools, "bash", injectFailureAfterIntervalInstrumentation);
-  const present = await runBashScenario(runtimeRoot, true, sessionJsonl, commandMode, createTools, "bash");
+  const absent = await runBashScenario(runtimeRoot, false, sessionJsonl, commandMode, createTools, "bash", injectFailureAfterIntervalInstrumentation, injectPreUpdateRender);
+  const present = await runBashScenario(runtimeRoot, true, sessionJsonl, commandMode, createTools, "bash", false, injectPreUpdateRender);
   return { paths: ["cold", "reload", "new-call"], firstCollapsedOutput: present.tuiOutput.cold, actionsBeforeFirstOutput: present.actionsBeforeFirstOutput, absent, present };
 }
 

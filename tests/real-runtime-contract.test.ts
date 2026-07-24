@@ -86,6 +86,10 @@ for (const entry of matrix) {
       await assert.rejects(runBashDisplayContract(runtimeRoot, "preview", true), /injected failure after interval instrumentation/);
       assert.strictEqual(globalThis.setInterval, setIntervalBeforeFailure);
       assert.strictEqual(globalThis.clearInterval, clearIntervalBeforeFailure);
+
+      const raced = await runBashDisplayContract(runtimeRoot, "preview", false, true);
+      assert.match(plain(raced.present.tuiOutput.partialNewCall), /contract streaming output/,
+        "a render before the tool update must not satisfy partial-frame capture");
     }
 
     const observation = await runPureDisplayContract(runtimeRoot, "count");
