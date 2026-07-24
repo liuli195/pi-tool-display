@@ -23,6 +23,7 @@ test("config normalization clamps invalid values and migrates legacy read overri
   const config = normalizeToolDisplayConfig({
     registerReadToolOverride: false,
     registerToolOverrides: { bash: false },
+    debug: true,
     readOutputMode: "invalid",
     searchOutputMode: "count",
     mcpOutputMode: "preview",
@@ -37,6 +38,7 @@ test("config normalization clamps invalid values and migrates legacy read overri
     diffWordWrap: false,
   });
 
+  assert.equal(config.debug, true);
   assert.equal(config.builtInToolDisplays.read, false);
   assert.equal(config.builtInToolDisplays.grep, true);
   assert.equal(config.builtInToolDisplays.bash, false);
@@ -109,12 +111,13 @@ test("config save writes normalized JSON and cleans temporary file on failure", 
   withTempDir("pi-tool-display-config-save-", (dir) => {
     const configFile = join(dir, "config.json");
     const saved = saveToolDisplayConfig(
-      { ...DEFAULT_TOOL_DISPLAY_CONFIG, previewLines: 999 },
+      { ...DEFAULT_TOOL_DISPLAY_CONFIG, debug: true, previewLines: 999 },
       configFile,
     );
 
     assert.equal(saved.success, true);
-    const persisted = JSON.parse(readFileSync(configFile, "utf8")) as { previewLines?: number };
+    const persisted = JSON.parse(readFileSync(configFile, "utf8")) as { debug?: boolean; previewLines?: number };
+    assert.equal(persisted.debug, true);
     assert.equal(persisted.previewLines, 80);
 
     const parentFile = join(dir, "not-a-directory");

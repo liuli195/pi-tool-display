@@ -17,6 +17,7 @@ import { registerToolExecutionPatch } from "./tool-execution-patch.js";
 import { disposeAll, resetDisposed } from "./disposable.js";
 import registerNativeUserMessageBox from "./user-message-box-native.js";
 import type { ToolDisplayConfig } from "./types.js";
+import { registerToolDisplayCommand } from "./config-command.js";
 
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
   const initial = loadToolDisplayConfig();
@@ -35,7 +36,6 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   let config: ToolDisplayConfig = initial.config;
   let pendingLoadError = initial.error;
   let capabilities: ToolDisplayCapabilities = {
-    hasMcpTooling: false,
     hasRtkOptimizer: false,
   };
   let effectiveConfig: ToolDisplayConfig | undefined;
@@ -69,13 +69,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   registerToolExecutionPatch(pi, getEffectiveConfig);
   registerNativeUserMessageBox(pi, getConfig);
 
-  pi.registerCommand("tool-display", {
-    description: "Configure tool output rendering (OpenCode-style)",
-    handler: async (args, ctx) => {
-      const { runToolDisplayCommandHandler } = await import("./config-modal.js");
-      await runToolDisplayCommandHandler(args, ctx, { getConfig, setConfig, getCapabilities });
-    },
-  });
+  registerToolDisplayCommand(pi, { getConfig, setConfig, getCapabilities });
 
   pi.on("session_start", async (_event, ctx) => {
     refreshCapabilities();

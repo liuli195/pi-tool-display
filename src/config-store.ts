@@ -223,6 +223,7 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 
 	return {
 		enabled: toBoolean(source.enabled, DEFAULT_TOOL_DISPLAY_CONFIG.enabled),
+		debug: toBoolean(source.debug, DEFAULT_TOOL_DISPLAY_CONFIG.debug),
 		builtInToolDisplays: normalizeBuiltInToolDisplays(
 			source.builtInToolDisplays ?? source.registerToolOverrides,
 			source.builtInToolDisplays === undefined ? source.registerReadToolOverride : undefined,

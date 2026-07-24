@@ -84,6 +84,12 @@ test("detectToolDisplayPreset detects verbose preset exactly", () => {
 	assert.equal(detectToolDisplayPreset(config), "verbose");
 });
 
+test("detectToolDisplayPreset treats extension and debug toggles as custom", () => {
+	const opencode = getToolDisplayPresetConfig("opencode");
+	assert.equal(detectToolDisplayPreset({ ...opencode, enabled: false }), "custom");
+	assert.equal(detectToolDisplayPreset({ ...opencode, debug: true }), "custom");
+});
+
 test("detectToolDisplayPreset returns 'custom' when config differs by one field", () => {
 	const balanced = getToolDisplayPresetConfig("balanced");
 	const modified = { ...balanced, previewLines: balanced.previewLines + 1 };

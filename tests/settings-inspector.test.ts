@@ -13,7 +13,7 @@ const passThroughTheme = {
 	bold: (text: string): string => text,
 } as Theme;
 
-function makeMcpSettings(hasMcp: boolean, hasRtk: boolean): InspectorSettingItem[] {
+function makeSettings(hasRtk: boolean): InspectorSettingItem[] {
 	const config = DEFAULT_TOOL_DISPLAY_CONFIG;
 	const items: InspectorSettingItem[] = [
 		{
@@ -37,20 +37,6 @@ function makeMcpSettings(hasMcp: boolean, hasRtk: boolean): InspectorSettingItem
 			searchTerms: ["file", "source"],
 		},
 	];
-
-	if (hasMcp) {
-		items.push({
-			id: "mcpOutputMode",
-			label: "MCP tool output",
-			currentValue: config.mcpOutputMode,
-			values: ["hidden", "summary", "preview"],
-			inspectorTitle: "MCP Tool Output",
-			inspectorSummary: ["Controls MCP output."],
-			inspectorOptions: ["hidden", "summary", "preview"],
-			inspectorAdvanced: ["Only when MCP is available."],
-			searchTerms: ["mcp", "proxy"],
-		});
-	}
 
 	if (hasRtk) {
 		items.push({
@@ -108,7 +94,7 @@ function makeModal(
 // ---------------------------------------------------------------------------
 
 test("renders split layout above minimum width", () => {
-	const modal = makeModal(makeMcpSettings(true, true));
+	const modal = makeModal(makeSettings(true));
 	const lines = modal.render(120);
 
 	assert.ok(lines.length >= 4, `expected at least 4 lines, got ${lines.length}`);
@@ -124,7 +110,7 @@ test("renders split layout above minimum width", () => {
 });
 
 test("renders stacked layout when width is below SPLIT_PANE_MIN_WIDTH (84)", () => {
-	const modal = makeModal(makeMcpSettings(true, true));
+	const modal = makeModal(makeSettings(true));
 	const lines = modal.render(60);
 
 	assert.ok(lines.length >= 4, `expected at least 4 lines for stacked, got ${lines.length}`);
@@ -136,47 +122,31 @@ test("renders stacked layout when width is below SPLIT_PANE_MIN_WIDTH (84)", () 
 	);
 });
 
-test("includes MCP setting when MCP capability is available", () => {
-	const items = makeMcpSettings(true, false);
-	const ids = items.map((i) => i.id);
-	assert.ok(ids.includes("mcpOutputMode"), "should include MCP setting");
-});
-
-test("excludes MCP setting when MCP capability is absent", () => {
-	const items = makeMcpSettings(false, false);
-	const ids = items.map((i) => i.id);
-	assert.equal(ids.includes("mcpOutputMode"), false, "should exclude MCP setting");
-});
-
 test("includes RTK setting when RTK capability is available", () => {
-	const items = makeMcpSettings(false, true);
+	const items = makeSettings(true);
 	const ids = items.map((i) => i.id);
 	assert.ok(ids.includes("showRtkCompactionHints"), "should include RTK setting");
 });
 
 test("excludes RTK setting when RTK capability is absent", () => {
-	const items = makeMcpSettings(false, false);
+	const items = makeSettings(false);
 	const ids = items.map((i) => i.id);
 	assert.equal(ids.includes("showRtkCompactionHints"), false, "should exclude RTK setting");
 });
 
 test("search filters items by label", () => {
-	const modal = makeModal(makeMcpSettings(true, true));
+	const modal = makeModal(makeSettings(true));
 
-	// Type "/" to activate search
 	modal.handleInput("/");
-	// Type "MCP" characters into search
-	modal.handleInput("M");
-	modal.handleInput("C");
-	modal.handleInput("P");
+	for (const character of "RTK") modal.handleInput(character);
 
 	const lines = modal.render(120);
 	const joined = lines.join(" ");
-	assert.ok(joined.includes("MCP tool output"), "filtered results should contain MCP setting");
+	assert.ok(joined.includes("RTK compaction hints"), "filtered results should contain RTK setting");
 });
 
 test("search shows 'No matching settings' for non-matching query", () => {
-	const modal = makeModal(makeMcpSettings(false, false));
+	const modal = makeModal(makeSettings(false));
 	modal.handleInput("/");
 	modal.handleInput("x");
 	modal.handleInput("y");
@@ -194,7 +164,7 @@ test("handleInput cycles value with space", () => {
 	const onChange = new Array<{ id: string; value: string }>();
 	const modal = new SplitPaneInspectorModal(
 		{
-			getSettings: () => makeMcpSettings(false, false),
+			getSettings: () => makeSettings(false),
 			onChange: (id: string, value: string) => {
 				onChange.push({ id, value });
 			},
@@ -215,7 +185,7 @@ test("handleInput cycles value with Enter (\\r)", () => {
 	const onChange = new Array<{ id: string; value: string }>();
 	const modal = new SplitPaneInspectorModal(
 		{
-			getSettings: () => makeMcpSettings(false, false),
+			getSettings: () => makeSettings(false),
 			onChange: (id: string, value: string) => {
 				onChange.push({ id, value });
 			},
@@ -231,7 +201,7 @@ test("handleInput cycles value with Enter (\\r)", () => {
 });
 
 test("handleInput moves selection down with arrow key", () => {
-	const itemsArr: InspectorSettingItem[] = makeMcpSettings(false, false);
+	const itemsArr: InspectorSettingItem[] = makeSettings(false);
 	const onChange: Array<{ id: string; value: string }> = [];
 	const modal = new SplitPaneInspectorModal(
 		{
@@ -253,7 +223,7 @@ test("handleInput moves selection down with arrow key", () => {
 });
 
 test("handleInput moves selection up with arrow key", () => {
-	const items = makeMcpSettings(true, false);
+	const items = makeSettings(false);
 	const onChange: Array<{ id: string; value: string }> = [];
 	const modal = new SplitPaneInspectorModal(
 		{
@@ -278,7 +248,7 @@ test("handleInput calls onClose on Escape key", () => {
 	let closed = false;
 	const modal = new SplitPaneInspectorModal(
 		{
-			getSettings: () => makeMcpSettings(false, false),
+			getSettings: () => makeSettings(false),
 			onChange: () => {},
 			onClose: () => {
 				closed = true;
@@ -295,7 +265,7 @@ test("handleInput calls onClose on Ctrl+C", () => {
 	let closed = false;
 	const modal = new SplitPaneInspectorModal(
 		{
-			getSettings: () => makeMcpSettings(false, false),
+			getSettings: () => makeSettings(false),
 			onChange: () => {},
 			onClose: () => {
 				closed = true;
@@ -309,7 +279,7 @@ test("handleInput calls onClose on Ctrl+C", () => {
 });
 
 test("advanced mode toggles with / input", () => {
-	const items = makeMcpSettings(true, false);
+	const items = makeSettings(false);
 	// Add an item with inspectorAdvanced
 	const modal = makeModal(items);
 
@@ -326,7 +296,7 @@ test("advanced mode toggles with / input", () => {
 });
 
 test("footer shows advanced toggle hint", () => {
-	const modal = makeModal(makeMcpSettings(true, true));
+	const modal = makeModal(makeSettings(true));
 	const lines = modal.render(100);
 
 	const footer = lines[lines.length - 1] ?? "";
@@ -350,7 +320,7 @@ test("empty settings list renders gracefully", () => {
 });
 
 test("inspector panel shows item summary", () => {
-	const items = makeMcpSettings(false, false);
+	const items = makeSettings(false);
 	const modal = makeModal(items);
 
 	const lines = modal.render(120);
@@ -371,7 +341,7 @@ test("theme application adds styled text via fg()", () => {
 
 	const modal = new SplitPaneInspectorModal(
 		{
-			getSettings: () => makeMcpSettings(false, false),
+			getSettings: () => makeSettings(false),
 			onChange: () => {},
 			onClose: () => {},
 		},
@@ -386,7 +356,7 @@ test("theme application adds styled text via fg()", () => {
 });
 
 test("navigating past last item wraps to first", () => {
-	const items = makeMcpSettings(false, false);
+	const items = makeSettings(false);
 	const onChange: Array<{ id: string; value: string }> = [];
 	const modal = new SplitPaneInspectorModal(
 		{

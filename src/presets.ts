@@ -65,6 +65,8 @@ function customToolOverridesEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): b
 
 function configsEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
 	return (
+		a.enabled === b.enabled &&
+		a.debug === b.debug &&
 		builtInToolDisplaysEqual(a, b) &&
 		customToolOverridesEqual(a, b) &&
 		a.enableNativeUserMessageBox === b.enableNativeUserMessageBox &&

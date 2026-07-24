@@ -36,23 +36,6 @@ function createApiStub(
 	} as unknown as ExtensionAPI;
 }
 
-function makeMcpTool(name: string, description?: string): unknown {
-	return {
-		name,
-		description: description ?? `MCP wrapper for ${name}`,
-		parameters: {},
-	};
-}
-
-function makeNonMcpTool(name: string): unknown {
-	return {
-		name,
-		description: `Built-in ${name} tool`,
-		parameters: {},
-		execute: () => {},
-	};
-}
-
 function withTempDir(name: string, fn: (dir: string) => void): void {
 	const dir = mkdtempSync(join(tmpdir(), name));
 	try {
@@ -73,7 +56,6 @@ test("returns no capabilities when API is empty", () => {
 		try {
 			const api = createApiStub([], []);
 			const caps = detectToolDisplayCapabilities(api, dir);
-			assert.equal(caps.hasMcpTooling, false);
 			assert.equal(caps.hasRtkOptimizer, false);
 		} finally {
 			if (oldEnv === undefined) {
@@ -85,43 +67,9 @@ test("returns no capabilities when API is empty", () => {
 	});
 });
 
-test("detects MCP capability via isMcpToolCandidate with 'MCP' in description", () => {
-	const api = createApiStub([
-		makeMcpTool("exa_web_search_exa", "Search the web. Direct MCP wrapper for 'exa:web_search_exa'."),
-	]);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, true);
-});
-
-test("detects MCP capability via tool named 'mcp'", () => {
-	const api = createApiStub([
-		makeNonMcpTool("read"),
-		{ name: "mcp", description: "MCP proxy", parameters: {} },
-	]);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, true);
-});
-
-test("non-MCP tools do not set hasMcpTooling", () => {
-	const api = createApiStub([
-		makeNonMcpTool("read"),
-		makeNonMcpTool("edit"),
-		makeNonMcpTool("bash"),
-	]);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, false);
-});
-
-test("handles getAllTools throwing gracefully", () => {
+test("capability detection does not inspect tools", () => {
 	const api = createApiStub([], [], true);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, false);
-	// Should still attempt RTK detection
-	assert.equal(typeof caps.hasRtkOptimizer, "boolean");
+	assert.doesNotThrow(() => detectToolDisplayCapabilities(api, "/tmp"));
 });
 
 test("recognises RTK capability via registered command", () => {
@@ -208,20 +156,10 @@ test("no false positive when both commands and path are absent", () => {
 	});
 });
 
-test("applyCapabilityConfigGuards preserves MCP output when MCP may appear dynamically", () => {
-	const guarded = applyCapabilityConfigGuards(
-		{ ...DEFAULT_TOOL_DISPLAY_CONFIG, mcpOutputMode: "preview" },
-		{ hasMcpTooling: false, hasRtkOptimizer: true },
-	);
-
-	assert.equal(guarded.mcpOutputMode, "preview");
-	assert.equal(guarded.showRtkCompactionHints, DEFAULT_TOOL_DISPLAY_CONFIG.showRtkCompactionHints);
-});
-
 test("applyCapabilityConfigGuards disables RTK hints when RTK unavailable", () => {
 	const guarded = applyCapabilityConfigGuards(
 		{ ...DEFAULT_TOOL_DISPLAY_CONFIG, showRtkCompactionHints: true },
-		{ hasMcpTooling: true, hasRtkOptimizer: false },
+		{ hasRtkOptimizer: false },
 	);
 
 	assert.equal(guarded.mcpOutputMode, DEFAULT_TOOL_DISPLAY_CONFIG.mcpOutputMode);
@@ -235,7 +173,6 @@ test("applyCapabilityConfigGuards preserves values when both capabilities presen
 		showRtkCompactionHints: true,
 	};
 	const guarded = applyCapabilityConfigGuards(input, {
-		hasMcpTooling: true,
 		hasRtkOptimizer: true,
 	});
 
@@ -246,7 +183,6 @@ test("applyCapabilityConfigGuards preserves values when both capabilities presen
 test("applyCapabilityConfigGuards clones builtInToolDisplays", () => {
 	const input = { ...DEFAULT_TOOL_DISPLAY_CONFIG };
 	const guarded = applyCapabilityConfigGuards(input, {
-		hasMcpTooling: false,
 		hasRtkOptimizer: false,
 	});
 
@@ -300,46 +236,6 @@ test("PI_CODING_AGENT_DIR set to dir without rtk-optimizer yields no RTK capabil
 });
 
 // #20: peer dependency compatibility — missing/renamed APIs
-test("tools without description do not trigger false MCP detection", () => {
-	const api = createApiStub([
-		{ name: "custom-tool", parameters: {} },
-	]);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, false);
-});
-
-test("tools with 'MCP' in the description but no MCP-like name are detected", () => {
-	const api = createApiStub([
-		{
-			name: "random_tool",
-			description: "This uses the MCP protocol for communication with external servers.",
-			parameters: {},
-		},
-	]);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, true);
-});
-
-test("tool with empty name string is handled safely", () => {
-	const api = createApiStub([
-		{ name: "", description: "empty name tool", parameters: {} },
-	]);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, false);
-});
-
-test("tool with undefined name is handled safely", () => {
-	const api = createApiStub([
-		{ description: "no name field", parameters: {} },
-	]);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, false);
-});
-
 test("commands list can contain non-string name entries", () => {
 	const api = createApiStub(
 		[],
@@ -349,11 +245,4 @@ test("commands list can contain non-string name entries", () => {
 	const caps = detectToolDisplayCapabilities(api, "/tmp");
 
 	assert.equal(caps.hasRtkOptimizer, true);
-});
-
-test("empty allTools array does not throw", () => {
-	const api = createApiStub([]);
-	const caps = detectToolDisplayCapabilities(api, "/tmp");
-
-	assert.equal(caps.hasMcpTooling, false);
 });

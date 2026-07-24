@@ -3,22 +3,10 @@ import { resolvePiAgentDir } from "./agent-dir.js";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { logToolDisplayDebug } from "./debug-logger.js";
-import { isMcpToolCandidate } from "./tool-metadata.js";
 import type { ToolDisplayConfig } from "./types.js";
 
 export interface ToolDisplayCapabilities {
-	hasMcpTooling: boolean;
 	hasRtkOptimizer: boolean;
-}
-
-function hasMcpTooling(pi: ExtensionAPI): boolean {
-	try {
-		const allTools = pi.getAllTools();
-		return allTools.some((tool) => isMcpToolCandidate(tool));
-	} catch (error) {
-		logToolDisplayDebug("MCP capability detection failed.", error);
-		return false;
-	}
 }
 
 function hasRtkCommand(pi: ExtensionAPI): boolean {
@@ -67,7 +55,6 @@ function hasRtkExtensionPath(cwd: string): boolean {
 
 export function detectToolDisplayCapabilities(pi: ExtensionAPI, cwd: string): ToolDisplayCapabilities {
 	return {
-		hasMcpTooling: hasMcpTooling(pi),
 		hasRtkOptimizer: hasRtkCommand(pi) || hasRtkExtensionPath(cwd),
 	};
 }
@@ -79,7 +66,6 @@ export function applyCapabilityConfigGuards(
 	return {
 		...config,
 		builtInToolDisplays: { ...config.builtInToolDisplays },
-		mcpOutputMode: config.mcpOutputMode,
 		showRtkCompactionHints: capabilities.hasRtkOptimizer ? config.showRtkCompactionHints : false,
 	};
 }

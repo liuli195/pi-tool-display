@@ -1,6 +1,6 @@
 {
   "name": "pi-tool-display",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Pure TUI display wrapper for compact Pi tool rows and trustworthy tool-provided diffs, without changing tool execution or model/session data.",
   "type": "module",
   "main": "./index.ts",

@@ -7,21 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-07-24
+
 ### Added
 - Added a pure Tool Display Resolver, Pi Host Adapter, disposable producer Adapter API, and real-runtime qualification matrix for Pi 0.74.0, 0.81.1, and the development runtime (#5–#15).
 - Added `builtInToolDisplays` and `overrideCallRenderer`; legacy ownership-named configuration remains accepted as display input without rewriting user files.
+- Restored the capability-gated RTK compaction-hints control in `/tool-display`.
 
 ### Changed
 - Replaced tool re-registration, execution wrapping, ownership wiring, and stale historical adapters with one final tool-row display seam. Display settings no longer change active tools, definitions, schemas, ownership, execution, model context, events, or session bytes.
 - Diffs now render only from trustworthy patches or explicit before/after data supplied by the original call/result. Missing write preimages and historical diffs are never read, retained, inferred, or reconstructed.
 - Generic, MCP proxy/direct, same-name third-party, historical, partial, failed, aborted, truncated, image-bearing, collapsed, and expanded rows share the same display policy and native fallback.
-- Updated package metadata, settings help, examples, compatibility declarations, and consumer documentation for the standalone `liuli195/pi-tool-display` repository.
+- Updated package metadata, `/tool-display show`, settings help, configuration examples, compatibility declarations, and consumer documentation for the standalone `liuli195/pi-tool-display` repository.
+- Configuration saves now preserve the documented `debug` flag; preset detection also honors the extension and debug toggles.
+- Removed heuristic MCP tool detection and its global modal control. MCP-style rendering now appears only for exact `customToolOverrides` entries or explicit producer adapters; `mcpOutputMode` remains only as an adapter fallback.
+- Consolidated `/tool-display` registration into one lazy production/test entry and clarified that manual `config.json` edits require `/reload`.
 - Removed thinking-label message and context mutation; legacy configuration is ignored without rewriting config files or historical sessions (#6).
 
 ### Fixed
 - Cold startup, repeated `/reload`, inactive-to-active tools, and new calls now resolve current display policy on the first frame without changing the active set.
 - Unsupported Pi host shapes install no partial patch, emit a concise diagnostic, and preserve native rendering and execution.
 - Repeated reloads restore exact host descriptors and dispose Adapter and Bash animation state.
+- Successful and partial Bash output now folds by terminal visual rows consistently with the existing command and error previews.
+- Collapsed split diffs count logical content lines; split headers, trusted omission metadata, and wrapped continuations no longer consume `diffCollapsedLines`, while expanded previews remain visually bounded.
+- Configuration integration tests use an isolated Pi agent directory and no longer risk rewriting the user's real configuration.
 
 ## [0.6.1] - 2026-07-23
 

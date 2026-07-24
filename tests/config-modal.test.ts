@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { registerToolDisplayCommand } from "../src/config-modal.ts";
+import { applySetting, buildInspectorSettings } from "../src/config-modal.ts";
+import { registerToolDisplayCommand } from "../src/config-command.ts";
 import {
 	DEFAULT_TOOL_DISPLAY_CONFIG,
 	type ToolDisplayConfig,
@@ -86,8 +87,7 @@ function createControllerStub(
 				last.config = config;
 				last.ctx = ctx;
 			},
-			getCapabilities: () =>
-				capabilities ?? { hasMcpTooling: false, hasRtkOptimizer: false },
+			getCapabilities: () => capabilities ?? { hasRtkOptimizer: false },
 		},
 		getLastSet: () => last,
 	};
@@ -108,7 +108,7 @@ test("registerToolDisplayCommand registers a handler for 'tool-display'", () => 
 
 test("'show' argument notifies with config summary", async () => {
 	const { api, getHandler } = createPiStub();
-	const { controller } = createControllerStub({}, { hasMcpTooling: true, hasRtkOptimizer: true });
+	const { controller } = createControllerStub({}, { hasRtkOptimizer: true });
 	const { ctx, notifications } = createCtxStub(true);
 
 	registerToolDisplayCommand(api, controller);
@@ -119,8 +119,12 @@ test("'show' argument notifies with config summary", async () => {
 
 	assert.equal(notifications.length, 1);
 	assert.match(notifications[0]?.message ?? "", /^tool-display: /);
+	assert.ok(notifications[0]?.message.includes("enabled=on"));
+	assert.ok(notifications[0]?.message.includes("debug=off"));
 	assert.ok(notifications[0]?.message.includes("preset=opencode"));
-	assert.ok(notifications[0]?.message.includes("mcp=hidden"), "MCP setting in summary with MCP capability");
+	assert.ok(notifications[0]?.message.includes("customOverrides=0/0"));
+	assert.ok(notifications[0]?.message.includes("truncationHints=off"));
+	assert.ok(notifications[0]?.message.includes("mcpAdapterDefault=hidden"));
 	assert.ok(
 		notifications[0]?.message.includes("rtkHints=off"),
 		"RTK hints in summary with RTK capability",
@@ -128,7 +132,21 @@ test("'show' argument notifies with config summary", async () => {
 	assert.equal(notifications[0]?.level, "info");
 });
 
-test("'show' hides MCP and RTK sections when capabilities absent", async () => {
+test("only RTK capability is auto-detected for modal controls", () => {
+	const capabilities = { hasRtkOptimizer: true };
+	const items = buildInspectorSettings(DEFAULT_TOOL_DISPLAY_CONFIG, capabilities);
+	assert.equal(items.some(({ id }) => id === "mcpOutputMode"), false);
+	assert.ok(items.some(({ id }) => id === "showRtkCompactionHints"));
+	assert.equal(applySetting(DEFAULT_TOOL_DISPLAY_CONFIG, "showRtkCompactionHints", "on").showRtkCompactionHints, true);
+	assert.equal(
+		buildInspectorSettings(DEFAULT_TOOL_DISPLAY_CONFIG, { ...capabilities, hasRtkOptimizer: false }).some(
+			({ id }) => id === "showRtkCompactionHints",
+		),
+		false,
+	);
+});
+
+test("'show' labels MCP policy as an explicit adapter default", async () => {
 	const { api, getHandler } = createPiStub();
 	const { controller } = createControllerStub();
 	const { ctx, notifications } = createCtxStub(true);
@@ -140,7 +158,8 @@ test("'show' hides MCP and RTK sections when capabilities absent", async () => {
 	await handler("show", ctx);
 
 	assert.equal(notifications.length, 1);
-	assert.ok(notifications[0]?.message.includes("mcp=auto-hidden"));
+	assert.ok(notifications[0]?.message.includes("mcpAdapterDefault=hidden"));
+	assert.equal(notifications[0]?.message.includes("mcpControl"), false);
 	assert.ok(notifications[0]?.message.includes("rtkHints=auto-off"));
 });
 

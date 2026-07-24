@@ -1,5 +1,6 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ToolDisplayCapabilities } from "./capabilities.js";
+import type { ToolDisplayConfigController } from "./config-command.js";
 import { getToolDisplayConfigPath } from "./config-store.js";
 import {
 	detectToolDisplayPreset,
@@ -11,12 +12,6 @@ import {
 import { shortenPath } from "./render-utils.js";
 import type { InspectorSettingItem } from "./settings-inspector-modal.js";
 import { type ToolDisplayConfig } from "./types.js";
-
-interface ToolDisplayConfigController {
-	getConfig(): ToolDisplayConfig;
-	setConfig(next: ToolDisplayConfig, ctx: ExtensionCommandContext): void;
-	getCapabilities(): ToolDisplayCapabilities;
-}
 
 interface ModalOverlayOptions {
 	anchor: "center";
@@ -42,9 +37,13 @@ function builtInDisplaySummary(config: ToolDisplayConfig): string {
 
 function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCapabilities): string {
 	const preset = detectToolDisplayPreset(config);
+	const customOverrides = Object.values(config.customToolOverrides);
 	const parts = [
+		`enabled=${toOnOff(config.enabled)}`,
+		`debug=${toOnOff(config.debug)}`,
 		`preset=${preset}`,
 		`builtIns={${builtInDisplaySummary(config)}}`,
+		`customOverrides=${customOverrides.filter(({ enabled }) => enabled).length}/${customOverrides.length}`,
 		`userBox=${toOnOff(config.enableNativeUserMessageBox)}`,
 		`read=${config.readOutputMode}`,
 		`search=${config.searchOutputMode}`,
@@ -57,13 +56,10 @@ function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCap
 		`diff=${config.diffViewMode}/${config.diffIndicatorMode}@${config.diffSplitMinWidth}`,
 		`diffLines=${config.diffCollapsedLines}`,
 		`diffWrap=${toOnOff(config.diffWordWrap)}`,
+		`truncationHints=${toOnOff(config.showTruncationHints)}`,
 	];
 
-	if (capabilities.hasMcpTooling) {
-		parts.push(`mcp=${config.mcpOutputMode}`);
-	} else {
-		parts.push("mcp=auto-hidden");
-	}
+	parts.push(`mcpAdapterDefault=${config.mcpOutputMode}`);
 
 	if (capabilities.hasRtkOptimizer) {
 		parts.push(`rtkHints=${toOnOff(config.showRtkCompactionHints)}`);
@@ -86,15 +82,16 @@ function buildAdvancedNotes(
 ): string[] {
 	const notes = [
 		...extra,
-		"Manual JSON edits also expose builtInToolDisplays.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, and diffWordWrap.",
-		`Built-in display selection is currently ${builtInDisplaySummary(config)} and applies immediately without changing tool ownership, activation, schemas, or execution.`,
+		"Manual JSON edits also expose enabled, debug, builtInToolDisplays.*, customToolOverrides, the explicit MCP adapter default, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffWordWrap, and truncation hints.",
+		`Built-in display selection is currently ${builtInDisplaySummary(config)}; changes made in this modal apply immediately without changing tool ownership, activation, schemas, or execution.`,
+		"Manual config.json edits require /reload. Third-party and MCP-style rendering requires an explicit customToolOverrides entry or producer adapter.",
 		"Diffs use only patches or before/after data supplied by the tool; missing evidence is never reconstructed.",
 		`Truncation hints are ${toOnOff(config.showTruncationHints)}${capabilities.hasRtkOptimizer ? `; RTK hints are ${toOnOff(config.showRtkCompactionHints)}.` : "."}`,
 	];
 	return notes;
 }
 
-function buildInspectorSettings(
+export function buildInspectorSettings(
 	config: ToolDisplayConfig,
 	capabilities: ToolDisplayCapabilities,
 ): InspectorSettingItem[] {
@@ -108,7 +105,7 @@ function buildInspectorSettings(
 			inspectorTitle: "Preset Profile",
 			inspectorSummary: [
 				"Determines the overall verbosity and layout of the agent's tool output.",
-				"Choosing a preset applies a coherent profile across read, search, MCP, bash, and diff display settings.",
+				"Choosing a preset applies a coherent profile across read, search, explicit adapter defaults, bash, and diff display settings.",
 			],
 			inspectorOptions: [
 				"opencode — strict inline-only tool output",
@@ -166,30 +163,6 @@ function buildInspectorSettings(
 		},
 	];
 
-	if (capabilities.hasMcpTooling) {
-		items.push({
-			id: "mcpOutputMode",
-			label: "MCP tool output",
-			currentValue: config.mcpOutputMode,
-			values: ["hidden", "summary", "preview"],
-			inspectorTitle: "MCP Tool Output",
-			inspectorSummary: [
-				"Controls how proxied MCP tool results are compacted when they return text output.",
-				"Summary mode is the safest default when you want awareness without flooding the chat pane.",
-			],
-			inspectorOptions: [
-				"hidden — call metadata only",
-				"summary — compact line-count summary",
-				"preview — shows the first configured preview lines",
-			],
-			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
-				"This control appears only when MCP tooling is available in the current Pi session.",
-			]),
-			inspectorPath: configPath,
-			searchTerms: ["mcp", "proxy", "server", "summary", "preview"],
-		});
-	}
-
 	items.push(
 		{
 			id: "previewLines",
@@ -239,12 +212,12 @@ function buildInspectorSettings(
 			values: BASH_PREVIEW_LINE_VALUES,
 			inspectorTitle: "Bash Collapsed Lines",
 			inspectorSummary: [
-				"Sets the inline line budget used specifically by opencode bash mode before expansion.",
+				"Sets the inline visual-row budget used specifically by opencode bash mode before expansion.",
 				"Accepted manual range: 0 to 80 lines. Setting 0 hides collapsed bash output entirely while keeping the command visible.",
 			],
 			inspectorOptions: [
 				"0 — hide collapsed bash output",
-				"5/10/20/40 — progressively larger inline command previews",
+				"5/10/20/40 — progressively larger inline output previews",
 			],
 			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
 				"This setting only changes the opencode bash renderer; preview mode continues to use previewLines instead.",
@@ -392,6 +365,29 @@ function buildInspectorSettings(
 		},
 	);
 
+	if (capabilities.hasRtkOptimizer) {
+		items.push({
+			id: "showRtkCompactionHints",
+			label: "RTK compaction hints",
+			currentValue: toOnOff(config.showRtkCompactionHints),
+			values: ["on", "off"],
+			inspectorTitle: "RTK Compaction Hints",
+			inspectorSummary: [
+				"Shows compact notices when RTK metadata reports that tool output was optimized.",
+				"This control appears only when an RTK optimizer is available in the current Pi environment.",
+			],
+			inspectorOptions: [
+				"on — show RTK compaction notices",
+				"off — keep RTK optimization metadata quiet",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"This setting changes presentation only; RTK execution and compaction remain untouched.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["rtk", "compaction", "optimization", "hints"],
+		});
+	}
+
 	return items;
 }
 
@@ -399,7 +395,7 @@ function applyPreset(preset: ToolDisplayPreset): ToolDisplayConfig {
 	return getToolDisplayPresetConfig(preset);
 }
 
-function applySetting(config: ToolDisplayConfig, id: string, value: string): ToolDisplayConfig {
+export function applySetting(config: ToolDisplayConfig, id: string, value: string): ToolDisplayConfig {
 	switch (id) {
 		case "preset": {
 			const parsed = parseToolDisplayPreset(value);
@@ -419,11 +415,6 @@ function applySetting(config: ToolDisplayConfig, id: string, value: string): Too
 			return {
 				...config,
 				searchOutputMode: value as ToolDisplayConfig["searchOutputMode"],
-			};
-		case "mcpOutputMode":
-			return {
-				...config,
-				mcpOutputMode: value as ToolDisplayConfig["mcpOutputMode"],
 			};
 		case "previewLines":
 			return {
@@ -469,6 +460,11 @@ function applySetting(config: ToolDisplayConfig, id: string, value: string): Too
 			return {
 				...config,
 				diffIndicatorMode: value as ToolDisplayConfig["diffIndicatorMode"],
+			};
+		case "showRtkCompactionHints":
+			return {
+				...config,
+				showRtkCompactionHints: value === "on",
 			};
 		default:
 			return config;
@@ -603,13 +599,4 @@ export async function runToolDisplayCommandHandler(
 	}
 
 	await openSettingsModal(ctx, controller);
-}
-
-export function registerToolDisplayCommand(pi: ExtensionAPI, controller: ToolDisplayConfigController): void {
-	pi.registerCommand("tool-display", {
-		description: "Configure pure TUI tool-row rendering",
-		handler: async (args, ctx) => {
-			await runToolDisplayCommandHandler(args, ctx, controller);
-		},
-	});
 }

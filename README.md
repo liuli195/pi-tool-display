@@ -3,7 +3,7 @@
 # pi-tool-display
 
 [![npm version](https://img.shields.io/npm/v/pi-tool-display?style=for-the-badge)](https://www.npmjs.com/package/pi-tool-display)
-[![License](https://img.shields.io/github/license/MasuRii/pi-tool-display?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/github/license/liuli195/pi-tool-display?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y01PSSVR)
@@ -33,7 +33,8 @@ A pure TUI display wrapper for the [Pi coding agent](https://github.com/mariozec
 - **Three presets**: `opencode`, `balanced`, and `verbose`
 - **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
 - **Per-tool display toggles** that never change tool ownership or execution
-- **Capability-aware settings** that keep MCP and RTK-specific controls aligned with the current environment
+- **Explicit third-party rendering** through `customToolOverrides` or producer adapters; MCP-like tools are never auto-detected for styling
+- **Capability-aware RTK settings** that appear only when the optimizer is available
 - **Adapter API for renderer consumers** through the `pi-tool-display/tool-display-api-consumer` subpath export
 
 ## Installation
@@ -75,20 +76,19 @@ Open the settings modal:
 The modal exposes the day-to-day controls most people change regularly:
 
 - preset profile
-- read output mode
-- grep/find/ls output mode
-- MCP output mode (when MCP is available)
+- read and grep/find/ls output modes
 - preview line count
-- bash collapsed line count
-- diff layout mode
+- Bash output, command, and error modes with their line limits
+- diff layout and indicator modes
+- RTK compaction hints (when RTK is available)
 - native user message box toggle
 
-Advanced options remain in `config.json`.
+JSON-only controls include the extension master switch, debug logging, built-in and custom-tool selection, the fallback output mode for explicit MCP producer adapters, expanded preview limit, split-width threshold, collapsed logical diff-line limit, diff wrapping, and truncation hints.
 
 ### Direct commands
 
 ```text
-/tool-display show                    # Show the effective config summary
+/tool-display show                    # Show the current display-policy summary
 /tool-display reset                   # Reset to the default opencode preset
 /tool-display preset opencode         # Apply opencode preset
 /tool-display preset balanced         # Apply balanced preset
@@ -121,8 +121,8 @@ Supported Pi versions are exactly `0.74.0`, `0.80.3` (the repository development
 
 ## Presets
 
-| Preset | Read Output | Search Output | MCP Output | Bash Output | Preview Lines | Bash Lines |
-|--------|-------------|---------------|------------|--------------|---------------|------------|
+| Preset | Read Output | Search Output | Explicit MCP Adapter Default | Bash Output | Preview Lines | Bash Lines |
+|--------|-------------|---------------|------------------------------|-------------|---------------|------------|
 | `opencode` | hidden | hidden | hidden | opencode | 8 | 10 |
 | `balanced` | summary | count | summary | summary | 8 | 10 |
 | `verbose` | preview | preview | preview | preview | 12 | 20 |
@@ -135,7 +135,7 @@ Supported Pi versions are exactly `0.74.0`, `0.80.3` (the repository development
 
 | Mode | Behavior |
 |------|----------|
-| `opencode` | Classic collapsed output using `bashCollapsedLines` limit with expansion hint |
+| `opencode` | Classic collapsed output using the `bashCollapsedLines` visual-row limit with expansion hint |
 | `summary` | Shows only line count (e.g., "↳ 3 lines returned") — no output displayed |
 | `preview` | Shows actual output lines using `previewLines` limit |
 
@@ -154,17 +154,18 @@ A starter template is included at `config/config.example.json`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `debug` | boolean | `false` | Opt-in file logging for extension diagnostics; missing values are treated as `false` |
+| `enabled` | boolean | `true` | Master switch; set to `false` and reload to disable the extension |
+| `debug` | boolean | `false` | Opt-in file logging for extension diagnostics; preserved by `/tool-display` saves |
 | `builtInToolDisplays` | object | all `true` | Enable display formatting for each built-in tool |
 | `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
 | `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
-| `mcpOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
+| `mcpOutputMode` | string | `"hidden"` | Fallback `hidden`, `summary`, or `preview` mode for explicitly registered MCP producer adapters; it does not discover or opt tools into rendering |
 | `previewLines` | number | `8` | Lines shown in collapsed preview mode |
-| `expandedPreviewMaxLines` | number | `4000` | Max preview lines when fully expanded |
+| `expandedPreviewMaxLines` | number | `4000` | Max expanded source lines for read/search/MCP/Bash previews; expanded diffs use it as a rendered-row bound |
 | `bashOutputMode` | string | `"opencode"` | `opencode` (collapse), `summary` (line count), or `preview` (show lines) |
-| `bashCollapsedLines` | number | `10` | Lines shown for collapsed bash output (opencode mode) |
+| `bashCollapsedLines` | number | `10` | Visual rows shown for collapsed Bash output in opencode mode |
 | `bashCommandMode` | string | `"preview"` | Bash command display: `full`, `summary`, or `preview` |
 | `bashCommandPreviewLines` | number | `3` | Visual command lines shown in preview mode; Ctrl+O expands the full command |
 | `bashErrorOutputMode` | string | `"preview"` | Failed Bash output: `full`, `summary`, or `preview`; the failure header always remains visible |
@@ -172,7 +173,7 @@ A starter template is included at `config/config.example.json`.
 | `diffViewMode` | string | `"auto"` | `auto`, `split`, or `unified` |
 | `diffIndicatorMode` | string | `"bars"` | `bars` (vertical indicators), `classic` (+/- markers), or `none` |
 | `diffSplitMinWidth` | number | `120` | Minimum width before auto mode prefers split diffs |
-| `diffCollapsedLines` | number | `24` | Diff lines shown before collapsing |
+| `diffCollapsedLines` | number | `24` | Logical diff content lines shown when collapsed; headers, metadata, and wrapped continuations do not consume the limit |
 | `diffWordWrap` | boolean | `true` | Wrap long diff lines when needed |
 | `showTruncationHints` | boolean | `false` | Show truncation indicators for compacted output |
 | `showRtkCompactionHints` | boolean | `false` | Show RTK compaction hints when RTK metadata exists |
@@ -195,7 +196,7 @@ Use `builtInToolDisplays` to select which built-in rows this extension formats:
 }
 ```
 
-Set an entry to `false` to keep Pi's native renderer. Changes apply immediately and never change tool ownership, activation, definitions, or execution. Legacy `registerToolOverrides` input remains supported and is not rewritten merely by loading it.
+Set an entry to `false` to keep Pi's native renderer. Changes made through `/tool-display` apply immediately; manual `config.json` edits require `/reload`. Display selection never changes tool ownership, activation, definitions, or execution. Legacy `registerToolOverrides` input remains supported and is not rewritten merely by loading it.
 
 ### Custom tool overrides
 
@@ -249,6 +250,7 @@ Notes:
 
 ```json
 {
+  "enabled": true,
   "debug": false,
   "builtInToolDisplays": {
     "read": true,
@@ -301,7 +303,7 @@ Debug logging is disabled by default. Set `debug` to `true` in the extension roo
 
 ### Edit and write diffs
 
-`edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. On narrow panes it clamps rendered lines and shortens collapsed hint text so the diff stays readable instead of spilling past the terminal width.
+`edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. Collapsed limits count logical diff content lines, so split headers, trusted omission metadata, and wrapped continuations do not consume the budget. Expanded limits still count rendered rows to keep small panes bounded.
 
 Partial `edit` calls can render a diff only from explicit old/new text supplied by the call. `write` calls show neutral content summaries unless the tool supplies trustworthy diff evidence. Rendering never reads the workspace to reconstruct a preimage or infer create/overwrite semantics.
 
@@ -317,12 +319,14 @@ When enabled, user prompts render inside a bordered box using Pi's native user m
 
 ## Capability detection
 
-The extension checks the current Pi environment and adjusts behavior automatically:
+The extension does not probe tool metadata to identify MCP tools. MCP-style rendering is enabled only by an exact `customToolOverrides` entry or an explicit producer adapter.
 
-- **MCP tooling unavailable at startup**: MCP settings can be hidden from the modal, but the configured MCP output mode is preserved because MCP tools may register later
-- **RTK optimizer unavailable**: RTK hint settings are hidden and RTK compaction hints are disabled
+RTK controls remain capability-aware:
 
-This keeps the UI aligned with the current environment while still allowing dynamically registered MCP tools to be styled when they appear.
+- **RTK optimizer available**: the modal exposes an RTK compaction-hints toggle
+- **RTK optimizer unavailable**: the RTK control is hidden and RTK compaction hints are disabled
+
+This keeps the RTK UI aligned with the current environment. Explicit producer adapters may still register dynamically; unconfigured tools remain native.
 
 ## Troubleshooting
 
@@ -332,7 +336,7 @@ This keeps the UI aligned with the current environment while still allowing dyna
 
 ### Display conflicts
 
-Set `builtInToolDisplays.<tool>` to `false` to retain Pi's native renderer for that built-in. Display selection is independent of the executable tool's owner and applies immediately; use `/tool-display show` to inspect the effective display state.
+Set `builtInToolDisplays.<tool>` to `false` to retain Pi's native renderer for that built-in. Display selection is independent of the executable tool's owner. Modal changes apply immediately; manual JSON edits require `/reload`. Use `/tool-display show` to inspect the effective display state.
 
 ### Config not loading
 
@@ -340,15 +344,15 @@ If your settings are not being applied:
 
 1. Check that the global Pi tool-display config exists (default: `~/.pi/agent/extensions/pi-tool-display/config.json`, respects `PI_CODING_AGENT_DIR`)
 2. Make sure the JSON is valid
-3. Run `/tool-display show` to inspect the effective config summary
+3. Run `/tool-display show` to inspect the current display-policy summary
 
 ### MCP or custom tool rendering not appearing
 
 Add the exact third-party tool name under `customToolOverrides`. Use `kind: "generic"` for ordinary tools and `kind: "mcp"` for MCP proxy or direct tools. MCP tools are not detected or intercepted separately.
 
-### MCP or RTK settings missing
+### RTK setting missing
 
-Those controls only appear when the corresponding capability is available in the current Pi environment.
+The RTK control appears only when the optimizer is available. MCP-style tools are configured manually under `customToolOverrides`; there is no auto-detected MCP control.
 
 ## Project structure
 
@@ -357,14 +361,19 @@ pi-tool-display/
 ├── index.ts                         # Extension entrypoint for Pi auto-discovery
 ├── src/
 │   ├── index.ts                     # Bootstrap and extension registration
-│   ├── capabilities.ts              # MCP/RTK capability detection
+│   ├── capabilities.ts              # RTK capability detection
+│   ├── config-command.ts            # Single lazy /tool-display registration entry
 │   ├── config-modal.ts              # /tool-display settings UI and command handling
 │   ├── config-store.ts              # Config load/save and normalization
 │   ├── disposable.ts                # Reload-safe cleanup registry for display patches and timers
 │   ├── diff-renderer.ts             # Edit/write diff rendering engine
 │   ├── line-width-safety.ts         # Width clamping helpers for narrow panes
+│   ├── pi-host-adapter.ts           # Supported Pi host-shape qualification
 │   ├── presets.ts                   # Preset definitions and matching
 │   ├── render-utils.ts              # Shared rendering helpers
+│   ├── tool-display-resolver.ts     # Pure display-policy resolution
+│   ├── tool-display-runtime.ts      # Reload-safe renderer runtime
+│   ├── tool-execution-patch.ts      # Final tool-row display seam
 │   ├── tool-overrides.ts            # Built-in, MCP, and custom display renderers plus Adapter API
 │   ├── types.ts                     # Shared config and type definitions
 │   ├── user-message-box-markdown.ts # Markdown extraction for user message rendering
@@ -398,11 +407,15 @@ pi-tool-display/
 # Type check
 npm run build
 
-# Run tests
-npm run test
+# Run the local real-runtime contract (missing optional runtimes are skipped)
+npm run test:contract:local
 
-# Full verification
-npm run check
+# Full three-runtime matrix and complete verification
+# See docs/ownership-verification.md for required PI_RUNTIME_* roots.
+npm test
+npm run typecheck
+npm run build
+git diff --check
 ```
 
 ## Related Pi Extensions
