@@ -5,6 +5,7 @@ import { disposeAll, resetDisposed } from "../src/disposable.ts";
 import { registerToolDisplayApi } from "../src/tool-overrides.ts";
 import { createToolDisplayResolver } from "../src/tool-display-resolver.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
+import { registerRendererAdapter } from "../tool-display-api-consumer.js";
 
 const row = { toolName: "third_party", arguments: {}, builtIn: false } as const;
 
@@ -88,6 +89,33 @@ test("equal-priority producer conflicts fail deterministically regardless of ord
   try {
     assert.throws(() => createRendererCatalog().resolve(row, DEFAULT_TOOL_DISPLAY_CONFIG, {}), /a \(mcp\), z \(generic\)/);
   } finally { second(); first(); }
+});
+
+test("early producer registration preserves modern output and call-override fields", () => {
+  resetDisposed();
+  const apiSymbol = Symbol.for("pi-tool-display.api.v1");
+  delete (globalThis as any)[apiSymbol];
+  const disposePending = registerRendererAdapter({
+    id: "early-modern",
+    toolName: "early_modern",
+    kind: "generic",
+    outputMode: "hidden",
+    overrideCallRenderer: true,
+  });
+  try {
+    registerToolDisplayApi(() => DEFAULT_TOOL_DISPLAY_CONFIG);
+    const nativeCall = () => ({ render: () => ["native call"] });
+    const plan = createRendererCatalog().resolve(
+      { toolName: "early_modern", arguments: {}, builtIn: false },
+      DEFAULT_TOOL_DISPLAY_CONFIG,
+      { call: nativeCall },
+    )!;
+    assert.notStrictEqual(plan.call, nativeCall);
+    assert.deepEqual(plan.result!({ content: [{ type: "text", text: "secret" }] }, { expanded: false }, { fg: (_c: string, text: string) => text, bold: (text: string) => text }).render(80), []);
+  } finally {
+    disposePending();
+    disposeAll();
+  }
 });
 
 test("reused global API keeps producer intent and remains disposable by the current epoch", () => {

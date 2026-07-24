@@ -78,6 +78,8 @@ export interface ToolDisplayAdapter {
   toolName?: string;
   kind?: ToolDisplayKind;
   overrideExistingRenderers?: boolean;
+  overrideCallRenderer?: boolean;
+  outputMode?: "hidden" | "summary" | "preview";
   pathFields?: string[];
   getPath?: (args: unknown) => string | undefined;
   getEditLineCount?: (args: unknown) => number;
@@ -998,7 +1000,8 @@ function toProducerAdapter(toolName: string, adapter: ToolDisplayAdapter = {}, g
     id: adapter.id ?? toolName,
     toolName,
     kind: kind === "mcp" ? "mcp" : "generic",
-    overrideCallRenderer: adapter.overrideExistingRenderers,
+    outputMode: adapter.outputMode,
+    overrideCallRenderer: adapter.overrideCallRenderer ?? adapter.overrideExistingRenderers,
     renderCall: adapter.renderCall ?? (kind === "read"
       ? (args, theme) => renderReadDisplayCall(args, theme, adapter)
       : kind === "edit"
