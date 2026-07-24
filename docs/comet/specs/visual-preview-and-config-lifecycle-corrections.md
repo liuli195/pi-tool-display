@@ -85,6 +85,7 @@ The package peer range, Host Adapter runtime gate, documentation, and runtime ma
 18. The runtime support policy must be represented identically in peer dependencies, Host Adapter checks, runtime tests, README, and diagnostics.
 19. Bash spinner and elapsed-time timers remain absent; no history-row interval invalidation is reintroduced.
 20. All changes remain presentation-only and preserve original tool data, execution, Agent context, event ordering, and session serialization.
+21. Producer Renderer Adapter registrations are extension-load-scoped display intent, not session/project installations. They persist across ordinary session transitions, read the current effective configuration at render time, and are disposed on extension reload or quit. Host/Resolver attachment and native user-message prototype patches remain session-owned.
 
 ## Testing Decisions
 

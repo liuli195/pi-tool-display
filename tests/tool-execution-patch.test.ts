@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import {
   createBashTool,
   createEditTool,
@@ -12,12 +12,16 @@ import {
   ToolExecutionComponent,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import { disposeAll, resetDisposed } from "../src/disposable.ts";
+import { disposeAll, disposeSession, resetDisposed } from "../src/disposable.ts";
 import { registerToolExecutionPatch } from "../src/tool-execution-patch.ts";
 import { registerToolDisplayApi } from "../src/tool-overrides.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 
 initTheme(undefined, false);
+
+afterEach(() => {
+  disposeSession();
+});
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const render = (component: unknown) => (component as { render(width: number): string[] }).render(120).join("\n").trim();
 const plainRender = (component: unknown) => render(component).replace(/\x1b\[[0-9;]*m/g, "");

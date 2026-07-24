@@ -28,17 +28,31 @@ import {
 } from "./config-command.js";
 import { getToolDisplayPresetConfig } from "./presets.js";
 
+const RELOAD_STATE = Symbol.for("pi-tool-display.reload-state.v1");
+interface ReloadState {
+  projectConfigPath?: string;
+  theme?: UserMessageTheme;
+}
+type GlobalWithReloadState = typeof globalThis & { [RELOAD_STATE]?: ReloadState };
+
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
   const initial = loadToolDisplayConfig();
   resetDisposed();
 
+  const globalWithReloadState = globalThis as GlobalWithReloadState;
+  const reloadState = globalWithReloadState[RELOAD_STATE];
+  const reloadedProject = reloadState?.projectConfigPath
+    ? readProjectToolDisplayConfig(reloadState.projectConfigPath)
+    : undefined;
   let globalConfig: ToolDisplayConfig = initial.config;
-  let mergedConfig: ToolDisplayConfig = globalConfig;
-  let pendingLoadError = initial.error;
+  let projectOverlay: ToolDisplayConfigOverlay | undefined = reloadedProject?.config;
+  let mergedConfig: ToolDisplayConfig = projectOverlay
+    ? mergeProjectConfig(globalConfig, projectOverlay)
+    : globalConfig;
+  let pendingLoadError = initial.error ?? reloadedProject?.error;
   let capabilities: ToolDisplayCapabilities = { hasRtkOptimizer: false };
   let effectiveConfig: ToolDisplayConfig | undefined;
-  let projectOverlay: ToolDisplayConfigOverlay | undefined;
-  let activeTheme: UserMessageTheme | undefined;
+  let activeTheme: UserMessageTheme | undefined = reloadState?.theme;
   let disposeSessionInstallation: (() => void) | undefined;
 
   const refreshCapabilities = (): void => {
@@ -95,7 +109,10 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", (event: { reason: string }) => {
     uninstallSession();
-    activeTheme = undefined;
+    if (event.reason !== "reload") {
+      activeTheme = undefined;
+      delete globalWithReloadState[RELOAD_STATE];
+    }
     if (event.reason === "reload" || event.reason === "quit") disposeAll();
   });
 
@@ -111,12 +128,14 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     const fresh = loadToolDisplayConfig();
     globalConfig = fresh.config;
     projectOverlay = undefined;
+    let projectConfigPath: string | undefined;
     if (ctx.isProjectTrusted()) {
-      const projectConfigPath = join(ctx.cwd, CONFIG_DIR_NAME, "extensions", "pi-tool-display", "config.json");
+      projectConfigPath = join(ctx.cwd, CONFIG_DIR_NAME, "extensions", "pi-tool-display", "config.json");
       const projectResult = readProjectToolDisplayConfig(projectConfigPath);
       projectOverlay = projectResult.config;
       if (projectResult.error) ctx.ui?.notify?.(projectResult.error, "warning");
     }
+    globalWithReloadState[RELOAD_STATE] = { projectConfigPath, theme: activeTheme };
     mergedConfig = projectOverlay ? mergeProjectConfig(globalConfig, projectOverlay) : globalConfig;
     effectiveConfig = undefined;
     installSession();

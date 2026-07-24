@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
 import {
+  CONFIG_DIR_NAME,
   ToolExecutionComponent,
   type ExtensionAPI,
   type ExtensionCommandContext,
@@ -315,6 +316,31 @@ test("session transition and disabled config restore native renderer ownership",
   writeFileSync(configFile, JSON.stringify({ enabled: false }), "utf8");
   await sessionStart?.({}, ctx);
   assert.strictEqual(prototype.getCallRenderer, nativeCall);
+});
+
+test("reload preserves the trusted project overlay before another session_start", async () => {
+  const globalConfigFile = join(testAgentDir, "extensions", "pi-tool-display", "config.json");
+  mkdirSync(join(testAgentDir, "extensions", "pi-tool-display"), { recursive: true });
+  writeFileSync(globalConfigFile, JSON.stringify({ readOutputMode: "hidden" }), "utf8");
+  const projectDir = join(testAgentDir, "trusted-project");
+  const projectConfigDir = join(projectDir, CONFIG_DIR_NAME, "extensions", "pi-tool-display");
+  mkdirSync(projectConfigDir, { recursive: true });
+  writeFileSync(join(projectConfigDir, "config.json"), JSON.stringify({ readOutputMode: "preview" }), "utf8");
+
+  const first = createApiStub();
+  toolDisplayExtension(first.api);
+  const ctx = { ui: { theme: {}, notify() {} }, cwd: projectDir, isProjectTrusted: () => true };
+  await first.capturedHandlers.find(({ event }) => event === "session_start")?.handler({}, ctx);
+  for (const { event, handler } of first.capturedHandlers) if (event === "session_shutdown") handler({ reason: "reload" });
+
+  const second = createApiStub();
+  toolDisplayExtension(second.api);
+  const notifications: string[] = [];
+  await second.capturedCommands.find(({ name }) => name === "tool-display")?.handler?.("show", {
+    ui: { notify(message: string) { notifications.push(message); } },
+  });
+  assert.match(notifications.join("\n"), /read=preview/);
+  for (const { event, handler } of second.capturedHandlers) if (event === "session_shutdown") handler({ reason: "quit" });
 });
 
 test("display policy installs without registering executable definitions", async () => {

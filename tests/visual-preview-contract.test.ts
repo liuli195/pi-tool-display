@@ -92,6 +92,33 @@ test("Custom preview uses visual rows and retains an omission marker at narrow w
   }
 });
 
+test("shared visual preview handles required widths and text widths", () => {
+  const renderResult = resolveResult("read", { readOutputMode: "preview", previewLines: 1 }, { path: "fixture.txt" });
+  for (const width of [20, 40, 120, 10_000]) {
+    const lines = renderResult(result("x".repeat(width + 1)), options(), theme).render(width);
+    assert.equal(lines.length, 2);
+    assert.match(lines[1] ?? "", width < 40 ? /\+1/ : /1 more visual line/);
+    assertWidthSafe(lines, width);
+  }
+
+  for (const text of ["\x1b[31m12345678901\x1b[0m", "界界界界界界", "🙂🙂🙂🙂🙂🙂"]) {
+    const lines = renderResult(result(text), options(), theme).render(10);
+    assert.equal(lines.length, 2);
+    assert.match(lines[1] ?? "", /1 more visual line|…/);
+    assertWidthSafe(lines, 10);
+  }
+});
+
+test("default and unlimited expanded visual budgets keep their public semantics", () => {
+  const defaultPreview = resolveResult("read", { readOutputMode: "preview" }, { path: "fixture.txt" });
+  const collapsed = defaultPreview(result(Array.from({ length: 9 }, (_, index) => `row-${index}`).join("\n")), options(), theme).render(120);
+  assert.match(collapsed.at(-1) ?? "", /1 more visual line/);
+
+  const unlimited = resolveResult("read", { readOutputMode: "preview", expandedPreviewMaxLines: 0 }, { path: "fixture.txt" });
+  const expanded = unlimited(result("one\ntwo\nthree"), options(true), theme).render(40);
+  assert.deepEqual(expanded.map((line) => line.trimEnd()), ["one", "two", "three"]);
+});
+
 test("Diff collapsed and expanded budgets select logical lines but report omitted visual Diff lines", () => {
   const renderResult = resolveResult("edit", {
     diffViewMode: "unified",
@@ -111,6 +138,21 @@ test("Diff collapsed and expanded budgets select logical lines but report omitte
     assert.equal(output.includes("Ctrl+O to expand"), !expanded);
     assertWidthSafe(lines, 80);
   }
+});
+
+test("Diff visual omission count responds to width while logical selection stays fixed", () => {
+  const renderResult = resolveResult("edit", { diffViewMode: "unified", diffCollapsedLines: 1, diffWordWrap: true }, { path: "fixture.txt" });
+  const diff = `-${"OLD-" + "o".repeat(146)}\n+${"NEW-" + "n".repeat(146)}\n tail`;
+  const counts = new Map<number, number>();
+  for (const width of [40, 120]) {
+    const output = renderResult(result("done", { diff }), options(), theme).render(width).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+    assert.match(output, /OLD-/);
+    assert.doesNotMatch(output, /NEW-|tail/);
+    const count = Number(/(\d+) more visual diff lines?/.exec(output)?.[1]);
+    assert.ok(Number.isInteger(count) && count > 0);
+    counts.set(width, count);
+  }
+  assert.ok((counts.get(40) ?? 0) > (counts.get(120) ?? 0));
 });
 
 test("Diff omission hint uses singular visual-line wording", () => {
