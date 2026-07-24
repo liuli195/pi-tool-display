@@ -1,3 +1,4 @@
+import type { DisplayPerformanceObserver } from "./renderer-catalog.js";
 import type { ToolDisplayResolver } from "./tool-display-resolver.js";
 
 type RendererSelector = (this: ToolRowHost, ...args: any[]) => ((...args: any[]) => any) | undefined;
@@ -25,9 +26,10 @@ export function installPiHostAdapter(
   resolver: ToolDisplayResolver,
   piVersion: string,
   diagnose: (message: string) => void = () => {},
+  observer: DisplayPerformanceObserver = {},
 ): PiHostAdapterInstallation {
   try {
-    const installation = install(host as HostPrototype, resolver, piVersion);
+    const installation = install(host as HostPrototype, resolver, piVersion, observer);
     if (!installation.installed) diagnose(`pi-tool-display: unsupported Pi ${piVersion} tool-row renderer shape; using native rendering`);
     return installation;
   } catch {
@@ -36,7 +38,7 @@ export function installPiHostAdapter(
   }
 }
 
-function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVersion: string): PiHostAdapterInstallation {
+function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVersion: string, observer: DisplayPerformanceObserver): PiHostAdapterInstallation {
   const existing = ownState(prototype);
   if (existing && ownValue(prototype, "getCallRenderer") === existing.patchedCall && ownValue(prototype, "getResultRenderer") === existing.patchedResult) {
     return { installed: true, dispose: () => dispose(prototype, existing) };
@@ -69,6 +71,7 @@ function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVers
     Object.defineProperty(prototype, STATE, { value: state, configurable: true });
     Object.defineProperty(prototype, "getCallRenderer", { ...call, value: patchedCall });
     Object.defineProperty(prototype, "getResultRenderer", { ...result, value: patchedResult });
+    observer.hostRebuilt?.();
   } catch {
     rollback(prototype, state);
     return { installed: false, dispose: () => dispose(prototype, state) };

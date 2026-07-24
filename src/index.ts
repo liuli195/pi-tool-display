@@ -38,15 +38,17 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     hasMcpTooling: false,
     hasRtkOptimizer: false,
   };
+  let effectiveConfig: ToolDisplayConfig | undefined;
 
   const refreshCapabilities = (): void => {
     capabilities = detectToolDisplayCapabilities(pi, process.cwd());
+    effectiveConfig = undefined;
   };
 
   const getConfig = (): ToolDisplayConfig => config;
   const getCapabilities = (): ToolDisplayCapabilities => capabilities;
   const getEffectiveConfig = (): ToolDisplayConfig =>
-    applyCapabilityConfigGuards(config, capabilities);
+    effectiveConfig ??= applyCapabilityConfigGuards(config, capabilities);
 
   const setConfig = (
     next: ToolDisplayConfig,
@@ -54,6 +56,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   ): void => {
     const normalized = normalizeToolDisplayConfig(next);
     config = normalized;
+    effectiveConfig = undefined;
 
     const saved = saveToolDisplayConfig(normalized);
     if (!saved.success && saved.error) {
