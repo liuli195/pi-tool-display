@@ -31,7 +31,7 @@ test("Bash partial, empty, truncation, and expanded output retain presentation b
   const plan = resolver({ bashOutputMode: "preview", previewLines: 1, showTruncationHints: true })
     .resolve({ toolName: "bash", arguments: { command: "printf x" }, builtIn: true }, {});
   assert.equal(render(plan.result!(output(""), { expanded: false, isPartial: true }, theme, {})), "");
-  assert.match(render(plan.result!(output("first\nsecond"), { expanded: false, isPartial: true }, theme, {})), /first[\s\S]*more line/);
+  assert.match(render(plan.result!(output("first\nsecond"), { expanded: false, isPartial: true }, theme, {})), /first[\s\S]*more visual/);
   assert.match(render(plan.result!(output("", { truncation: { truncated: true }, fullOutputPath: "/tmp/full" }), { expanded: false, isPartial: false }, theme, { args: { command: "true" } })), /no output[\s\S]*truncated[\s\S]*full output/);
   assert.match(render(plan.result!(output("first\nsecond"), { expanded: true, isPartial: false }, theme, {})), /second/);
 });

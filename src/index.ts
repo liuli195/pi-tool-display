@@ -66,7 +66,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
         (delta as Record<string, unknown>)[key] = next[key];
       }
     }
-    globalConfig = mergeProjectConfig(globalConfig, delta);
+    globalConfig = normalizeToolDisplayConfig({ ...globalConfig, ...delta });
     mergedConfig = projectOverlay ? mergeProjectConfig(globalConfig, projectOverlay) : globalConfig;
     effectiveConfig = undefined;
 

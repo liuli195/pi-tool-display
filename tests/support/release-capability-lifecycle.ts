@@ -37,11 +37,15 @@ try {
     return row.render(120).join("\n");
   };
 
-  await handlers.get("session_start")?.at(-1)?.({}, { ui: { notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false });
+  const invokeAll = async (event: string) => {
+    for (const handler of handlers.get(event) ?? []) await handler({}, { ui: { notify() {} }, cwd: process.cwd(), isProjectTrusted: () => false });
+  };
+
+  await invokeAll("session_start");
   assert.doesNotMatch(frame("without-rtk"), /compacted by RTK/);
   assert.equal(snapshots, 1);
   commands = [{ name: "rtk" }];
-  await handlers.get("before_agent_start")?.at(-1)?.();
+  await invokeAll("before_agent_start");
   assert.match(frame("with-rtk"), /compacted by RTK/);
   assert.equal(snapshots, 2);
   assert.match(frame("same-epoch"), /compacted by RTK/);
