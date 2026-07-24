@@ -331,9 +331,13 @@ export function readProjectToolDisplayConfig(
 	}
 }
 
+const NESTED_OBJECT_KEYS = new Set(["builtInToolDisplays", "customToolOverrides"]);
+
 /**
  * Merge a project-local partial config over a global config. Only keys
  * explicitly present in the project config override the global values.
+ * Nested objects (builtInToolDisplays, customToolOverrides) are deep-merged
+ * so project overrides of one nested field don't reset unrelated global fields.
  * The result is re-normalized to clamp project values to valid ranges.
  */
 export function mergeProjectConfig(
@@ -343,9 +347,31 @@ export function mergeProjectConfig(
 	const merged = { ...globalConfig } as Record<string, unknown>;
 	const project = projectConfig as Record<string, unknown>;
 	for (const key of Object.keys(project)) {
-		if (project[key] !== undefined) {
-			merged[key] = project[key];
+		const projectValue = project[key];
+		if (projectValue === undefined) continue;
+		if (NESTED_OBJECT_KEYS.has(key) && typeof projectValue === "object" && projectValue !== null && !Array.isArray(projectValue)) {
+			// Deep merge: project nested fields overlay global, don't replace whole object.
+			const globalNested = typeof merged[key] === "object" && merged[key] !== null ? { ...(merged[key] as Record<string, unknown>) } : {};
+			for (const nestedKey of Object.keys(projectValue as Record<string, unknown>)) {
+				const nestedValue = (projectValue as Record<string, unknown>)[nestedKey];
+				if (nestedValue !== undefined) globalNested[nestedKey] = nestedValue;
+			}
+			merged[key] = globalNested;
+		} else {
+			merged[key] = projectValue;
 		}
 	}
 	return normalizeToolDisplayConfig(merged);
+}
+
+/**
+ * Apply a partial config delta to a base config. Used by setConfig to
+ * persist only user-changed fields to disk, preventing project overlay
+ * values from leaking into the global config file.
+ */
+export function applyConfigDelta(
+	base: ToolDisplayConfig,
+	delta: Partial<ToolDisplayConfig>,
+): ToolDisplayConfig {
+	return mergeProjectConfig(base, delta);
 }

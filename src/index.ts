@@ -8,6 +8,7 @@ import {
   loadToolDisplayConfig,
   readProjectToolDisplayConfig,
   mergeProjectConfig,
+  applyConfigDelta,
   normalizeToolDisplayConfig,
   saveToolDisplayConfig,
 } from "./config-store.js";
@@ -55,16 +56,27 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   const getEffectiveConfig = (): ToolDisplayConfig =>
     effectiveConfig ??= applyCapabilityConfigGuards(config, capabilities);
 
+  // Track the current project overlay so setConfig can compute deltas.
+  let projectOverlay: Partial<ToolDisplayConfig> | undefined;
+
   const setConfig = (
     next: ToolDisplayConfig,
     ctx: ExtensionCommandContext,
   ): void => {
-    const normalized = normalizeToolDisplayConfig(next);
-    globalConfig = normalized;
-    config = globalConfig;
+    // Compute delta: what changed relative to the current merged config.
+    // Then apply only those changes to globalConfig so project values
+    // don't leak to disk.
+    const delta: Partial<ToolDisplayConfig> = {};
+    const current = config;
+    for (const key of Object.keys(next) as Array<keyof ToolDisplayConfig>) {
+      if (JSON.stringify(next[key]) !== JSON.stringify(current[key])) {
+        (delta as Record<string, unknown>)[key] = next[key];
+      }
+    }
+    globalConfig = applyConfigDelta(globalConfig, delta);
+    config = projectOverlay ? mergeProjectConfig(globalConfig, projectOverlay) : globalConfig;
     effectiveConfig = undefined;
 
-    // Save only global config — project overlay must not leak to disk.
     const saved = saveToolDisplayConfig(globalConfig);
     if (!saved.success && saved.error) {
       ctx.ui.notify(saved.error, "error");
@@ -92,11 +104,13 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     effectiveConfig = undefined;
 
     // Project-local config overlay: read-only, trusted projects only
+    projectOverlay = undefined;
     if (ctx.isProjectTrusted()) {
       const projectConfigPath = join(ctx.cwd, CONFIG_DIR_NAME, "extensions", "pi-tool-display", "config.json");
       const projectResult = readProjectToolDisplayConfig(projectConfigPath);
       if (projectResult.config) {
-        config = mergeProjectConfig(globalConfig, projectResult.config);
+        projectOverlay = projectResult.config;
+        config = mergeProjectConfig(globalConfig, projectOverlay);
         effectiveConfig = undefined;
       }
       if (projectResult.error) {

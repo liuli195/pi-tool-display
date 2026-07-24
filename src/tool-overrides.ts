@@ -470,9 +470,15 @@ function wrapComponentWithHints(
   return container;
 }
 
+/**
+ * Visual row budget for expanded previews. Uses expandedPreviewMaxLines as
+ * a cap to prevent long single-line content from flooding the viewport.
+ */
+function getExpandedVisualRowCap(config: ToolDisplayConfig): number {
+  return Math.max(100, config.expandedPreviewMaxLines);
+}
+
 function buildCollapsedPreviewHints(
-  lines: string[],
-  config: ToolDisplayConfig,
   theme: RenderTheme,
   appendHints: (preview: string) => string,
   remaining: number,
@@ -481,17 +487,7 @@ function buildCollapsedPreviewHints(
   if (remaining > 0) {
     hints += formatTruncationHint(remaining, false, theme);
   }
-  hints = appendHints(hints);
-  return hints;
-}
-
-function buildExpandedPreviewHints(
-  lines: string[],
-  config: ToolDisplayConfig,
-  theme: RenderTheme,
-  appendHints: (preview: string) => string,
-): string {
-  return appendHints("") + formatExpandedPreviewCapHint(lines, config, theme);
+  return appendHints(hints);
 }
 
 function renderPreviewText(
@@ -511,13 +507,19 @@ function renderPreviewText(
     const { text, remaining } = buildPreviewContent(lines, maxLines, theme);
     const preview = new VisualLinePreviewComponent(config.previewLines, false, theme);
     preview.setDisplay(text, config.previewLines, false);
-    const hints = buildCollapsedPreviewHints(lines, config, theme, appendHints, remaining);
+    const hints = buildCollapsedPreviewHints(theme, appendHints, remaining);
     return wrapComponentWithHints(preview, hints);
   }
 
+  // Expanded path: use VisualLinePreviewComponent with a visual row cap
+  // to prevent long single-line content from flooding the viewport.
   const { text } = buildPreviewContent(lines, maxLines, theme);
-  const hints = buildExpandedPreviewHints(lines, config, theme, appendHints);
-  return textResult(text + hints);
+  const visualCap = getExpandedVisualRowCap(config);
+  const preview = new VisualLinePreviewComponent(visualCap, true, theme);
+  preview.setDisplay(text, visualCap, true);
+  // appendHints already includes expanded cap hint via appendRtkAndExpandedHints
+  const hints = appendHints("");
+  return wrapComponentWithHints(preview, hints);
 }
 
 function formatReadSummary(
@@ -628,9 +630,9 @@ function renderBashPreviewWithHints(
   details: BashToolDetails | undefined,
 ): Component {
   const { text, remaining } = buildPreviewContent(lines, maxLines, theme);
-  const previewLinesLimit = options.expanded ? maxLines : maxLines;
-  const preview = new VisualLinePreviewComponent(previewLinesLimit, options.expanded, theme);
-  preview.setDisplay(text, previewLinesLimit, options.expanded);
+  const visualCap = options.expanded ? getExpandedVisualRowCap(config) : maxLines;
+  const preview = new VisualLinePreviewComponent(visualCap, options.expanded, theme);
+  preview.setDisplay(text, visualCap, options.expanded);
   let hints = "";
   if (!options.expanded && remaining > 0) hints += formatTruncationHint(remaining, false, theme);
   if (config.showTruncationHints) hints += formatBashTruncationHints(details, theme);

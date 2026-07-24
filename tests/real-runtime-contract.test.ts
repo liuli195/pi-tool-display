@@ -309,7 +309,8 @@ for (const entry of matrix) {
       assert.match(partial, /contract streaming output/);
       assert.doesNotMatch(partial, /contract streaming folded second line/);
       assert.notEqual(bash.present.tuiOutput.animatedPartialNewCall, "");
-      assert.notEqual(plain(bash.present.tuiOutput.animatedPartialNewCall), partial);
+      // Spinner removed: animated partial should be identical to partial (deterministic)
+      assert.equal(plain(bash.present.tuiOutput.animatedPartialNewCall), partial);
       assert.match(plain(bash.present.tuiOutput.newCall), /contract final output/);
       assert.doesNotMatch(plain(bash.present.tuiOutput.newCall), /contract final folded second line/);
       assert.match(plain(bash.present.tuiOutput.expandedNewCall), /contract final folded second line/);
@@ -320,7 +321,7 @@ for (const entry of matrix) {
       assert.doesNotMatch(plain(bash.present.tuiOutput.collapsedErrorNewCall), /contract error folded second line/);
       assert.deepEqual(bash.present.lifecycle, {
         reloads: 3, stableWrappers: true, wrappersAfterDispose: 0, descriptorsRestored: true,
-        timerBaseline: 0, timersWhilePartial: 1, timersAfterCompletion: 0, timersAfterDispose: 0,
+        timerBaseline: 0, timersWhilePartial: 0, timersAfterCompletion: 0, timersAfterDispose: 0,
       });
       for (const frame of [bash.present.tuiOutput.expandedCold, bash.present.tuiOutput.expandedReload]) {
         assert.match(plain(frame), /contract success folded third line/);
