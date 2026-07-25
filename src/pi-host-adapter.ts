@@ -1,25 +1,38 @@
 import type { ToolDisplayResolver } from "./tool-display-resolver.js";
+import type { DisplayColorToken } from "./types.js";
 
 type RendererSelector = (this: ToolRowHost, ...args: any[]) => ((...args: any[]) => any) | undefined;
+type RowRenderer = (this: ToolRowHost, width: number) => string[];
 interface ToolRowHost {
   toolName?: string;
   invalidate?: () => void;
   args?: Record<string, unknown>;
+  result?: unknown;
   toolDefinition?: Record<string, unknown>;
   builtInToolDefinition?: Record<string, unknown>;
+}
+interface ToolSeparatorTheme { fg(color: string, text: string): string }
+interface ToolSeparatorConfig {
+  enableToolSeparator: boolean;
+  toolSeparatorStyle: "dashed" | "solid";
+  toolSeparatorColor: DisplayColorToken;
 }
 interface Installation {
   call: PropertyDescriptor;
   result: PropertyDescriptor;
+  render: PropertyDescriptor;
   resolver: ToolDisplayResolver;
+  getSeparatorConfig: () => ToolSeparatorConfig;
+  getTheme: () => ToolSeparatorTheme | undefined;
   patchedCall: RendererSelector;
   patchedResult: RendererSelector;
+  patchedRender: RowRenderer;
   active: boolean;
   rows: Set<ToolRowHost>;
   owner: object;
 }
 const STATE = Symbol.for("pi-tool-display.piHostAdapter.v1");
-type HostPrototype = ToolRowHost & { getCallRenderer?: RendererSelector; getResultRenderer?: RendererSelector; [STATE]?: Installation };
+type HostPrototype = ToolRowHost & { getCallRenderer?: RendererSelector; getResultRenderer?: RendererSelector; render?: RowRenderer; [STATE]?: Installation };
 export interface PiHostAdapterInstallation { readonly installed: boolean; dispose(): void }
 
 const supportedVersion = (version: string) => {
@@ -35,9 +48,11 @@ export function installPiHostAdapter(
   resolver: ToolDisplayResolver,
   piVersion: string,
   diagnose: (message: string) => void = () => {},
+  getSeparatorConfig: () => ToolSeparatorConfig = () => ({ enableToolSeparator: false, toolSeparatorStyle: "dashed", toolSeparatorColor: "borderMuted" }),
+  getTheme: () => ToolSeparatorTheme | undefined = () => undefined,
 ): PiHostAdapterInstallation {
   try {
-    const installation = install(host as HostPrototype, resolver, piVersion);
+    const installation = install(host as HostPrototype, resolver, piVersion, getSeparatorConfig, getTheme);
     if (!installation.installed) diagnose(`pi-tool-display: unsupported Pi ${piVersion} tool-row renderer shape; using native rendering`);
     return installation;
   } catch {
@@ -46,22 +61,32 @@ export function installPiHostAdapter(
   }
 }
 
-function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVersion: string): PiHostAdapterInstallation {
+function install(
+  prototype: HostPrototype,
+  resolver: ToolDisplayResolver,
+  piVersion: string,
+  getSeparatorConfig: () => ToolSeparatorConfig,
+  getTheme: () => ToolSeparatorTheme | undefined,
+): PiHostAdapterInstallation {
   const existing = ownState(prototype);
-  if (existing && ownValue(prototype, "getCallRenderer") === existing.patchedCall && ownValue(prototype, "getResultRenderer") === existing.patchedResult) {
+  if (existing && ownValue(prototype, "getCallRenderer") === existing.patchedCall && ownValue(prototype, "getResultRenderer") === existing.patchedResult && ownValue(prototype, "render") === existing.patchedRender) {
     const owner = {};
     existing.resolver = resolver;
+    existing.getSeparatorConfig = getSeparatorConfig;
+    existing.getTheme = getTheme;
     existing.owner = owner;
     return { installed: true, dispose: () => dispose(prototype, existing, owner) };
   }
   const call = Object.getOwnPropertyDescriptor(prototype, "getCallRenderer");
   const result = Object.getOwnPropertyDescriptor(prototype, "getResultRenderer");
-  if (!supportedVersion(piVersion) || !Object.isExtensible(prototype) || !call || !result || !("value" in call) || !("value" in result) ||
-      typeof call.value !== "function" || typeof result.value !== "function" || !call.configurable || !result.configurable ||
-      !call.writable || !result.writable || existing) return noopInstallation();
+  const render = Object.getOwnPropertyDescriptor(prototype, "render");
+  if (!supportedVersion(piVersion) || !Object.isExtensible(prototype) || !call || !result || !render || !("value" in call) || !("value" in result) || !("value" in render) ||
+      typeof call.value !== "function" || typeof result.value !== "function" || typeof render.value !== "function" ||
+      !call.configurable || !result.configurable || !render.configurable || !call.writable || !result.writable || !render.writable || existing) return noopInstallation();
 
   const originalCall = call.value as RendererSelector;
   const originalResult = result.value as RendererSelector;
+  const originalRender = render.value as RowRenderer;
   const row = (instance: ToolRowHost) => ({
     toolName: String(instance.toolDefinition?.name ?? instance.builtInToolDefinition?.name ?? instance.toolName ?? ""),
     arguments: instance.args ?? {},
@@ -69,7 +94,7 @@ function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVers
     builtIn: instance.builtInToolDefinition?.name === (instance.toolDefinition?.name ?? instance.toolName),
   });
   const owner = {};
-  const state = { call, result, resolver, active: true, rows: new Set<ToolRowHost>(), owner } as Installation;
+  const state = { call, result, render, resolver, getSeparatorConfig, getTheme, active: true, rows: new Set<ToolRowHost>(), owner } as Installation;
   const patchedCall: RendererSelector = function (...args: any[]) {
     const native = originalCall.apply(this, args);
     if (!state.active) return native;
@@ -82,13 +107,30 @@ function install(prototype: HostPrototype, resolver: ToolDisplayResolver, piVers
     state.rows.add(this);
     return state.resolver.resolve(row(this), { result: native }).result;
   };
+  const patchedRender: RowRenderer = function (width: number) {
+    const lines = originalRender.call(this, width);
+    if (!state.active) return lines;
+    try {
+      const config = state.getSeparatorConfig();
+      if (!config.enableToolSeparator) return lines;
+      const safeWidth = Math.max(0, Math.floor(width));
+      if (safeWidth === 0) return lines;
+      const separator = (config.toolSeparatorStyle === "solid" ? "─" : "╌").repeat(safeWidth);
+      const theme = state.getTheme();
+      return theme ? [...lines, theme.fg(config.toolSeparatorColor, separator)] : lines;
+    } catch {
+      return lines;
+    }
+  };
   state.patchedCall = patchedCall;
   state.patchedResult = patchedResult;
+  state.patchedRender = patchedRender;
 
   try {
     Object.defineProperty(prototype, STATE, { value: state, configurable: true });
     Object.defineProperty(prototype, "getCallRenderer", { ...call, value: patchedCall });
     Object.defineProperty(prototype, "getResultRenderer", { ...result, value: patchedResult });
+    Object.defineProperty(prototype, "render", { ...render, value: patchedRender });
   } catch {
     rollback(prototype, state);
     return { installed: false, dispose: () => dispose(prototype, state, owner) };
@@ -101,7 +143,7 @@ function ownState(prototype: HostPrototype): Installation | undefined {
   return descriptor && "value" in descriptor ? descriptor.value : undefined;
 }
 
-function ownValue(prototype: HostPrototype, key: "getCallRenderer" | "getResultRenderer"): unknown {
+function ownValue(prototype: HostPrototype, key: "getCallRenderer" | "getResultRenderer" | "render"): unknown {
   try {
     const descriptor = Object.getOwnPropertyDescriptor(prototype, key);
     return descriptor && "value" in descriptor ? descriptor.value : undefined;
@@ -110,12 +152,15 @@ function ownValue(prototype: HostPrototype, key: "getCallRenderer" | "getResultR
 
 function rollback(prototype: HostPrototype, state: Installation): void {
   try {
+    if (ownValue(prototype, "render") === state.patchedRender) Object.defineProperty(prototype, "render", state.render);
+  } catch {}
+  try {
     if (ownValue(prototype, "getResultRenderer") === state.patchedResult) Object.defineProperty(prototype, "getResultRenderer", state.result);
   } catch {}
   try {
     if (ownValue(prototype, "getCallRenderer") === state.patchedCall) Object.defineProperty(prototype, "getCallRenderer", state.call);
   } catch {}
-  if (ownValue(prototype, "getCallRenderer") === state.patchedCall || ownValue(prototype, "getResultRenderer") === state.patchedResult) return;
+  if (ownValue(prototype, "getCallRenderer") === state.patchedCall || ownValue(prototype, "getResultRenderer") === state.patchedResult || ownValue(prototype, "render") === state.patchedRender) return;
   try { if (ownState(prototype) === state) delete prototype[STATE]; } catch {}
 }
 

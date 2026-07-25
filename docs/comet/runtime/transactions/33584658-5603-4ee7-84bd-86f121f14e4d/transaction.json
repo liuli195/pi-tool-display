@@ -1,0 +1,27 @@
+{
+  "schema": "comet.native.transaction.v2",
+  "id": "33584658-5603-4ee7-84bd-86f121f14e4d",
+  "kind": "archive",
+  "status": "committed",
+  "change": "tool-separator-user-border-colors",
+  "createdAt": "2026-07-25T17:02:21.637Z",
+  "preflightHash": "53b68af4cea9160659401dfee87b8d970a63650f36961a80fa404be2203a932d",
+  "operations": [
+    {
+      "id": "spec-1-transcript-decorations",
+      "type": "write",
+      "target": "specs/transcript-decorations/spec.md",
+      "staged": "runtime/transactions/33584658-5603-4ee7-84bd-86f121f14e4d/staged/specs/transcript-decorations/spec.md",
+      "expectedTargetHash": null,
+      "stagedHash": "72b75d600cbccef3edee05d4e8eb93d68d8f434b5eb3093312ad0825270f1f71"
+    },
+    {
+      "id": "archive-change",
+      "type": "move",
+      "source": "changes/tool-separator-user-border-colors",
+      "target": "archive/2026-07-25-tool-separator-user-border-colors",
+      "expectedSourceHash": "e43b2c14ac724800fce52d06c1126a2b1c865455f8f6137eb146bebaf25ac6a9",
+      "expectedTargetHash": null
+    }
+  ]
+}

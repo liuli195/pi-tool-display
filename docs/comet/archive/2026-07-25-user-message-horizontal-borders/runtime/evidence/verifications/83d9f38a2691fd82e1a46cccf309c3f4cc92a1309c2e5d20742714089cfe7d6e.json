@@ -1,0 +1,68 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "user-message-horizontal-borders",
+  "sourceRevision": 3,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "44f166ab15eb8a25225cb2e780eafc9de2e382fd5cab8c43491c6ca371800ab5",
+  "acceptanceCriteriaHash": "6e25fd9f11c477c6c82c0b9598074f576ab26f2f422294ed8eae1094def1980d",
+  "implementationScopeRef": "runtime/evidence/scopes/d0953db46902efd6a948bc0758c292ec2dd596d7d8c305d1c6a274ea2578254f.json",
+  "implementationScopeHash": "d0953db46902efd6a948bc0758c292ec2dd596d7d8c305d1c6a274ea2578254f",
+  "reportRef": "verification.md",
+  "reportHash": "dc714138b307e0b01bb0d9756ea5488de9c431071746d136a0530c1f2460a8f8",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "6e25fd9f11c477c6c82c0b9598074f576ab26f2f422294ed8eae1094def1980d",
+    "total": 4,
+    "evidenced": 4,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-168fdf59207b3273bab1220ba31144eec48f40a52c79039a63eaea31c3539c64",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "src/user-message-box-renderer.ts",
+          "tests/user-message-box.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-5c9d14504c76613846cf426c3a6fb512baa9cd0fd33f73bdae3bb4a5fe5238ad",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "tests/tool-ui-utils.test.ts",
+          "tests/user-message-box.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-87912565c2256688e9c9cf18111ca0780d283d6f146e588426b07e0d59a865fe",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "tests/user-message-box.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f9de8b5d9547357ffe5ad3d738d70eb0eaca073076fcad6d3fd8465dc2065a2c",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "src/user-message-box-renderer.ts",
+          "tests/tool-ui-utils.test.ts"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "a85476b7283d4de9d487b1ac4f364e9ae319a139e360b08763b42a34ead18b15"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "receiptRef": "runtime/evidence/check-receipts/c1436083456751d9db9ea4abdb859fb6b7e30ebd88b449c6751eaa95f4a9f6aa.json",
+  "createdAt": "2026-07-25T18:06:16.426Z",
+  "envelopeHash": "83d9f38a2691fd82e1a46cccf309c3f4cc92a1309c2e5d20742714089cfe7d6e"
+}

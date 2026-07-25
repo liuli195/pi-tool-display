@@ -8,6 +8,8 @@ export const BASH_COMMAND_MODES = ["full", "summary", "preview"] as const;
 export const BASH_ERROR_OUTPUT_MODES = ["full", "summary", "preview"] as const;
 export const DIFF_VIEW_MODES = ["auto", "split", "unified"] as const;
 export const DIFF_INDICATOR_MODES = ["bars", "classic", "none"] as const;
+export const TOOL_SEPARATOR_STYLES = ["dashed", "solid"] as const;
+export const DISPLAY_COLOR_TOKENS = ["border", "borderAccent", "borderMuted", "accent", "muted", "dim"] as const;
 
 export type ReadOutputMode = (typeof READ_OUTPUT_MODES)[number];
 export type SearchOutputMode = (typeof SEARCH_OUTPUT_MODES)[number];
@@ -19,6 +21,8 @@ export type BashCommandMode = (typeof BASH_COMMAND_MODES)[number];
 export type BashErrorOutputMode = (typeof BASH_ERROR_OUTPUT_MODES)[number];
 export type DiffViewMode = (typeof DIFF_VIEW_MODES)[number];
 export type DiffIndicatorMode = (typeof DIFF_INDICATOR_MODES)[number];
+export type ToolSeparatorStyle = (typeof TOOL_SEPARATOR_STYLES)[number];
+export type DisplayColorToken = (typeof DISPLAY_COLOR_TOKENS)[number];
 
 export const BUILT_IN_TOOL_DISPLAY_NAMES = [
 	"read",
@@ -55,6 +59,10 @@ export interface ToolDisplayConfig {
 	builtInToolDisplays: BuiltInToolDisplays;
 	customToolOverrides: Record<string, CustomToolOverrideConfig>;
 	enableNativeUserMessageBox: boolean;
+	enableToolSeparator: boolean;
+	toolSeparatorStyle: ToolSeparatorStyle;
+	toolSeparatorColor: DisplayColorToken;
+	userMessageBorderColor: DisplayColorToken;
 	readOutputMode: ReadOutputMode;
 	searchOutputMode: SearchOutputMode;
 	mcpOutputMode: McpOutputMode;
@@ -89,6 +97,10 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	},
 	customToolOverrides: {},
 	enableNativeUserMessageBox: true,
+	enableToolSeparator: true,
+	toolSeparatorStyle: "dashed",
+	toolSeparatorColor: "borderMuted",
+	userMessageBorderColor: "border",
 	readOutputMode: "hidden",
 	searchOutputMode: "hidden",
 	mcpOutputMode: "hidden",

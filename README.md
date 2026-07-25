@@ -43,7 +43,8 @@ This separation provides practical advantages:
 - **Progressive collapsed diff hints** that shorten automatically on small terminal widths instead of overflowing
 - **Hashline-anchor diff gutters** that preserve `LINE#HASH` labels from anchored read/edit output when those lines are rendered in diffs
 - **Three presets**: `opencode`, `balanced`, and `verbose`
-- **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
+- **Optional native user message box** with markdown-aware rendering, configurable Theme-token border color, and safer ANSI/background handling
+- **Configurable tool-row separators** for every tool, with dashed/solid styles and Theme-token colors
 - **Per-tool display toggles** that never change tool ownership or execution
 - **Explicit third-party rendering** through `customToolOverrides` or producer adapters; MCP-like tools are never auto-detected for styling
 - **Capability-aware RTK settings** that appear only when the optimizer is available
@@ -87,7 +88,8 @@ The modal exposes the day-to-day controls most people change regularly:
 - Bash output, command, and error modes with their line limits
 - diff layout and indicator modes
 - RTK compaction hints (when RTK is available)
-- native user message box toggle
+- native user message box toggle and border color
+- tool separator toggle, dashed/solid style, and color
 
 JSON-only controls include the extension master switch, debug logging, built-in and custom-tool selection, the fallback output mode for explicit MCP producer adapters, expanded preview limit, split-width threshold, collapsed logical diff-line limit, diff wrapping, and truncation hints.
 
@@ -181,6 +183,10 @@ The `.pi` directory name uses Pi's `CONFIG_DIR_NAME` constant and is not hardcod
 | `builtInToolDisplays` | object | all `true` | Enable display formatting for each built-in tool |
 | `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
 | `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
+| `enableToolSeparator` | boolean | `true` | Add one separator after every tool row |
+| `toolSeparatorStyle` | string | `"dashed"` | Separator style: `dashed` or `solid` |
+| `toolSeparatorColor` | string | `"borderMuted"` | Separator Theme token: `border`, `borderAccent`, `borderMuted`, `accent`, `muted`, or `dim` |
+| `userMessageBorderColor` | string | `"border"` | USER box border Theme token from the same supported set |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
 | `mcpOutputMode` | string | `"hidden"` | Fallback `hidden`, `summary`, or `preview` mode for explicitly registered MCP producer adapters; it does not discover or opt tools into rendering |
@@ -296,6 +302,10 @@ Notes:
     }
   },
   "enableNativeUserMessageBox": true,
+  "enableToolSeparator": true,
+  "toolSeparatorStyle": "dashed",
+  "toolSeparatorColor": "borderMuted",
+  "userMessageBorderColor": "border",
   "readOutputMode": "summary",
   "searchOutputMode": "count",
   "mcpOutputMode": "summary",
@@ -337,7 +347,11 @@ When content is available, `write` call summaries include line count and byte si
 
 ### Native user message box
 
-When enabled, user prompts render inside a bordered box using Pi's native user message component. The renderer preserves markdown content more safely and normalizes ANSI/background handling to avoid odd nested background artifacts.
+When enabled, user prompts render inside a bordered box using Pi's native user message component. The renderer preserves markdown content more safely and normalizes ANSI/background handling to avoid odd nested background artifacts. `userMessageBorderColor` selects one of six stable Pi Theme foreground tokens; the ` user ` title keeps its accent styling.
+
+### Tool separators
+
+When `enableToolSeparator` is enabled, every tool row—including partial updates and otherwise-native third-party tools—ends with one width-safe separator. `toolSeparatorStyle` selects `dashed` or `solid`, while `toolSeparatorColor` selects one of `border`, `borderAccent`, `borderMuted`, `accent`, `muted`, or `dim`. Separators are presentation-only and do not change tool renderers or execution.
 
 ## Capability detection
 

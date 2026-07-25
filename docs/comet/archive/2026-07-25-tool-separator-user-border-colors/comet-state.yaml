@@ -1,0 +1,22 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+name: tool-separator-user-border-colors
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: 6c0dd0d9e8f89b38b9d5985e3003d2db862c0495b8b711268582f8406fa151af
+spec_changes:
+  - capability: transcript-decorations
+    operation: create
+    source: specs/transcript-decorations/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/fe60f17711bb9fb316afba3dc27148450cf77245a6bf8baa40d91d813596b20a.json
+verification_evidence: runtime/evidence/verifications/d184308d5d7a507ee0fb75d69e27cec493d9fe95716a65c7bf17fd8fac672b3a.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-25
+run_id: ec709a49-d989-406f-831b-3477fd29d1b2

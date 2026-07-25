@@ -44,7 +44,8 @@ function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCap
 		`preset=${preset}`,
 		`builtIns={${builtInDisplaySummary(config)}}`,
 		`customOverrides=${customOverrides.filter(({ enabled }) => enabled).length}/${customOverrides.length}`,
-		`userBox=${toOnOff(config.enableNativeUserMessageBox)}`,
+		`userBox=${toOnOff(config.enableNativeUserMessageBox)}/${config.userMessageBorderColor}`,
+		`separator=${toOnOff(config.enableToolSeparator)}/${config.toolSeparatorStyle}/${config.toolSeparatorColor}`,
 		`read=${config.readOutputMode}`,
 		`search=${config.searchOutputMode}`,
 		`preview=${config.previewLines}`,
@@ -344,6 +345,54 @@ export function buildInspectorSettings(
 			searchTerms: ["diff", "indicator", "bars", "classic", "none", "marker"],
 		},
 		{
+			id: "enableToolSeparator",
+			label: "Tool separator",
+			currentValue: toOnOff(config.enableToolSeparator),
+			values: ["on", "off"],
+			inspectorTitle: "Tool Separator",
+			inspectorSummary: ["Adds one separator after every tool row, including partial updates and otherwise-native third-party tools."],
+			inspectorOptions: ["on — separate every tool row", "off — preserve tool rows without separators"],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, ["This is presentation-only and does not modify tool execution or results."]),
+			inspectorPath: configPath,
+			searchTerms: ["tool", "separator", "divider", "line"],
+		},
+		{
+			id: "toolSeparatorStyle",
+			label: "Tool separator style",
+			currentValue: config.toolSeparatorStyle,
+			values: ["dashed", "solid"],
+			inspectorTitle: "Tool Separator Style",
+			inspectorSummary: ["Selects a dashed or solid horizontal separator."],
+			inspectorOptions: ["dashed — subtle segmented line", "solid — continuous line"],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, ["The line is width-safe and rendered with the current Pi Theme."]),
+			inspectorPath: configPath,
+			searchTerms: ["tool", "separator", "dashed", "solid", "style"],
+		},
+		{
+			id: "toolSeparatorColor",
+			label: "Tool separator color",
+			currentValue: config.toolSeparatorColor,
+			values: ["border", "borderAccent", "borderMuted", "accent", "muted", "dim"],
+			inspectorTitle: "Tool Separator Color",
+			inspectorSummary: ["Selects one of six stable Pi Theme foreground tokens."],
+			inspectorOptions: ["border/borderAccent/borderMuted — border semantics", "accent/muted/dim — emphasis levels"],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, ["Direct Hex, RGB, and ANSI colors are intentionally unsupported."]),
+			inspectorPath: configPath,
+			searchTerms: ["tool", "separator", "color", "theme"],
+		},
+		{
+			id: "userMessageBorderColor",
+			label: "User message border color",
+			currentValue: config.userMessageBorderColor,
+			values: ["border", "borderAccent", "borderMuted", "accent", "muted", "dim"],
+			inspectorTitle: "User Message Border Color",
+			inspectorSummary: ["Changes only the USER box border; the user title keeps its accent styling."],
+			inspectorOptions: ["border tokens — structural colors", "accent/muted/dim — stronger or softer emphasis"],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, ["The current Theme resolves the selected token on every redraw."]),
+			inspectorPath: configPath,
+			searchTerms: ["user", "message", "border", "color", "theme"],
+		},
+		{
 			id: "enableNativeUserMessageBox",
 			label: "Native user message box",
 			currentValue: toOnOff(config.enableNativeUserMessageBox),
@@ -403,6 +452,14 @@ export function createSettingMutation(
 		}
 		case "enableNativeUserMessageBox":
 			return { type: "patch", patch: { enableNativeUserMessageBox: value === "on" } };
+		case "enableToolSeparator":
+			return { type: "patch", patch: { enableToolSeparator: value === "on" } };
+		case "toolSeparatorStyle":
+			return { type: "patch", patch: { toolSeparatorStyle: value as ToolDisplayConfig["toolSeparatorStyle"] } };
+		case "toolSeparatorColor":
+			return { type: "patch", patch: { toolSeparatorColor: value as ToolDisplayConfig["toolSeparatorColor"] } };
+		case "userMessageBorderColor":
+			return { type: "patch", patch: { userMessageBorderColor: value as ToolDisplayConfig["userMessageBorderColor"] } };
 		case "readOutputMode":
 			return { type: "patch", patch: { readOutputMode: value as ToolDisplayConfig["readOutputMode"] } };
 		case "searchOutputMode":

@@ -40,9 +40,11 @@ test("Bash Host Adapter changes only renderer selection and does not stack on re
   const originalCall = function () { return function () { return { render: () => ["native call"] }; }; };
   const originalResult = function () { return function () { return { render: () => ["native result"] }; }; };
   const host: any = {};
+  const originalRender = function () { return ["native row"]; };
   Object.defineProperties(host, {
     getCallRenderer: { value: originalCall, writable: true, configurable: true },
     getResultRenderer: { value: originalResult, writable: true, configurable: true },
+    render: { value: originalRender, writable: true, configurable: true },
   });
   const definition = Object.freeze({ name: "bash", execute() {}, marker: {} });
   const row = { toolName: "bash", args: { command: "echo ok" }, toolDefinition: definition, builtInToolDefinition: definition };
@@ -57,6 +59,7 @@ test("Bash Host Adapter changes only renderer selection and does not stack on re
   second.dispose();
   assert.strictEqual(host.getCallRenderer, originalCall);
   assert.strictEqual(host.getResultRenderer, originalResult);
+  assert.strictEqual(host.render, originalRender);
   first.dispose();
 });
 

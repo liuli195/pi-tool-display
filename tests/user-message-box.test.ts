@@ -690,8 +690,8 @@ test("nativeRender width exactly 8 triggers native rendering", () => {
   };
   patchNativeUserMessagePrototype(prototype, () => undefined, () => true);
   const rendered = prototype.render(8);
-  assert.ok(rendered.some((line) => line.includes("╭")), "should have top border");
-  assert.ok(rendered.some((line) => line.includes("╰")), "should have bottom border");
+  assert.equal(rendered[1], "─ user ─");
+  assert.equal(rendered.at(-1), "────────");
 });
 
 test("nativeRender width 0 bypasses native rendering", () => {
@@ -754,9 +754,11 @@ test("nativeRender produces top margin spacer and border when enabled and width 
   patchNativeUserMessagePrototype(prototype, () => undefined, () => true);
   const rendered = prototype.render(40);
   assert.equal(rendered[0], "", "first line is top margin spacer");
-  assert.ok(rendered[1]?.includes("╭"), "second line has top border");
-  assert.ok(rendered.some((l) => l.includes("│")), "has content border lines");
-  assert.ok(rendered.some((l) => l.includes("╰")), "has bottom border");
+  assert.match(rendered[1] ?? "", /^─ user ─/);
+  assert.equal(rendered[2]?.trim(), "", "top padding stays inside the border");
+  assert.equal(rendered[3]?.startsWith(" "), true, "content has one-column indent");
+  assert.equal(rendered.at(-2)?.trim(), "", "bottom padding stays inside the border");
+  assert.equal(rendered.at(-1), "─".repeat(40));
 });
 
 test("nativeRender prototype without render function does not crash", () => {
@@ -779,8 +781,8 @@ test("nativeRender invokes original for empty body content", () => {
   };
   patchNativeUserMessagePrototype(prototype, () => undefined, () => true);
   prototype.render(8);
-  // original called with content-width = max(1, 8-2-1*2) = max(1, 4) = 4
-  assert.equal(calledWith, 4);
+  // One column is reserved for content indentation.
+  assert.equal(calledWith, 7);
 });
 
 // ===========================================================================
@@ -935,23 +937,49 @@ test("nativeRender applies theme coloring via fg and bold", () => {
   const titleLine = rendered.find((l) => l.includes("user")) ?? "";
   assert.ok(titleLine.includes("* user *") || titleLine.includes("[accent]"));
   // Border should be border-colored
-  const topBorder = rendered.find((l) => l.includes("╭")) ?? "";
-  assert.ok(topBorder.includes("[border]"));
+  const topBorder = rendered.find((l) => l.includes("user")) ?? "";
+  assert.ok(topBorder.includes("[border]─"));
 });
 
-test("nativeRender builds correct box structure with all required line types", () => {
+test("nativeRender uses configured border token and invalidates cached output when it changes", () => {
+  let borderColor: "border" | "accent" = "border";
+  const prototype: PatchableUserMessagePrototype = { render: () => ["hello"] };
+  const theme = { fg: (color: string, text: string) => `[${color}]${text}` };
+  patchNativeUserMessagePrototype(prototype, () => theme, () => true, () => borderColor);
+
+  const first = prototype.render(20).join("\n");
+  assert.match(first, /\[border\]─/);
+  borderColor = "accent";
+  const second = prototype.render(20).join("\n");
+  assert.match(second, /\[accent\]─/);
+  assert.notEqual(second, first);
+});
+
+test("nativeRender fails open when decoration state lookup throws", () => {
+  for (const failingGetter of ["enabled", "theme", "border"] as const) {
+    const prototype: PatchableUserMessagePrototype = { render: () => ["native user row"] };
+    patchNativeUserMessagePrototype(
+      prototype,
+      () => { if (failingGetter === "theme") throw new Error("theme failed"); return undefined; },
+      () => { if (failingGetter === "enabled") throw new Error("config failed"); return true; },
+      () => { if (failingGetter === "border") throw new Error("config failed"); return "border"; },
+    );
+    assert.deepEqual(prototype.render(20), ["native user row"]);
+  }
+});
+
+test("nativeRender builds two equal-width horizontal borders without box glyphs", () => {
   const prototype: PatchableUserMessagePrototype = {
     render: () => ["line one", "line two"],
   };
   patchNativeUserMessagePrototype(prototype, () => undefined, () => true);
 
   const rendered = prototype.render(30);
-  // Structure: [spacer, top-border, padding, content-line, padding, content-line, padding, bottom-border]
-  // With vertical padding of 1, each content line gets padding on both sides:
-  // But actually, addUserMessageVerticalPadding adds 1 padding before and after ALL content:
-  // So: spacer(blank), top-border, blank, content1, content2, blank, bottom-border
-  // = 7 lines total
-  assert.ok(rendered.length >= 5);
-  assert.equal(rendered.filter((l) => l.includes("│")).length, 4); // 2 content + 2 padding
-  assert.equal(rendered.filter((l) => l.includes("╭") || l.includes("╰")).length, 2);
+  assert.equal(rendered.length, 7);
+  assert.equal(rendered[1], `─ user ${"─".repeat(23)}`);
+  assert.equal(rendered[2]?.trim(), "");
+  assert.equal(rendered.at(-2)?.trim(), "");
+  assert.equal(rendered.at(-1), "─".repeat(30));
+  assert.ok(rendered.slice(2, -1).every((line) => line.startsWith(" ")));
+  assert.ok(rendered.every((line) => !/[╭╮╰╯│]/.test(line)));
 });

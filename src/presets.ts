@@ -64,6 +64,10 @@ function configsEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
 		builtInToolDisplaysEqual(a, b) &&
 		customToolOverridesEqual(a, b) &&
 		a.enableNativeUserMessageBox === b.enableNativeUserMessageBox &&
+		a.enableToolSeparator === b.enableToolSeparator &&
+		a.toolSeparatorStyle === b.toolSeparatorStyle &&
+		a.toolSeparatorColor === b.toolSeparatorColor &&
+		a.userMessageBorderColor === b.userMessageBorderColor &&
 		a.readOutputMode === b.readOutputMode &&
 		a.searchOutputMode === b.searchOutputMode &&
 		a.mcpOutputMode === b.mcpOutputMode &&

@@ -25,6 +25,10 @@
     }
   },
   "enableNativeUserMessageBox": true,
+  "enableToolSeparator": true,
+  "toolSeparatorStyle": "dashed",
+  "toolSeparatorColor": "borderMuted",
+  "userMessageBorderColor": "border",
   "readOutputMode": "hidden",
   "searchOutputMode": "hidden",
   "mcpOutputMode": "hidden",
