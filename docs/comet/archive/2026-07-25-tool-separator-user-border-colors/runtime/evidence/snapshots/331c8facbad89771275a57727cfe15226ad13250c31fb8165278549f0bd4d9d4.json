@@ -1,0 +1,1065 @@
+{
+  "schema": "comet.native.content-snapshot-projection.v1",
+  "origin": "explicit",
+  "capture": {
+    "provider": "git"
+  },
+  "complete": true,
+  "limits": {
+    "maxFiles": 10000,
+    "maxFileBytes": 268435456,
+    "maxTotalBytes": 268435456,
+    "maxManifestBytes": 1048576,
+    "maxDurationMs": 60000
+  },
+  "policy": {
+    "schema": "comet.native.snapshot-policy.v1",
+    "include": [
+      "**/*"
+    ],
+    "exclude": [],
+    "hash": "cc34dce5671bc1aefad09b658911a71d0434a26a1fbb4d8ba10de57b316f1f2f"
+  },
+  "entries": [
+    {
+      "path": ".agents/skills/comet-any/SKILL.md",
+      "hash": "49d907f2813e5912159022d0c58d5db9c43843f70f655b527cd4026cea924245",
+      "size": 7986,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/authored-zone-example.md",
+      "hash": "440f1e4ef3f9ba2404110ed0a220492b0c902e5f4ed8a0346be69eedaf2e6a08",
+      "size": 8362,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/authoring-subagents.md",
+      "hash": "6fbbee8ceb9c3fd7844e9d9f9336f8cbc1e3d79b7f318120498d23eb35512b11",
+      "size": 6534,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/bundle-authoring.md",
+      "hash": "5c3199221e608b20f70e4ebc06c44b1a82b848af3740c069aa1c8a29ee77e500",
+      "size": 6432,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/eval-provider.md",
+      "hash": "5998c9588c18dc52413f73a7b2ed50d28081e682f2a28b4ba44018c448d61e5b",
+      "size": 3218,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/subagents/pause-points-author.md",
+      "hash": "543a34062573b5e6f8c47e37650cb450cf81edde4c618ef346f4fc079a076f75",
+      "size": 4515,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/subagents/reference-author.md",
+      "hash": "6ded3e85ef29003236a78d82bed92100f851e1928857bc7ae29c2258ff7cc733",
+      "size": 3273,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/subagents/script-author.md",
+      "hash": "c54904e095445b02ba8ef0e6ca21253aa980193a7feaf7c715b1eea85550b4aa",
+      "size": 3785,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/subagents/skill-core-author.md",
+      "hash": "84ef68efec0e7b708f09ce5988575a087b63089b38849ef394c70ed3db66f895",
+      "size": 7302,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/subagents/skill-reviewer.md",
+      "hash": "9e3fd0743297f1bc8d196ffcdb1704c4bdfc6c08ff14b2a05b7340c6b1c7f013",
+      "size": 6777,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-any/reference/subagents/workflow-entry-author.md",
+      "hash": "cef96c63ec69966719c7a3059abf39a358bd610ba75153b98978ab08fdc4083f",
+      "size": 6427,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-native/SKILL.md",
+      "hash": "7182d95ab2ee74916fc9d666339f5d40b7027002130546334a77327361bfa87a",
+      "size": 23620,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-native/reference/artifacts.md",
+      "hash": "3342cf0e73212a28408b193cb65fb0e3ea3604eea397ca2d38b3653f8244e079",
+      "size": 14312,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-native/reference/commands.md",
+      "hash": "f54caf112db3203e1b98511c915036e961c7cc5107e18e72a0599516d43244e6",
+      "size": 8938,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-native/reference/recovery.md",
+      "hash": "eeee898d3b8c6a32c1e9bb0ff4179015b28045f169c51c9d396ba7037720b641",
+      "size": 12069,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-native/scripts/comet-native-hook-guard.mjs",
+      "hash": "819de5cb6b2e32e79e6978988b50083a3faf2247683ff09d57d335883752c19d",
+      "size": 145,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "hash": "ea4476965f04a81dc1c4d7868c90bae4ca91d98cebabf3d684d5ce0f3441649d",
+      "size": 1145894,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet/SKILL.md",
+      "hash": "7a7262b67bc15afcd14d246243db9e6e7713988bbc8be6bee06f6f610b549329",
+      "size": 1343,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet/scripts/comet-entry-runtime.mjs",
+      "hash": "d9f03607329ec1d58b668d86d5e175b589b401e92d294d68101aaf1afbb7b6c9",
+      "size": 289020,
+      "type": "file"
+    },
+    {
+      "path": ".agents/skills/comet/scripts/comet-hook-router.mjs",
+      "hash": "ef8f37e3267c8753bf095c1c95718e425a69102884f6cebefe066acd0d9b3d1b",
+      "size": 386166,
+      "type": "file"
+    },
+    {
+      "path": ".build-and-verify/.gitignore",
+      "hash": "8099da74e39f08820a69e54c1dd2decd60126e3652540585a659c7803f1c5ae5",
+      "size": 53,
+      "type": "file"
+    },
+    {
+      "path": ".build-and-verify/config.json",
+      "hash": "4c883ad0592e1256b8d9bf93a26e464807314f4ff025cd7d84ce226a821fa78a",
+      "size": 1685,
+      "type": "file"
+    },
+    {
+      "path": ".build-and-verify/runtime/build_and_verify.py",
+      "hash": "5420d33a50c2cc9cbde1a96b15714bb95acf153a2b21e423b6955ff4d96b9a9e",
+      "size": 10252,
+      "type": "file"
+    },
+    {
+      "path": ".build-and-verify/runtime/build_and_verify_runner.py",
+      "hash": "534dc5754ca112c3b356c99f4b74eca426930e57646693d5b47fceb5a40aa3cc",
+      "size": 33748,
+      "type": "file"
+    },
+    {
+      "path": ".build-and-verify/runtime/version.json",
+      "hash": "557e7e4792d8874442e8007fa70959298ff7dc23dfa6b6fe132dbcd40bd07bbc",
+      "size": 101,
+      "type": "file"
+    },
+    {
+      "path": ".claude/rules/comet-workflow-guard.md",
+      "hash": "d670067cd1c1573b4c655de3ec553252f20126d3dba3d187a78717c2c87cb3c8",
+      "size": 2196,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/SKILL.md",
+      "hash": "49d907f2813e5912159022d0c58d5db9c43843f70f655b527cd4026cea924245",
+      "size": 7986,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/authored-zone-example.md",
+      "hash": "440f1e4ef3f9ba2404110ed0a220492b0c902e5f4ed8a0346be69eedaf2e6a08",
+      "size": 8362,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/authoring-subagents.md",
+      "hash": "6fbbee8ceb9c3fd7844e9d9f9336f8cbc1e3d79b7f318120498d23eb35512b11",
+      "size": 6534,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/bundle-authoring.md",
+      "hash": "5c3199221e608b20f70e4ebc06c44b1a82b848af3740c069aa1c8a29ee77e500",
+      "size": 6432,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/eval-provider.md",
+      "hash": "5998c9588c18dc52413f73a7b2ed50d28081e682f2a28b4ba44018c448d61e5b",
+      "size": 3218,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/subagents/pause-points-author.md",
+      "hash": "543a34062573b5e6f8c47e37650cb450cf81edde4c618ef346f4fc079a076f75",
+      "size": 4515,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/subagents/reference-author.md",
+      "hash": "6ded3e85ef29003236a78d82bed92100f851e1928857bc7ae29c2258ff7cc733",
+      "size": 3273,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/subagents/script-author.md",
+      "hash": "c54904e095445b02ba8ef0e6ca21253aa980193a7feaf7c715b1eea85550b4aa",
+      "size": 3785,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/subagents/skill-core-author.md",
+      "hash": "84ef68efec0e7b708f09ce5988575a087b63089b38849ef394c70ed3db66f895",
+      "size": 7302,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/subagents/skill-reviewer.md",
+      "hash": "9e3fd0743297f1bc8d196ffcdb1704c4bdfc6c08ff14b2a05b7340c6b1c7f013",
+      "size": 6777,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-any/reference/subagents/workflow-entry-author.md",
+      "hash": "cef96c63ec69966719c7a3059abf39a358bd610ba75153b98978ab08fdc4083f",
+      "size": 6427,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-native/SKILL.md",
+      "hash": "7182d95ab2ee74916fc9d666339f5d40b7027002130546334a77327361bfa87a",
+      "size": 23620,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-native/reference/artifacts.md",
+      "hash": "3342cf0e73212a28408b193cb65fb0e3ea3604eea397ca2d38b3653f8244e079",
+      "size": 14312,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-native/reference/commands.md",
+      "hash": "f54caf112db3203e1b98511c915036e961c7cc5107e18e72a0599516d43244e6",
+      "size": 8938,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-native/reference/recovery.md",
+      "hash": "eeee898d3b8c6a32c1e9bb0ff4179015b28045f169c51c9d396ba7037720b641",
+      "size": 12069,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-native/scripts/comet-native-hook-guard.mjs",
+      "hash": "819de5cb6b2e32e79e6978988b50083a3faf2247683ff09d57d335883752c19d",
+      "size": 145,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "hash": "ea4476965f04a81dc1c4d7868c90bae4ca91d98cebabf3d684d5ce0f3441649d",
+      "size": 1145894,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet/SKILL.md",
+      "hash": "7a7262b67bc15afcd14d246243db9e6e7713988bbc8be6bee06f6f610b549329",
+      "size": 1343,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet/scripts/comet-entry-runtime.mjs",
+      "hash": "d9f03607329ec1d58b668d86d5e175b589b401e92d294d68101aaf1afbb7b6c9",
+      "size": 289020,
+      "type": "file"
+    },
+    {
+      "path": ".claude/skills/comet/scripts/comet-hook-router.mjs",
+      "hash": "ef8f37e3267c8753bf095c1c95718e425a69102884f6cebefe066acd0d9b3d1b",
+      "size": 386166,
+      "type": "file"
+    },
+    {
+      "path": ".codex/hooks.json",
+      "hash": "48efc47ae0d4c8c2f4fb72d0dcd4f7923dd03118431d378b104abf6c83be96eb",
+      "size": 365,
+      "type": "file"
+    },
+    {
+      "path": ".codex/rules/comet-workflow-guard.md",
+      "hash": "d670067cd1c1573b4c655de3ec553252f20126d3dba3d187a78717c2c87cb3c8",
+      "size": 2196,
+      "type": "file"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "hash": "8f627bd4e36ad20a458512e5387925683862ef249206cdae819cc335ecfff2d8",
+      "size": 735,
+      "type": "file"
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "hash": "74cb969e77d1c727e09a58f8ae63a4a7efd8eacfd0203c21b743144b11128fed",
+      "size": 205,
+      "type": "file"
+    },
+    {
+      "path": ".github/workflows/full-verify.yml",
+      "hash": "d9467ce4810eb4dae0e2768708b4c2a148eab5bf4f565342788e1e01eefd221e",
+      "size": 438,
+      "type": "file"
+    },
+    {
+      "path": ".gitignore",
+      "hash": "6ae73835070aabac11d142906e30cc1a63001d716d05d5aa04fe6b70679b7245",
+      "size": 112,
+      "type": "file"
+    },
+    {
+      "path": ".pi/extensions/comet-commands.ts",
+      "hash": "7345dac71954190f666399284eb770f08029b05cb7c52325592d4a75374f32a1",
+      "size": 449,
+      "type": "file"
+    },
+    {
+      "path": ".pi/settings.json",
+      "hash": "f7ed220533c9674c09372016d468b15a1687d749c4ccb35d6cac521cd6ea8cab",
+      "size": 153,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/SKILL.md",
+      "hash": "49d907f2813e5912159022d0c58d5db9c43843f70f655b527cd4026cea924245",
+      "size": 7986,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/authored-zone-example.md",
+      "hash": "440f1e4ef3f9ba2404110ed0a220492b0c902e5f4ed8a0346be69eedaf2e6a08",
+      "size": 8362,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/authoring-subagents.md",
+      "hash": "6fbbee8ceb9c3fd7844e9d9f9336f8cbc1e3d79b7f318120498d23eb35512b11",
+      "size": 6534,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/bundle-authoring.md",
+      "hash": "5c3199221e608b20f70e4ebc06c44b1a82b848af3740c069aa1c8a29ee77e500",
+      "size": 6432,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/eval-provider.md",
+      "hash": "5998c9588c18dc52413f73a7b2ed50d28081e682f2a28b4ba44018c448d61e5b",
+      "size": 3218,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/subagents/pause-points-author.md",
+      "hash": "543a34062573b5e6f8c47e37650cb450cf81edde4c618ef346f4fc079a076f75",
+      "size": 4515,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/subagents/reference-author.md",
+      "hash": "6ded3e85ef29003236a78d82bed92100f851e1928857bc7ae29c2258ff7cc733",
+      "size": 3273,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/subagents/script-author.md",
+      "hash": "c54904e095445b02ba8ef0e6ca21253aa980193a7feaf7c715b1eea85550b4aa",
+      "size": 3785,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/subagents/skill-core-author.md",
+      "hash": "84ef68efec0e7b708f09ce5988575a087b63089b38849ef394c70ed3db66f895",
+      "size": 7302,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/subagents/skill-reviewer.md",
+      "hash": "9e3fd0743297f1bc8d196ffcdb1704c4bdfc6c08ff14b2a05b7340c6b1c7f013",
+      "size": 6777,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-any/reference/subagents/workflow-entry-author.md",
+      "hash": "cef96c63ec69966719c7a3059abf39a358bd610ba75153b98978ab08fdc4083f",
+      "size": 6427,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-native/SKILL.md",
+      "hash": "7182d95ab2ee74916fc9d666339f5d40b7027002130546334a77327361bfa87a",
+      "size": 23620,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-native/reference/artifacts.md",
+      "hash": "3342cf0e73212a28408b193cb65fb0e3ea3604eea397ca2d38b3653f8244e079",
+      "size": 14312,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-native/reference/commands.md",
+      "hash": "f54caf112db3203e1b98511c915036e961c7cc5107e18e72a0599516d43244e6",
+      "size": 8938,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-native/reference/recovery.md",
+      "hash": "eeee898d3b8c6a32c1e9bb0ff4179015b28045f169c51c9d396ba7037720b641",
+      "size": 12069,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-native/scripts/comet-native-hook-guard.mjs",
+      "hash": "819de5cb6b2e32e79e6978988b50083a3faf2247683ff09d57d335883752c19d",
+      "size": 145,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "hash": "ea4476965f04a81dc1c4d7868c90bae4ca91d98cebabf3d684d5ce0f3441649d",
+      "size": 1145894,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet/SKILL.md",
+      "hash": "7a7262b67bc15afcd14d246243db9e6e7713988bbc8be6bee06f6f610b549329",
+      "size": 1343,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet/scripts/comet-entry-runtime.mjs",
+      "hash": "d9f03607329ec1d58b668d86d5e175b589b401e92d294d68101aaf1afbb7b6c9",
+      "size": 289020,
+      "type": "file"
+    },
+    {
+      "path": ".pi/skills/comet/scripts/comet-hook-router.mjs",
+      "hash": "ef8f37e3267c8753bf095c1c95718e425a69102884f6cebefe066acd0d9b3d1b",
+      "size": 386166,
+      "type": "file"
+    },
+    {
+      "path": ".pr-flow/.gitignore",
+      "hash": "4051c7144f1cd7d4c9b3a1030b169c123b61b2e8255df3edc6ebc80ea01f65db",
+      "size": 27,
+      "type": "file"
+    },
+    {
+      "path": ".pr-flow/config.yaml",
+      "hash": "08a74fa21db9964abafae37b2ba8bcffbf35a6d475f520e077116b11736b470d",
+      "size": 1347,
+      "type": "file"
+    },
+    {
+      "path": ".pr-flow/pr-template.md",
+      "hash": "3c73ec71f83bd5cc7b340f4d2dc7721e9bf9fb6f80321769348d19cf8e30fa28",
+      "size": 274,
+      "type": "file"
+    },
+    {
+      "path": "AGENTS.md",
+      "hash": "fd2e40b100465e2980ad61d47f1dbf7a066321160ffd6707d96c264787f33052",
+      "size": 1824,
+      "type": "file"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "hash": "a7e756b75af4630c9abcef5126f632e9a6a3f2503ba810ce5f6f53c3f3127950",
+      "size": 862,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "hash": "14eaedc42cd9bcc88e9b88dd1d0d43361a42c145ffea9d371ed93c9521ffadaf",
+      "size": 9,
+      "type": "file"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "hash": "0061c376ab904534d940046af6c39f0a072f399e0bc3d8fc2ece39ee534ebddb",
+      "size": 428,
+      "type": "file"
+    },
+    {
+      "path": "LICENSE",
+      "hash": "e5d0d5d60fb57175cf1b35f8a85d68c50eefc20aefc1bcf8c655a34b0ede3a38",
+      "size": 1114,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "hash": "8d25cb7b07351c7ccd32c8a7ea17630fca7d270a500d18c0a9ba833d99d7cdf9",
+      "size": 24686,
+      "type": "file"
+    },
+    {
+      "path": "RELEASE_NOTES.md",
+      "hash": "d771d2101d80c0a628aed11b06ce1a25d887eb4684f182aceb98e352412347c8",
+      "size": 1782,
+      "type": "file"
+    },
+    {
+      "path": "SECURITY.md",
+      "hash": "25b7dea99a19db0923c395527ea99ba3f3e08fb7d26640892d4cbd4640926e19",
+      "size": 404,
+      "type": "file"
+    },
+    {
+      "path": "config/config.example.json",
+      "hash": "03349a5cfb25490bb18d53ae3b2b58f7b9119caee009da783003c2e1913072b0",
+      "size": 1293,
+      "type": "file"
+    },
+    {
+      "path": "docs/agents/domain.md",
+      "hash": "4652718c11d3aca7c0efd6679e1960d0cca4b30c402ddfdb8042d3a0b905facf",
+      "size": 795,
+      "type": "file"
+    },
+    {
+      "path": "docs/agents/issue-tracker.md",
+      "hash": "68715d7b08c2d5c88038180fbf8c40743339c86e3f6752a3d88eaf37c13fcac1",
+      "size": 3790,
+      "type": "file"
+    },
+    {
+      "path": "docs/agents/triage-labels.md",
+      "hash": "493d08d7a8007d3604cdf64d45717045034a5037c9e9917bae1ad9340fad75b8",
+      "size": 1060,
+      "type": "file"
+    },
+    {
+      "path": "docs/ownership-verification.md",
+      "hash": "260157b144bfdf86c5bf47c39da9920569a3d479763059706a48a852e3c5f47f",
+      "size": 1408,
+      "type": "file"
+    },
+    {
+      "path": "docs/research/pi-history-rendering-root-cause.md",
+      "hash": "483b50c75a6e3c360f7a14b477a714776027229fb8eee27b907c7c5ffb30bc2c",
+      "size": 27649,
+      "type": "file"
+    },
+    {
+      "path": "docs/research/upstream-feedback-survivors-2026-07-24.md",
+      "hash": "3b62d473d1cfd845cdc81cd99e4c9049c95e49e869455279616876f4efc11a41",
+      "size": 36877,
+      "type": "file"
+    },
+    {
+      "path": "index.ts",
+      "hash": "58c57faeb36485785664371b225d2ceab70e330f195a7bcd0e572d1f196c1298",
+      "size": 92,
+      "type": "file"
+    },
+    {
+      "path": "package-lock.json",
+      "hash": "699caf6b22c80b573b75045195110f57a074e527b0dfbaf237b9a0f4e043a2d8",
+      "size": 194064,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "hash": "195c163fb7beac254b0cf673bd7c3c3b1e7a41804b64b2adbbbaa3578f74ca99",
+      "size": 1981,
+      "type": "file"
+    },
+    {
+      "path": "src/agent-dir.ts",
+      "hash": "f75d7bc22cc72982a8ec55875662f9748937ea9f7f7041c5cc39da40ccd86db2",
+      "size": 828,
+      "type": "file"
+    },
+    {
+      "path": "src/ansi-utils.ts",
+      "hash": "de0498a94b0dac43ebbe3c19e9c2fbab4a586313fbab09108c24ca4a503a4db3",
+      "size": 3169,
+      "type": "file"
+    },
+    {
+      "path": "src/bash-display.ts",
+      "hash": "1e6e3feb0001ff839f71cb8914ca4180b226b237ed67ac56532b789891c1a349",
+      "size": 3863,
+      "type": "file"
+    },
+    {
+      "path": "src/capabilities.ts",
+      "hash": "691627d2632487809567e4d036713bd322e690eaac7849d2869a4597b35e4339",
+      "size": 2285,
+      "type": "file"
+    },
+    {
+      "path": "src/config-command.ts",
+      "hash": "06772612f3777d9f4245b8546ea5d4dcf8276216fa6731ad099899324981a4bb",
+      "size": 1088,
+      "type": "file"
+    },
+    {
+      "path": "src/config-modal.ts",
+      "hash": "0bde1e6fb24f5b65fbb186350659e23261e43354241773304f5d277529d9f74f",
+      "size": 26508,
+      "type": "file"
+    },
+    {
+      "path": "src/config-store.ts",
+      "hash": "32d22db836529cc6ea8a3c8c0283b24b8de04bfde4b6a7bc7b6fd4ac572dcc5b",
+      "size": 14376,
+      "type": "file"
+    },
+    {
+      "path": "src/debug-logger.ts",
+      "hash": "9a6cdc61a8cd973f0a26cbcad70c048396261dbd5345b2d641989b3fcac687f0",
+      "size": 4785,
+      "type": "file"
+    },
+    {
+      "path": "src/diff-presentation.ts",
+      "hash": "c56e11ecfba3d423d89d0fb14db9cda38647217b6cf03de621434902fae1bb46",
+      "size": 2089,
+      "type": "file"
+    },
+    {
+      "path": "src/diff-renderer.ts",
+      "hash": "8104c7e0a5d854f9a9facf17a6e6ee1a1b4495da99a54c50fe2c190c93411e6e",
+      "size": 65272,
+      "type": "file"
+    },
+    {
+      "path": "src/disposable.ts",
+      "hash": "3fb878fae79f89dac4c17980f9839ff697d609dacec35976bdae86b394c10ab7",
+      "size": 1184,
+      "type": "file"
+    },
+    {
+      "path": "src/index.ts",
+      "hash": "1ea02a113038ddfe8e37a77cf63b215ad6139db905a100cce9f9e7e08793877e",
+      "size": 6367,
+      "type": "file"
+    },
+    {
+      "path": "src/line-width-safety.ts",
+      "hash": "6741f18e8e8734391bba32594900e24e12d11d2c438598432f1219da5378c282",
+      "size": 2557,
+      "type": "file"
+    },
+    {
+      "path": "src/modal-icons.ts",
+      "hash": "fcaf80d13c529f6ef7f0a46074dfe13fd5d3a57dc95dd51669cdaa552b2ea070",
+      "size": 1342,
+      "type": "file"
+    },
+    {
+      "path": "src/pending-diff-preview.ts",
+      "hash": "0f0c7559848041c8cc254b3111fe3ebdde797ff19127b895b855a4ffba468a5b",
+      "size": 1159,
+      "type": "file"
+    },
+    {
+      "path": "src/pi-host-adapter.ts",
+      "hash": "86fb9db421552730ddfee44e77c4ba961601979e9b634e0c59a8b391651e3a2b",
+      "size": 8425,
+      "type": "file"
+    },
+    {
+      "path": "src/presets.ts",
+      "hash": "e8a7e077f0af83b3cd233e1a6932fa96ade50fcf1c634b0419ff40d5cd17919c",
+      "size": 4457,
+      "type": "file"
+    },
+    {
+      "path": "src/render-utils.ts",
+      "hash": "ca1ef5202083e8144e0f5c65c5ae0b2b45dc61d14b98aaeb5a51cc574ad10ce9",
+      "size": 4230,
+      "type": "file"
+    },
+    {
+      "path": "src/renderer-catalog.ts",
+      "hash": "fa7377c667a5ca4080f304aefdde95c5ecc91976382e80ce5ff0e85676a2216b",
+      "size": 14322,
+      "type": "file"
+    },
+    {
+      "path": "src/settings-inspector-modal.ts",
+      "hash": "017bd89087ca00c6db3bca60186358e50bddcaa0002ecf974ed71239af1e9a65",
+      "size": 16246,
+      "type": "file"
+    },
+    {
+      "path": "src/tool-display-resolver.ts",
+      "hash": "a6017b5503f332c207411f6c4f2e9100c1e376707a57e93168fc03671e278797",
+      "size": 4059,
+      "type": "file"
+    },
+    {
+      "path": "src/tool-display-runtime.ts",
+      "hash": "840f47d695e213b17a9e62438601715eb3ef490569742337b1781a66e5594e6d",
+      "size": 1001,
+      "type": "file"
+    },
+    {
+      "path": "src/tool-execution-patch.ts",
+      "hash": "81b265e5a61e79151056d4a65725fd0698657e8d1c45cd0031ce34124314a790",
+      "size": 1232,
+      "type": "file"
+    },
+    {
+      "path": "src/tool-metadata.ts",
+      "hash": "fcce3cae6139117a4c8e3f64f54024bc1c0cea2bb3381d5e2adf290b923fea90",
+      "size": 531,
+      "type": "file"
+    },
+    {
+      "path": "src/tool-overrides.ts",
+      "hash": "fb77f929b78dc1c80f474bcb09a11d9175448a174926bab325cc46472b5888c2",
+      "size": 35399,
+      "type": "file"
+    },
+    {
+      "path": "src/types.ts",
+      "hash": "4c5f9c6c47eb8791a3cf4f1d930292191dd8b2cb53990266bae17a79eee3f538",
+      "size": 4790,
+      "type": "file"
+    },
+    {
+      "path": "src/user-message-box-markdown.ts",
+      "hash": "fefc3fa4f6f67253526662faa837a679ffc12fea3bf653afc5f2e8864e1ca986",
+      "size": 1649,
+      "type": "file"
+    },
+    {
+      "path": "src/user-message-box-native.ts",
+      "hash": "a9626ffb33ed14d289d2c3eeeb388015210254f40c970daafaa561943f88c6bf",
+      "size": 943,
+      "type": "file"
+    },
+    {
+      "path": "src/user-message-box-patch.ts",
+      "hash": "b2bcf55a83bbba0745748895cfecda7b33115d08f96e7bfe2ad3c60147a4e959",
+      "size": 4674,
+      "type": "file"
+    },
+    {
+      "path": "src/user-message-box-renderer.ts",
+      "hash": "573bdb9a44d31a996be09bb0b02095301dfcab3888d7d5e5a0e470708b3b59cd",
+      "size": 12500,
+      "type": "file"
+    },
+    {
+      "path": "src/user-message-box-utils.ts",
+      "hash": "bd54396bb48cc6c2bdeffaffea7ab8d60d813a1d7887ecc68821096a402741a9",
+      "size": 2966,
+      "type": "file"
+    },
+    {
+      "path": "src/write-display-utils.ts",
+      "hash": "28f5748a507c1fcdc4fedd8933006f7dba1988eaf6ff162ddb08d216632696fb",
+      "size": 606,
+      "type": "file"
+    },
+    {
+      "path": "src/zellij-modal.ts",
+      "hash": "f25e3184ae5e8e998aaaa385b54dace609755c45200c82b54b4b60def0db3577",
+      "size": 30387,
+      "type": "file"
+    },
+    {
+      "path": "tests/active-backlog-red.test.ts",
+      "hash": "d043f2aeeddcc9b609dfb457175db79846c54ab61d75401579eb0b4fc1884b92",
+      "size": 2285,
+      "type": "file"
+    },
+    {
+      "path": "tests/ansi-utils.test.ts",
+      "hash": "62897c5ec3cf7eed107121e58581ef6254089238dc3cdcb9c8db03f0ef98a5ca",
+      "size": 15450,
+      "type": "file"
+    },
+    {
+      "path": "tests/bash-display.test.ts",
+      "hash": "cdbdeaec062daecabfb02ff327ddcabe88e8b0f0f809c96278f14fb466562ebd",
+      "size": 11205,
+      "type": "file"
+    },
+    {
+      "path": "tests/capabilities-edge.test.ts",
+      "hash": "4b00356d6bc2dc2f2eced7db036316e0c82ff7c71fede70e6d3cfea29df5d5e3",
+      "size": 8006,
+      "type": "file"
+    },
+    {
+      "path": "tests/capabilities.test.ts",
+      "hash": "2aceed66e1e801b8477babf4f09d2bf607b35ec2947bb584e3f1ff833e097d03",
+      "size": 1055,
+      "type": "file"
+    },
+    {
+      "path": "tests/config-modal.test.ts",
+      "hash": "ae663d8375724d2f8aab95a89f51ee1d489ae7a95e4413e645dbd0b41d38bfbe",
+      "size": 15581,
+      "type": "file"
+    },
+    {
+      "path": "tests/config-store.test.ts",
+      "hash": "841358fe1d03c550c4379680a0820e51cc9c416f27b2d2b61553ff01e47dcb56",
+      "size": 8307,
+      "type": "file"
+    },
+    {
+      "path": "tests/custom-resolver-display.test.ts",
+      "hash": "12f49927fea7b9dea38b41c6196464a41208627b4547623acea23063a0629e8a",
+      "size": 8104,
+      "type": "file"
+    },
+    {
+      "path": "tests/custom-tool-overrides.test.ts",
+      "hash": "c43f5d7da2bccc451a3321ec7a6f811cdd9bddef8d4128d399e9714cac08a27c",
+      "size": 2628,
+      "type": "file"
+    },
+    {
+      "path": "tests/debug-logger-edge.test.ts",
+      "hash": "441d0e51d442a2881ef70db2fd53e3e81b4b3d98751d7e5ef0cf88b2f9c7fb42",
+      "size": 19498,
+      "type": "file"
+    },
+    {
+      "path": "tests/debug-logger.test.ts",
+      "hash": "17037e5577c14e43950445687b4a955d8b06e689e04814d296bdcb488701c64e",
+      "size": 2482,
+      "type": "file"
+    },
+    {
+      "path": "tests/diff-renderer-ansi.test.ts",
+      "hash": "b3f0a353b3a0afce387578297ac7ba70b6cebbc0be0191d12e248b241919b64f",
+      "size": 1660,
+      "type": "file"
+    },
+    {
+      "path": "tests/diff-renderer-edge.test.ts",
+      "hash": "2460ac88f86722445fbf341fa76dd5430f066d667a9abe052a07b6e2f4a33c10",
+      "size": 21034,
+      "type": "file"
+    },
+    {
+      "path": "tests/diff-renderer-numbering.test.ts",
+      "hash": "de3d8e95b3cfb1066115465b3de5dfe604f4846cbce8c60963ef73351395db5a",
+      "size": 4112,
+      "type": "file"
+    },
+    {
+      "path": "tests/diff-renderer-width.test.ts",
+      "hash": "ccfbee9c5ef2cc22eb8a861135e9d28f7c9f717fca1bf641fec9eed215f4de26",
+      "size": 15019,
+      "type": "file"
+    },
+    {
+      "path": "tests/diff-renderer-wrap.test.ts",
+      "hash": "d4460d5b80f39797885ca0346387928994dd83ebb59828d4509412be47c322ba",
+      "size": 6567,
+      "type": "file"
+    },
+    {
+      "path": "tests/index-integration.test.ts",
+      "hash": "b2773f55194c1a5d36a0b7341705cadd2efea7b0a301007215408b0f542f8220",
+      "size": 18848,
+      "type": "file"
+    },
+    {
+      "path": "tests/pending-diff-preview.test.ts",
+      "hash": "7293332ad46c3834a8cf94591b52b98d3a8a6904a5d2c348ae1614f57c0e6f61",
+      "size": 578,
+      "type": "file"
+    },
+    {
+      "path": "tests/presets-edge.test.ts",
+      "hash": "365f70bee2648926c27a0cf60125b6c83bd2ab47d9e13f76e4cda3dff3569c56",
+      "size": 9102,
+      "type": "file"
+    },
+    {
+      "path": "tests/presets.test.ts",
+      "hash": "331bd0a072e80a992d5e311964c7bc61f2e1d2e0fdd162d8a8b63ce4231a7561",
+      "size": 1035,
+      "type": "file"
+    },
+    {
+      "path": "tests/pure-bash-display.test.ts",
+      "hash": "6e3f05c780a7ad46b03b01ca7a3297d61883221305d58b807f64c26f556ac9ce",
+      "size": 5742,
+      "type": "file"
+    },
+    {
+      "path": "tests/pure-edit-display.test.ts",
+      "hash": "2236621955b6d40263fcd770d818ee87277f6b9053bf50b7b35fd2f91f0efe5b",
+      "size": 7825,
+      "type": "file"
+    },
+    {
+      "path": "tests/pure-find-ls-display.test.ts",
+      "hash": "e1ddef8cc1b58f03a2c72c592677c38713ab13c24911f991d22e7257eaa27764",
+      "size": 2601,
+      "type": "file"
+    },
+    {
+      "path": "tests/pure-grep-display.test.ts",
+      "hash": "8952a23ddfbdbd3cc78fb4bd5bad6c9bed4a36d287f7351d18287aacf99f9232",
+      "size": 13657,
+      "type": "file"
+    },
+    {
+      "path": "tests/pure-read-display.test.ts",
+      "hash": "9eedf00490fbb6d9c1c13592f3d5fb30da1ef6a0eb898bce6ba7ebacf0976190",
+      "size": 2383,
+      "type": "file"
+    },
+    {
+      "path": "tests/pure-write-display.test.ts",
+      "hash": "35340dc3216c38469acd2263ee901f8b0cead01ce165b1437b5de7210731cf7a",
+      "size": 5306,
+      "type": "file"
+    },
+    {
+      "path": "tests/real-runtime-contract.test.ts",
+      "hash": "86e532269b504fd8c3759fd74363f79ab498c524932c25f0839dc21648da839c",
+      "size": 30228,
+      "type": "file"
+    },
+    {
+      "path": "tests/release-qualification.test.ts",
+      "hash": "f187e7e4c1c28b73de8ee4e085c5a9331637582d8151e2151e1d634fb8a91164",
+      "size": 7121,
+      "type": "file"
+    },
+    {
+      "path": "tests/reload-behavior.test.ts",
+      "hash": "77fd893a07a7b299b2b1463bed0f01a2eaadbbc45c06bde06523189b4b105338",
+      "size": 24449,
+      "type": "file"
+    },
+    {
+      "path": "tests/render-utils.test.ts",
+      "hash": "957c18642d1f4e246353908606c6272cf9d319611aebe73b22e9336d9c14ae0f",
+      "size": 24371,
+      "type": "file"
+    },
+    {
+      "path": "tests/renderer-adapter-registration.test.ts",
+      "hash": "2f35d8bbc44987d726fece7346998a0424568a2c28f231ae7da56ae42c3b0cc4",
+      "size": 8521,
+      "type": "file"
+    },
+    {
+      "path": "tests/runtime-matrix.json",
+      "hash": "ca365c9437bf6d258a644b6dded3280c6bee3eed3c798f70a37ef96651f9fc45",
+      "size": 278,
+      "type": "file"
+    },
+    {
+      "path": "tests/settings-inspector.test.ts",
+      "hash": "b6c0a1512022c472d0af3fcff034647efc5a6649c6a5ab8dbd19daf8ea7f9d22",
+      "size": 12613,
+      "type": "file"
+    },
+    {
+      "path": "tests/support/real-runtime-contract.ts",
+      "hash": "38a804db0b859fe6f7c474bf29b3493f6aba889eeea9bf8fabe9cda70fbc0ff5",
+      "size": 68488,
+      "type": "file"
+    },
+    {
+      "path": "tests/support/release-capability-lifecycle.ts",
+      "hash": "4b0db3d5279f89a3c3cf764028e1a7acbcb92fdb9bef54175a1ccf39bc0ccd39",
+      "size": 2842,
+      "type": "file"
+    },
+    {
+      "path": "tests/tool-display-api-consumer.test.ts",
+      "hash": "012763d968dfca626f0ed6cc133f3f8265504adfec63efe59b2a9246b2fee0b3",
+      "size": 3106,
+      "type": "file"
+    },
+    {
+      "path": "tests/tool-execution-patch.test.ts",
+      "hash": "cc188290f7af3cfda62b2b585733874e4f5508068e1660392dc029b3715a8722",
+      "size": 20019,
+      "type": "file"
+    },
+    {
+      "path": "tests/tool-ui-utils.test.ts",
+      "hash": "66c1ec46b139b2d05c74c291fffd6ad278e347f4f62b930af5bc73cdb835cf87",
+      "size": 12755,
+      "type": "file"
+    },
+    {
+      "path": "tests/user-message-box-performance-red.test.ts",
+      "hash": "7a3640a7c4527e970858bae7ff60d8e4b8e2268b171d438507aeb1723d27ca26",
+      "size": 7727,
+      "type": "file"
+    },
+    {
+      "path": "tests/user-message-box.test.ts",
+      "hash": "eefcb9f32eaa8edba015f7a1d661ae0dd29da4bacc7debfe8afbf9db1790746f",
+      "size": 35278,
+      "type": "file"
+    },
+    {
+      "path": "tests/visual-preview-contract.test.ts",
+      "hash": "1102f4a397b60263e69cef5d2c5b7f7dfbfe2831646bd2630c037c9929a878a2",
+      "size": 11044,
+      "type": "file"
+    },
+    {
+      "path": "tests/zellij-modal.test.ts",
+      "hash": "d57eb720710b439cbc7bc485bd22358351d3f4ca79bd0111defb02574c0db89e",
+      "size": 28882,
+      "type": "file"
+    },
+    {
+      "path": "tool-display-api-consumer.d.ts",
+      "hash": "110bcc17b95165059f0bdd3951218295935abd51fe0a96c9f18129505eacd2fb",
+      "size": 1898,
+      "type": "file"
+    },
+    {
+      "path": "tool-display-api-consumer.js",
+      "hash": "a5f2d3262554b58e085147b71a85f20c8472affaab2632c9122a302006a43061",
+      "size": 2013,
+      "type": "file"
+    },
+    {
+      "path": "tsconfig.json",
+      "hash": "ac03b3cff8bfe669d5ea925c2dc086224c2252bbe8cfe6ddf2a16ab60ed667c7",
+      "size": 438,
+      "type": "file"
+    }
+  ],
+  "omitted": [],
+  "omittedCount": 0
+}

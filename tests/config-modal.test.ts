@@ -115,6 +115,17 @@ test("registerToolDisplayCommand registers a handler for 'tool-display'", () => 
 	assert.ok(getHandler(), "expected handler to be registered");
 });
 
+test("decoration settings expose four controls and produce explicit patches", () => {
+  const items = buildInspectorSettings(DEFAULT_TOOL_DISPLAY_CONFIG, { hasRtkOptimizer: false });
+  for (const id of ["enableToolSeparator", "toolSeparatorStyle", "toolSeparatorColor", "userMessageBorderColor"]) {
+    assert.ok(items.some((item) => item.id === id), `missing ${id}`);
+  }
+  assert.deepEqual(createSettingMutation(DEFAULT_TOOL_DISPLAY_CONFIG, "enableToolSeparator", "off"), { type: "patch", patch: { enableToolSeparator: false } });
+  assert.deepEqual(createSettingMutation(DEFAULT_TOOL_DISPLAY_CONFIG, "toolSeparatorStyle", "solid"), { type: "patch", patch: { toolSeparatorStyle: "solid" } });
+  assert.deepEqual(createSettingMutation(DEFAULT_TOOL_DISPLAY_CONFIG, "toolSeparatorColor", "accent"), { type: "patch", patch: { toolSeparatorColor: "accent" } });
+  assert.deepEqual(createSettingMutation(DEFAULT_TOOL_DISPLAY_CONFIG, "userMessageBorderColor", "dim"), { type: "patch", patch: { userMessageBorderColor: "dim" } });
+});
+
 test("settings and direct commands submit explicit patch, preset, and reset intents", async () => {
 	assert.deepEqual(
 		createSettingMutation(DEFAULT_TOOL_DISPLAY_CONFIG, "searchOutputMode", "count"),

@@ -21,10 +21,12 @@ function syntheticHost() {
     calls.push({ receiver: this, args, slot: "result" });
     return function (this: unknown, ...rendererArgs: unknown[]) { return { receiver: this, rendererArgs, render: () => ["native result"] }; };
   };
+  const nativeRender = function (this: { renderedLines?: string[] }) { return this.renderedLines ?? ["native row"]; };
   const host = {} as any;
   Object.defineProperties(host, {
     getCallRenderer: { value: nativeCall, writable: true, configurable: true, enumerable: false },
     getResultRenderer: { value: nativeResult, writable: true, configurable: true, enumerable: true },
+    render: { value: nativeRender, writable: true, configurable: true, enumerable: false },
   });
   return { host, calls };
 }
@@ -70,6 +72,7 @@ test("Pi Host Adapter is transactional, idempotent, receiver-safe, and conflict-
     const installed = Object.getOwnPropertyDescriptors(host);
     assert.notStrictEqual(installed.getCallRenderer.value, pristine.getCallRenderer.value);
     assert.notStrictEqual(installed.getResultRenderer.value, pristine.getResultRenderer.value);
+    assert.notStrictEqual(installed.render.value, pristine.render.value);
 
     const row = { toolName: "other", args: {}, toolDefinition: { name: "other" } };
     const callSelectorArgs = ["call-selector-arg"];
@@ -97,6 +100,7 @@ test("Pi Host Adapter is transactional, idempotent, receiver-safe, and conflict-
     second.dispose();
     assert.deepEqual(Object.getOwnPropertyDescriptor(host, "getCallRenderer"), pristine.getCallRenderer);
     assert.deepEqual(Object.getOwnPropertyDescriptor(host, "getResultRenderer"), foreignDescriptor);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(host, "render"), pristine.render);
     assert.strictEqual(host.getResultRenderer, foreign);
     assert.notStrictEqual(host.getCallRenderer, installed.getCallRenderer.value);
     installation = undefined;
@@ -175,6 +179,53 @@ test("Pi Host Adapter retains ownership tracking until an interrupted mixed disp
   installation.dispose();
   assert.deepEqual(Object.getOwnPropertyDescriptor(target, "getCallRenderer"), pristineCall);
   assert.strictEqual(target.getResultRenderer, foreignResult);
+});
+
+test("Pi Host Adapter appends a configurable separator to every tool row and fails open", () => {
+  const { host } = syntheticHost();
+  let separatorConfig = { ...DEFAULT_TOOL_DISPLAY_CONFIG };
+  const colors: string[] = [];
+  let themeAvailable = true;
+  const installation = installPiHostAdapter(
+    host,
+    config("count"),
+    "0.81.1",
+    () => {},
+    () => separatorConfig,
+    () => themeAvailable ? ({ fg(color: string, text: string) { colors.push(color); return `<${color}>${text}</${color}>`; } }) : undefined,
+  );
+  try {
+    const unconfiguredThirdPartyRow = { toolName: "third-party", args: {}, result: output, renderedLines: ["native third-party row"] };
+    assert.deepEqual(host.render.call(unconfiguredThirdPartyRow, 4), ["native third-party row", "<borderMuted>╌╌╌╌</borderMuted>"]);
+    assert.deepEqual(colors, ["borderMuted"]);
+
+    separatorConfig = { ...separatorConfig, toolSeparatorStyle: "solid", toolSeparatorColor: "accent" };
+    assert.deepEqual(host.render.call(unconfiguredThirdPartyRow, 3), ["native third-party row", "<accent>───</accent>"]);
+
+    assert.deepEqual(host.render.call({ ...unconfiguredThirdPartyRow, result: undefined }, 2), ["native third-party row", "<accent>──</accent>"]);
+    assert.deepEqual(host.render.call({ ...unconfiguredThirdPartyRow, renderedLines: [] }, 2), ["<accent>──</accent>"]);
+    themeAvailable = false;
+    assert.deepEqual(host.render.call(unconfiguredThirdPartyRow, 2), ["native third-party row"]);
+    themeAvailable = true;
+
+    separatorConfig = { ...separatorConfig, enableToolSeparator: false };
+    assert.deepEqual(host.render.call(unconfiguredThirdPartyRow, 3), ["native third-party row"]);
+    assert.deepEqual(host.render.call(unconfiguredThirdPartyRow, 0), ["native third-party row"]);
+
+    separatorConfig = { ...separatorConfig, enableToolSeparator: true };
+    const failingTheme = installPiHostAdapter(
+      host,
+      config("count"),
+      "0.81.1",
+      () => {},
+      () => separatorConfig,
+      () => ({ fg() { throw new Error("theme failed"); } }),
+    );
+    assert.deepEqual(host.render.call(unconfiguredThirdPartyRow, 3), ["native third-party row"]);
+    failingTheme.dispose();
+  } finally {
+    installation.dispose();
+  }
 });
 
 test("Pi Host Adapter accepts Pi 0.81.1 and later stable versions", () => {

@@ -22,6 +22,7 @@ export default function registerNativeUserMessageBox(
     getUserMessagePrototype(),
     () => theme,
     () => getConfig().enableNativeUserMessageBox,
+    () => getConfig().userMessageBorderColor,
   );
 
   let disposed = false;

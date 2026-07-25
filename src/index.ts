@@ -75,7 +75,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     uninstallSession();
     if (!mergedConfig.enabled) return;
     const disposers = [
-      registerToolExecutionPatch(pi, getEffectiveConfig),
+      registerToolExecutionPatch(pi, getEffectiveConfig, () => activeTheme),
       registerNativeUserMessageBox(pi, getConfig, activeTheme),
     ];
     let disposed = false;

@@ -59,6 +59,19 @@ test("config normalization clamps invalid values and migrates legacy read overri
   assert.equal(config.diffWordWrap, false);
 });
 
+test("decoration settings normalize supported values and reject unsupported colors", () => {
+  assert.deepEqual(
+    (({ enableToolSeparator, toolSeparatorStyle, toolSeparatorColor, userMessageBorderColor }) => ({ enableToolSeparator, toolSeparatorStyle, toolSeparatorColor, userMessageBorderColor }))(
+      normalizeToolDisplayConfig({ enableToolSeparator: false, toolSeparatorStyle: "solid", toolSeparatorColor: "accent", userMessageBorderColor: "dim" }),
+    ),
+    { enableToolSeparator: false, toolSeparatorStyle: "solid", toolSeparatorColor: "accent", userMessageBorderColor: "dim" },
+  );
+  const invalid = normalizeToolDisplayConfig({ toolSeparatorStyle: "double", toolSeparatorColor: "#fff", userMessageBorderColor: "primary" });
+  assert.equal(invalid.toolSeparatorStyle, "dashed");
+  assert.equal(invalid.toolSeparatorColor, "borderMuted");
+  assert.equal(invalid.userMessageBorderColor, "border");
+});
+
 test("legacy registerToolOverrides config is accepted without rewriting the file", () => {
   withTempDir("pi-tool-display-legacy-register-", (dir) => {
     const configFile = join(dir, "config.json");

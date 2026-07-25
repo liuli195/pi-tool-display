@@ -939,6 +939,33 @@ test("nativeRender applies theme coloring via fg and bold", () => {
   assert.ok(topBorder.includes("[border]"));
 });
 
+test("nativeRender uses configured border token and invalidates cached output when it changes", () => {
+  let borderColor: "border" | "accent" = "border";
+  const prototype: PatchableUserMessagePrototype = { render: () => ["hello"] };
+  const theme = { fg: (color: string, text: string) => `[${color}]${text}` };
+  patchNativeUserMessagePrototype(prototype, () => theme, () => true, () => borderColor);
+
+  const first = prototype.render(20).join("\n");
+  assert.match(first, /\[border\][╭│╰]/);
+  borderColor = "accent";
+  const second = prototype.render(20).join("\n");
+  assert.match(second, /\[accent\][╭│╰]/);
+  assert.notEqual(second, first);
+});
+
+test("nativeRender fails open when decoration state lookup throws", () => {
+  for (const failingGetter of ["enabled", "theme", "border"] as const) {
+    const prototype: PatchableUserMessagePrototype = { render: () => ["native user row"] };
+    patchNativeUserMessagePrototype(
+      prototype,
+      () => { if (failingGetter === "theme") throw new Error("theme failed"); return undefined; },
+      () => { if (failingGetter === "enabled") throw new Error("config failed"); return true; },
+      () => { if (failingGetter === "border") throw new Error("config failed"); return "border"; },
+    );
+    assert.deepEqual(prototype.render(20), ["native user row"]);
+  }
+});
+
 test("nativeRender builds correct box structure with all required line types", () => {
   const prototype: PatchableUserMessagePrototype = {
     render: () => ["line one", "line two"],

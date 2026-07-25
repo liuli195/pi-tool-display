@@ -114,7 +114,7 @@ If the Pi Host Adapter does not recognize a runtime shape or a configured render
 
 1. **Product scope is pure TUI presentation.** The extension may read immutable configuration and original tool-row data and may return TUI display objects. It must not change Agent, tool, context, message, or session behavior.
 
-2. **Use a single display seam.** The highest practical seam is the final renderer selection for a Pi tool row. Built-in, third-party, MCP, historical, and new rows will all pass through this seam.
+2. **Use the narrowest final presentation seams.** Renderer selection remains the seam for tool-specific call/result policy. Global row decoration uses the final tool-row render seam so built-in, third-party, MCP, historical, partial, and new rows all receive the same decoration without reproducing native fallback.
 
 3. **Build a deep Tool Display Resolver module.** Its interface accepts a read-only row descriptor plus native renderer slots and returns a display plan. Its implementation hides configuration policy, tool classification, Renderer Adapter selection, slot precedence, error isolation, and native fallback.
 
@@ -122,7 +122,7 @@ If the Pi Host Adapter does not recognize a runtime shape or a configured render
 
 5. **Use a Renderer Catalog behind the Resolver.** Existing read, search, Bash, edit, write, diff, MCP, and generic rendering implementations will be retained where they satisfy the pure-display invariant. The catalog is internal implementation, not another public seam.
 
-6. **Localize Pi-private coupling in one Pi Host Adapter.** Only this Adapter may inspect or wrap Pi's private tool-row renderer-selection shape. It translates host rows into stable read-only descriptors, invokes the Resolver, and returns native renderers when unsupported or unsuccessful.
+6. **Localize Pi-private coupling in one Pi Host Adapter.** Only this Adapter may inspect or wrap Pi's private tool-row renderer-selection and final-render shapes. It translates host rows into stable read-only descriptors, invokes the Resolver, applies global row decoration, and returns native presentation when unsupported or unsuccessful.
 
 7. **Install the Host Adapter transactionally.** Required host methods and fields must pass shape checks before any patch is installed. Partial installation is forbidden. Installation is idempotent and tagged with an owner token.
 
@@ -142,7 +142,7 @@ If the Pi Host Adapter does not recognize a runtime shape or a configured render
 
 15. **Resolve display independently of execution ownership.** A display rule changes presentation regardless of whether the executable tool is built in, SDK-provided, or extension-provided. It never changes that ownership.
 
-16. **Preserve native behavior when no display rule matches.** An unconfigured tool inherits its original call renderer, result renderer, and shell behavior.
+16. **Preserve native behavior when no display rule matches.** An unconfigured tool inherits its original call renderer, result renderer, and shell behavior; enabled global row decoration is the only permitted addition.
 
 17. **Apply explicit custom rules deterministically.** A configured third-party rule controls only its declared display slots. Native call rendering remains unless call replacement is explicitly enabled. Result hidden, summary, and preview modes follow configuration.
 

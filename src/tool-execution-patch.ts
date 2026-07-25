@@ -9,12 +9,18 @@ export function invalidateToolExecutionRows(): void {
   invalidatePiHostAdapterRows(ToolExecutionComponent.prototype);
 }
 
-export function registerToolExecutionPatch(_pi: ExtensionAPI, getConfig: () => ToolDisplayConfig): () => void {
+export function registerToolExecutionPatch(
+  _pi: ExtensionAPI,
+  getConfig: () => ToolDisplayConfig,
+  getTheme: () => { fg(color: string, text: string): string } | undefined = () => undefined,
+): () => void {
   const installation = installPiHostAdapter(
     ToolExecutionComponent.prototype,
     createPiToolDisplayResolver(getConfig),
     VERSION,
     message => logToolDisplayDebug(message),
+    getConfig,
+    getTheme,
   );
   let disposed = false;
   let unregister = () => {};

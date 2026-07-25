@@ -1,0 +1,514 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "6c0dd0d9e8f89b38b9d5985e3003d2db862c0495b8b711268582f8406fa151af",
+  "baselineProjectionRef": "runtime/evidence/snapshots/f69ac67133b498738a0d0cc62545339768fc81d1d532791fff4dc0d4137b9b0e.json",
+  "baselineProjectionHash": "f69ac67133b498738a0d0cc62545339768fc81d1d532791fff4dc0d4137b9b0e",
+  "currentProjectionRef": "runtime/evidence/snapshots/331c8facbad89771275a57727cfe15226ad13250c31fb8165278549f0bd4d9d4.json",
+  "currentProjectionHash": "331c8facbad89771275a57727cfe15226ad13250c31fb8165278549f0bd4d9d4",
+  "complete": false,
+  "declaredArtifacts": [
+    {
+      "path": "README.md",
+      "kind": "file"
+    },
+    {
+      "path": "src/pi-host-adapter.ts",
+      "kind": "file"
+    },
+    {
+      "path": "src/types.ts",
+      "kind": "file"
+    },
+    {
+      "path": "src/user-message-box-renderer.ts",
+      "kind": "file"
+    },
+    {
+      "path": "tests/pure-grep-display.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "tests/user-message-box.test.ts",
+      "kind": "file"
+    }
+  ],
+  "changes": [
+    {
+      "path": "CHANGELOG.md",
+      "kind": "modified",
+      "before": {
+        "hash": "bf1324b76513b8d206c3e7a3eae0f7a9aba8edd2a90b7bfc131c77d8099d53eb",
+        "size": 682
+      },
+      "after": {
+        "hash": "a7e756b75af4630c9abcef5126f632e9a6a3f2503ba810ce5f6f53c3f3127950",
+        "size": 862
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "README.md",
+      "kind": "modified",
+      "before": {
+        "hash": "45cf469f82f76007288239381f25b6f03000ff5924d10df00bba35e1f8786163",
+        "size": 23341
+      },
+      "after": {
+        "hash": "8d25cb7b07351c7ccd32c8a7ea17630fca7d270a500d18c0a9ba833d99d7cdf9",
+        "size": 24686
+      },
+      "attributedTo": [
+        {
+          "path": "README.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "config/config.example.json",
+      "kind": "modified",
+      "before": {
+        "hash": "3dd5cef671ef76989fcf32e618ff677ad8324a0f65b093dc11b6e18eada96f80",
+        "size": 1147
+      },
+      "after": {
+        "hash": "03349a5cfb25490bb18d53ae3b2b58f7b9119caee009da783003c2e1913072b0",
+        "size": 1293
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/config-modal.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "f0165379be884bb90a1bd0f4b5583d0e8e5a0e9519c4cba1fc05a07c5313e66c",
+        "size": 23188
+      },
+      "after": {
+        "hash": "0bde1e6fb24f5b65fbb186350659e23261e43354241773304f5d277529d9f74f",
+        "size": 26508
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/config-store.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "44020d6e3283d882d138ec5f1244bda1bfd5e07f02b4587e81cfcf2dec3915ee",
+        "size": 13809
+      },
+      "after": {
+        "hash": "32d22db836529cc6ea8a3c8c0283b24b8de04bfde4b6a7bc7b6fd4ac572dcc5b",
+        "size": 14376
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/index.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "10f26eb4a1a4d8cc7f49a5a4de723ff86838589d47b9ee7074c97caa8a85e6c8",
+        "size": 6348
+      },
+      "after": {
+        "hash": "1ea02a113038ddfe8e37a77cf63b215ad6139db905a100cce9f9e7e08793877e",
+        "size": 6367
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/pi-host-adapter.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ecd7ac6c94b802289c5129f873c3bf6a5eb9ccef3bd677fc3b6451cb0c05b70a",
+        "size": 6162
+      },
+      "after": {
+        "hash": "86fb9db421552730ddfee44e77c4ba961601979e9b634e0c59a8b391651e3a2b",
+        "size": 8425
+      },
+      "attributedTo": [
+        {
+          "path": "src/pi-host-adapter.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "src/presets.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "0d23fc014282f6d11f0105e17b88ae7529b64af06770a35580eb23c587fe959c",
+        "size": 4239
+      },
+      "after": {
+        "hash": "e8a7e077f0af83b3cd233e1a6932fa96ade50fcf1c634b0419ff40d5cd17919c",
+        "size": 4457
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/tool-execution-patch.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b7f0b5c2f38dbddcb264867c51e8447cbf13795787e984a92caa17e374968cb5",
+        "size": 1103
+      },
+      "after": {
+        "hash": "81b265e5a61e79151056d4a65725fd0698657e8d1c45cd0031ce34124314a790",
+        "size": 1232
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2b8415a89202c9722709da1543c4cc6245d2771b7c0d76fd5e75d39681898c21",
+        "size": 4167
+      },
+      "after": {
+        "hash": "4c5f9c6c47eb8791a3cf4f1d930292191dd8b2cb53990266bae17a79eee3f538",
+        "size": 4790
+      },
+      "attributedTo": [
+        {
+          "path": "src/types.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "src/user-message-box-native.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "947b212988c307812cc315f7f597e1bb56a7a9d5fba7e9ba07a432e898be783a",
+        "size": 897
+      },
+      "after": {
+        "hash": "a9626ffb33ed14d289d2c3eeeb388015210254f40c970daafaa561943f88c6bf",
+        "size": 943
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/user-message-box-renderer.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "c8368ba623ada5f27bdcb7bb821f2924e5801b1084f65989a28e41a9ba7f5011",
+        "size": 11886
+      },
+      "after": {
+        "hash": "573bdb9a44d31a996be09bb0b02095301dfcab3888d7d5e5a0e470708b3b59cd",
+        "size": 12500
+      },
+      "attributedTo": [
+        {
+          "path": "src/user-message-box-renderer.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "tests/config-modal.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ca2fbc5ffb67bb4b0298df65fb1647a7ba74cef50bfa912756944e644e3732b5",
+        "size": 14540
+      },
+      "after": {
+        "hash": "ae663d8375724d2f8aab95a89f51ee1d489ae7a95e4413e645dbd0b41d38bfbe",
+        "size": 15581
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "tests/config-store.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "e78b254620b3b2e176324ab33f9739e1c6af9d4a4d2c54c3a7f1fb4513a24306",
+        "size": 7378
+      },
+      "after": {
+        "hash": "841358fe1d03c550c4379680a0820e51cc9c416f27b2d2b61553ff01e47dcb56",
+        "size": 8307
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "tests/pure-bash-display.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2bf5926de74ba86efd7e49a45cbb1da08ddbe84019d12f1ca2a1bfd76ca6b0dc",
+        "size": 5548
+      },
+      "after": {
+        "hash": "6e3f05c780a7ad46b03b01ca7a3297d61883221305d58b807f64c26f556ac9ce",
+        "size": 5742
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "tests/pure-grep-display.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "5376cdcbbca7eb7473f9c70819f7f066649ddee02907c22fa60909f2ae76ba96",
+        "size": 11804
+      },
+      "after": {
+        "hash": "8952a23ddfbdbd3cc78fb4bd5bad6c9bed4a36d287f7351d18287aacf99f9232",
+        "size": 13657
+      },
+      "attributedTo": [
+        {
+          "path": "tests/pure-grep-display.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "tests/user-message-box.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "aa4b48229fe9d3995368a71c7f5615b2cd90281599b62230586e9c81c971b704",
+        "size": 34599
+      },
+      "after": {
+        "hash": "eefcb9f32eaa8edba015f7a1d661ae0dd29da4bacc7debfe8afbf9db1790746f",
+        "size": 35278
+      },
+      "attributedTo": [
+        {
+          "path": "tests/user-message-box.test.ts",
+          "kind": "file"
+        }
+      ]
+    }
+  ],
+  "unattributed": [
+    {
+      "path": "CHANGELOG.md",
+      "kind": "modified",
+      "before": {
+        "hash": "bf1324b76513b8d206c3e7a3eae0f7a9aba8edd2a90b7bfc131c77d8099d53eb",
+        "size": 682
+      },
+      "after": {
+        "hash": "a7e756b75af4630c9abcef5126f632e9a6a3f2503ba810ce5f6f53c3f3127950",
+        "size": 862
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "config/config.example.json",
+      "kind": "modified",
+      "before": {
+        "hash": "3dd5cef671ef76989fcf32e618ff677ad8324a0f65b093dc11b6e18eada96f80",
+        "size": 1147
+      },
+      "after": {
+        "hash": "03349a5cfb25490bb18d53ae3b2b58f7b9119caee009da783003c2e1913072b0",
+        "size": 1293
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/config-modal.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "f0165379be884bb90a1bd0f4b5583d0e8e5a0e9519c4cba1fc05a07c5313e66c",
+        "size": 23188
+      },
+      "after": {
+        "hash": "0bde1e6fb24f5b65fbb186350659e23261e43354241773304f5d277529d9f74f",
+        "size": 26508
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/config-store.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "44020d6e3283d882d138ec5f1244bda1bfd5e07f02b4587e81cfcf2dec3915ee",
+        "size": 13809
+      },
+      "after": {
+        "hash": "32d22db836529cc6ea8a3c8c0283b24b8de04bfde4b6a7bc7b6fd4ac572dcc5b",
+        "size": 14376
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/index.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "10f26eb4a1a4d8cc7f49a5a4de723ff86838589d47b9ee7074c97caa8a85e6c8",
+        "size": 6348
+      },
+      "after": {
+        "hash": "1ea02a113038ddfe8e37a77cf63b215ad6139db905a100cce9f9e7e08793877e",
+        "size": 6367
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/presets.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "0d23fc014282f6d11f0105e17b88ae7529b64af06770a35580eb23c587fe959c",
+        "size": 4239
+      },
+      "after": {
+        "hash": "e8a7e077f0af83b3cd233e1a6932fa96ade50fcf1c634b0419ff40d5cd17919c",
+        "size": 4457
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/tool-execution-patch.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b7f0b5c2f38dbddcb264867c51e8447cbf13795787e984a92caa17e374968cb5",
+        "size": 1103
+      },
+      "after": {
+        "hash": "81b265e5a61e79151056d4a65725fd0698657e8d1c45cd0031ce34124314a790",
+        "size": 1232
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "src/user-message-box-native.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "947b212988c307812cc315f7f597e1bb56a7a9d5fba7e9ba07a432e898be783a",
+        "size": 897
+      },
+      "after": {
+        "hash": "a9626ffb33ed14d289d2c3eeeb388015210254f40c970daafaa561943f88c6bf",
+        "size": 943
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "tests/config-modal.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ca2fbc5ffb67bb4b0298df65fb1647a7ba74cef50bfa912756944e644e3732b5",
+        "size": 14540
+      },
+      "after": {
+        "hash": "ae663d8375724d2f8aab95a89f51ee1d489ae7a95e4413e645dbd0b41d38bfbe",
+        "size": 15581
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "tests/config-store.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "e78b254620b3b2e176324ab33f9739e1c6af9d4a4d2c54c3a7f1fb4513a24306",
+        "size": 7378
+      },
+      "after": {
+        "hash": "841358fe1d03c550c4379680a0820e51cc9c416f27b2d2b61553ff01e47dcb56",
+        "size": 8307
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "tests/pure-bash-display.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2bf5926de74ba86efd7e49a45cbb1da08ddbe84019d12f1ca2a1bfd76ca6b0dc",
+        "size": 5548
+      },
+      "after": {
+        "hash": "6e3f05c780a7ad46b03b01ca7a3297d61883221305d58b807f64c26f556ac9ce",
+        "size": 5742
+      },
+      "attributedTo": []
+    }
+  ],
+  "unresolvedScopes": [
+    {
+      "id": "scope:8bff1263016747436570d4961629f968f5a7c0571288099416cbac94716edef7",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "CHANGELOG.md",
+      "reason": "Changed path is not covered by a declared artifact: CHANGELOG.md"
+    },
+    {
+      "id": "scope:b57588e6b058c7f59c4d8ea03b1ed56d72b7fc5e7381a072917df50850dc2a81",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "config/config.example.json",
+      "reason": "Changed path is not covered by a declared artifact: config/config.example.json"
+    },
+    {
+      "id": "scope:510ec2db2116e2e292488c025a150e23923c0ac9fd5496f7d1a060daff098bc8",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "src/config-modal.ts",
+      "reason": "Changed path is not covered by a declared artifact: src/config-modal.ts"
+    },
+    {
+      "id": "scope:4090b3045e20334647fb1c2d3541d7494dee32d96fb9fd63943818a630332396",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "src/config-store.ts",
+      "reason": "Changed path is not covered by a declared artifact: src/config-store.ts"
+    },
+    {
+      "id": "scope:3add1e9a9bb55596b9b3e01a67fa577abce81a63c8b50a22a50c2e3f38052e3b",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "src/index.ts",
+      "reason": "Changed path is not covered by a declared artifact: src/index.ts"
+    },
+    {
+      "id": "scope:47c8a69cc0fdd6d1fa27a5ee60b92e9d2c6786c8c3f64294e162db72447fa0e3",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "src/presets.ts",
+      "reason": "Changed path is not covered by a declared artifact: src/presets.ts"
+    },
+    {
+      "id": "scope:363366f70874ff776f86e5b5ac29eb6c6013ff723d6d99cfa9a6949e44b177ec",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "src/tool-execution-patch.ts",
+      "reason": "Changed path is not covered by a declared artifact: src/tool-execution-patch.ts"
+    },
+    {
+      "id": "scope:ed3b2d39c2c1a9275fc816eedf7d8b33baf2d5d31ebcc615a12e5e7a060f9304",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "src/user-message-box-native.ts",
+      "reason": "Changed path is not covered by a declared artifact: src/user-message-box-native.ts"
+    },
+    {
+      "id": "scope:1f8ced4ad089fd0ab423988e855a73a6bfe057d0c8a1e9a94f0d1fde54b95e3c",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "tests/config-modal.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: tests/config-modal.test.ts"
+    },
+    {
+      "id": "scope:e9a42d8b9b4eba6d52ca56bc558374d9e447e6d72ddbe3b29d3d6122ca4248ff",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "tests/config-store.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: tests/config-store.test.ts"
+    },
+    {
+      "id": "scope:e92b39f64e22a34839233d2b3f08da76f86cc8a22c25c7adb8a7ef868c0ff404",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "tests/pure-bash-display.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: tests/pure-bash-display.test.ts"
+    }
+  ],
+  "noCodeReason": null,
+  "scopeHash": "77214aea8bce852203bd14017216d6d49c29a3411e92a1e6b9f21920731fe9e3"
+}

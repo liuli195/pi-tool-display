@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Configurable dashed or solid separators after every tool row, using Pi Theme color tokens.
+- Configurable Pi Theme color token for the native USER message-box border.
+
 ## [0.1.0] - 2026-07-25
 
 ### Added
