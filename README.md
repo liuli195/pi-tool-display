@@ -20,6 +20,21 @@ This extension is derived from [MasuRii/pi-tool-display](https://github.com/Masu
 
 </div>
 
+## Why the rendering-only architecture matters
+
+Earlier tool-display integrations commonly replaced or wrapped executable tool definitions to gain control of their presentation. That made behavior depend on extension registration order: two extensions targeting the same built-in tool could overwrite each other, wrap stale definitions, change ownership, or lose settings when tools were registered late or reloaded.
+
+`@plus/pi-tool-display` instead attaches at Pi's final tool-row rendering seam. It does **not** re-register tools, wrap `execute`, replace schemas, change the active tool set, or mutate model/session data. The original extension remains the tool owner and continues to control execution; this extension only chooses how the existing call and result are displayed.
+
+This separation provides practical advantages:
+
+- **No executable-tool ownership conflicts** with extensions that customize Bash, MCP, permissions, background tasks, or other tools
+- **No registration-order race** between this extension and the tool producer
+- **No execution or schema drift** caused by cloning or wrapping tool definitions
+- **Reload-safe rendering** without stacking wrappers or leaving stale registrations behind
+- **Fail-open compatibility**: unsupported host shapes or renderer failures keep Pi's native rendering and execution
+- **Explicit third-party integration** through display-only adapters that never expose or mutate executable definitions
+
 ## Features
 
 - **Compact built-in tool rendering** for `read`, `grep`, `find`, `ls`, `bash`, `edit`, and `write`
