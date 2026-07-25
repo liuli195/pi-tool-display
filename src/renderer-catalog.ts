@@ -141,7 +141,7 @@ function writeRenderers(row: ToolRowDescriptor, config: Readonly<ToolDisplayConf
     const diff = explicitDiffEvidence(result, row.arguments);
     return diff
       ? renderEditDiffResult({ diff }, { expanded: options.expanded, filePath: path }, config as ToolDisplayConfig, theme, fallback)
-      : new Text(fallback || theme.fg("muted", "Write completed."), 0, 0);
+      : new Text(options.expanded ? fallback || theme.fg("muted", "Write completed.") : "", 0, 0);
   };
   const failOpen = (renderer: ToolRenderer, fallback?: ToolRenderer): ToolRenderer => (...args: any[]) => {
     try { return renderer(...args); } catch { return fallback?.(...args); }

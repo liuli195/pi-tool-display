@@ -323,7 +323,7 @@ test("pre-upgrade built-in rows without runtime provenance redraw through curren
     grep.setExpanded(true);
     assert.match(plainRender(grep), /c:3/);
     write.setExpanded(false);
-    assert.doesNotMatch(plainRender(write), /six/);
+    assert.doesNotMatch(plainRender(write), /six|Wrote file\.txt/);
     write.setExpanded(true);
     assert.match(plainRender(write), /Wrote file\.txt/);
     assert.doesNotMatch(plainRender(write), /six|create|overwrite/i);

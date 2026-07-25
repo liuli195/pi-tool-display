@@ -166,9 +166,11 @@ for (const entry of matrix) {
 
     for (const frame of [cold, plain(observation.present.tuiOutput.reload)]) {
       assert.match(frame, /write.*written\.txt.*2 lines/);
-      assert.match(frame, /Wrote written\.txt/);
+      assert.doesNotMatch(frame, /Wrote written\.txt/);
       assert.doesNotMatch(frame, /(?:pending )?(?:create|overwrite)|additions?|deletions?/i);
     }
+    assert.match(plain(observation.present.tuiOutput.expandedCold), /Wrote written\.txt/);
+    assert.match(plain(observation.present.tuiOutput.expandedReload), /Wrote written\.txt/);
     assert.match(plain(observation.present.tuiOutput.newCall), /write.*written\.txt.*2 lines/);
     assert.doesNotMatch(plain(observation.present.tuiOutput.newCall), /4#(?:EE|FF):/);
     assert.match(plain(observation.present.tuiOutput.expandedNewCall), /4#EE.*old supplied/);

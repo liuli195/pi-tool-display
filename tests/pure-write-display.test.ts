@@ -49,7 +49,16 @@ test("write states remain truthful without diff evidence", () => {
   assert.match(render(selected.call!({ file_path: "a.ts", content: "hello" }, theme, { isPartial: true, argsComplete: false })), /write.*a\.ts/);
   assert.match(render(selected.result!({ content: [], details: {} }, { expanded: false, isPartial: true }, theme)), /writing/);
   assert.match(render(selected.result!({ content: [{ type: "text", text: "permission denied" }], isError: true }, { expanded: false, isPartial: false }, theme)), /permission denied/);
-  assert.match(render(selected.result!({ content: [{ type: "text", text: "old schema result" }] }, { expanded: false, isPartial: false }, theme)), /old schema result/);
+  assert.match(render(selected.result!({ content: [{ type: "text", text: "old schema result" }] }, { expanded: true, isPartial: false }, theme)), /old schema result/);
+});
+
+test("write success without diff stays folded until expanded", () => {
+  const path = "D:\\My Project\\my-agent-skills\\plugins\\pi-codex-usage-status\\extensions\\usage.ts";
+  const selected = plan({ path, content: "x".repeat(1821) });
+  const result = { content: [{ type: "text", text: `Successfully wrote 1821 bytes to ${path}` }], details: {} };
+
+  assert.equal(render(selected.result!(result, { expanded: false, isPartial: false }, theme)), "");
+  assert.match(render(selected.result!(result, { expanded: true, isPartial: false }, theme)), /Successfully wrote 1821 bytes/);
 });
 
 test("write rendering performs zero node:fs workspace reads", async () => {
