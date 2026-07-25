@@ -1,6 +1,6 @@
 <div align="center">
 
-# @plus/pi-tool-display
+# @pure/pi-tool-display
 
 [![License](https://img.shields.io/github/license/liuli195/pi-tool-display?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
@@ -9,7 +9,7 @@ A pure TUI display wrapper for the [Pi coding agent](https://github.com/mariozec
 
 This extension is derived from [MasuRii/pi-tool-display](https://github.com/MasuRii/pi-tool-display).
 
-`@plus/pi-tool-display` keeps tool rows compact, renders trustworthy tool-provided diffs, and improves the native user prompt box without changing tools, model context, messages, or sessions.
+`@pure/pi-tool-display` keeps tool rows compact, renders trustworthy tool-provided diffs, and improves the native user prompt box without changing tools, model context, messages, or sessions.
 
 <img width="1360" height="752" alt="image" src="https://github.com/user-attachments/assets/777944a2-18b2-4642-b035-2c703a5abb1b" />
 
@@ -22,7 +22,7 @@ This extension is derived from [MasuRii/pi-tool-display](https://github.com/Masu
 
 Earlier tool-display integrations commonly replaced or wrapped executable tool definitions to gain control of their presentation. That made behavior depend on extension registration order: two extensions targeting the same built-in tool could overwrite each other, wrap stale definitions, change ownership, or lose settings when tools were registered late or reloaded.
 
-`@plus/pi-tool-display` instead attaches at Pi's final tool-row rendering seam. It does **not** re-register tools, wrap `execute`, replace schemas, change the active tool set, or mutate model/session data. The original extension remains the tool owner and continues to control execution; this extension only chooses how the existing call and result are displayed.
+`@pure/pi-tool-display` instead attaches at Pi's final tool-row rendering seam. It does **not** re-register tools, wrap `execute`, replace schemas, change the active tool set, or mutate model/session data. The original extension remains the tool owner and continues to control execution; this extension only chooses how the existing call and result are displayed.
 
 This separation provides practical advantages:
 
@@ -47,7 +47,7 @@ This separation provides practical advantages:
 - **Per-tool display toggles** that never change tool ownership or execution
 - **Explicit third-party rendering** through `customToolOverrides` or producer adapters; MCP-like tools are never auto-detected for styling
 - **Capability-aware RTK settings** that appear only when the optimizer is available
-- **Adapter API for renderer consumers** through the `@plus/pi-tool-display/tool-display-api-consumer` subpath export
+- **Adapter API for renderer consumers** through the `@pure/pi-tool-display/tool-display-api-consumer` subpath export
 
 ## Installation
 
@@ -103,10 +103,10 @@ JSON-only controls include the extension master switch, debug logging, built-in 
 
 ### Tool display adapter API
 
-Other extensions that declare `@plus/pi-tool-display` as a direct dependency can opt into its rendering without depending on load order by importing the consumer helper:
+Other extensions that declare `@pure/pi-tool-display` as a direct dependency can opt into its rendering without depending on load order by importing the consumer helper:
 
 ```ts
-import { registerRendererAdapter } from "@plus/pi-tool-display/tool-display-api-consumer";
+import { registerRendererAdapter } from "@pure/pi-tool-display/tool-display-api-consumer";
 
 const dispose = registerRendererAdapter({
   id: "my-extension:mcp",
