@@ -58,7 +58,7 @@ const MIN_BORDER_WIDTH = 8;
 const TITLE_TEXT = " user ";
 const CONTENT_HORIZONTAL_PADDING_COLUMNS = 1;
 const USER_MESSAGE_TOP_MARGIN_LINES = 1;
-const USER_MESSAGE_PATCH_VERSION = 9;
+const USER_MESSAGE_PATCH_VERSION = 10;
 const MAX_USER_MESSAGE_MARKDOWN_TEXT_LENGTH = 100_000;
 const MAX_USER_MESSAGE_MARKDOWN_LINE_COUNT = 2_000;
 
@@ -98,19 +98,14 @@ function colorUserBackground(
   return applyUserMessageBackground(theme, text);
 }
 
-function computeBoxInnerWidth(totalWidth: number): number {
-  return Math.max(0, totalWidth - 2);
-}
-
 function buildTopBorder(
   totalWidth: number,
   theme: UserMessageTheme | undefined,
   borderColor: DisplayColorToken,
 ): string {
-  const innerWidth = computeBoxInnerWidth(totalWidth);
-  const title = truncateToWidth(TITLE_TEXT, innerWidth, "");
-  const fill = "─".repeat(Math.max(0, innerWidth - visibleWidth(title)));
-  const row = `${colorBorder(theme, borderColor, "╭")}${colorTitle(theme, title)}${colorBorder(theme, borderColor, `${fill}╮`)}`;
+  const title = truncateToWidth(TITLE_TEXT, Math.max(0, totalWidth - 1), "");
+  const fill = "─".repeat(Math.max(0, totalWidth - 1 - visibleWidth(title)));
+  const row = `${colorBorder(theme, borderColor, "─")}${colorTitle(theme, title)}${colorBorder(theme, borderColor, fill)}`;
 
   return colorUserBackground(theme, row);
 }
@@ -120,33 +115,28 @@ function buildBottomBorder(
   theme: UserMessageTheme | undefined,
   borderColor: DisplayColorToken,
 ): string {
-  const innerWidth = computeBoxInnerWidth(totalWidth);
-  const row = `${colorBorder(theme, borderColor, "╰")}${colorBorder(theme, borderColor, `${"─".repeat(innerWidth)}╯`)}`;
-
-  return colorUserBackground(theme, row);
+  return colorUserBackground(
+    theme,
+    colorBorder(theme, borderColor, "─".repeat(totalWidth)),
+  );
 }
 
 function getUserMessageContentWidth(totalWidth: number): number {
-  return Math.max(
-    1,
-    totalWidth - 2 - CONTENT_HORIZONTAL_PADDING_COLUMNS * 2,
-  );
+  return Math.max(1, totalWidth - CONTENT_HORIZONTAL_PADDING_COLUMNS);
 }
 
 function wrapContentLine(
   line: string,
   totalWidth: number,
   theme: UserMessageTheme | undefined,
-  borderColor: DisplayColorToken,
 ): string {
   const sidePadding = " ".repeat(CONTENT_HORIZONTAL_PADDING_COLUMNS);
   const innerWidth = getUserMessageContentWidth(totalWidth);
   const normalizedLine = normalizeUserMessageContentLine(line);
   const content = truncateToWidth(normalizedLine, innerWidth, "", true);
   const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(content)));
-  const row = `${colorBorder(theme, borderColor, "│")}${sidePadding}${content}${padding}${sidePadding}${colorBorder(theme, borderColor, "│")}`;
 
-  return colorUserBackground(theme, row);
+  return colorUserBackground(theme, `${sidePadding}${content}${padding}`);
 }
 
 function createMarkdownRenderer(
@@ -414,12 +404,11 @@ export function patchNativeUserMessagePrototype(
           const paddedContentLines = addUserMessageVerticalPadding(
             contentLines.length > 0 ? contentLines : [""],
           );
-
           const output = [
             ...Array.from({ length: USER_MESSAGE_TOP_MARGIN_LINES }, () => ""),
             buildTopBorder(safeWidth, theme, borderColor),
             ...paddedContentLines.map((renderLine) =>
-              wrapContentLine(renderLine, safeWidth, theme, borderColor),
+              wrapContentLine(renderLine, safeWidth, theme),
             ),
             buildBottomBorder(safeWidth, theme, borderColor),
           ];

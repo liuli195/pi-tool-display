@@ -1,0 +1,83 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "44f166ab15eb8a25225cb2e780eafc9de2e382fd5cab8c43491c6ca371800ab5",
+  "baselineProjectionRef": "runtime/evidence/snapshots/6943199dfdddd02e49801d5d870f65192e865fd43f36f8f4614ecebcff6eabf6.json",
+  "baselineProjectionHash": "6943199dfdddd02e49801d5d870f65192e865fd43f36f8f4614ecebcff6eabf6",
+  "currentProjectionRef": "runtime/evidence/snapshots/6378f9ae315ed35304b8cfe3b57a841e1dc3dae25cff31d75d29e48b791e8b09.json",
+  "currentProjectionHash": "6378f9ae315ed35304b8cfe3b57a841e1dc3dae25cff31d75d29e48b791e8b09",
+  "complete": true,
+  "declaredArtifacts": [
+    {
+      "path": "src/user-message-box-renderer.ts",
+      "kind": "file"
+    },
+    {
+      "path": "tests/tool-ui-utils.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "tests/user-message-box.test.ts",
+      "kind": "file"
+    }
+  ],
+  "changes": [
+    {
+      "path": "src/user-message-box-renderer.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "cad2246f41a4ae1fe93d822a9860ba1942f4079db0eb67345ee6fa1e1cf1d773",
+        "size": 12871
+      },
+      "after": {
+        "hash": "2a757c93fbe44bd09cd3c982efb013ffc46ba03b4bb1f4a63d159265aa673e9b",
+        "size": 12270
+      },
+      "attributedTo": [
+        {
+          "path": "src/user-message-box-renderer.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "tests/tool-ui-utils.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "66c1ec46b139b2d05c74c291fffd6ad278e347f4f62b930af5bc73cdb835cf87",
+        "size": 12755
+      },
+      "after": {
+        "hash": "8f4a431e339bd732e4bc7cf4f66384a9ada3717af3b0b1917ca3abaee4017daa",
+        "size": 12739
+      },
+      "attributedTo": [
+        {
+          "path": "tests/tool-ui-utils.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "tests/user-message-box.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "944b05b06f337a528e7084b3367d743c211af3f438be7cc04debd6c5559b7bcb",
+        "size": 35963
+      },
+      "after": {
+        "hash": "ffc3c4529673125035cdbd028aaa58e040d57376f6e8752454919947ed44e713",
+        "size": 35509
+      },
+      "attributedTo": [
+        {
+          "path": "tests/user-message-box.test.ts",
+          "kind": "file"
+        }
+      ]
+    }
+  ],
+  "unattributed": [],
+  "unresolvedScopes": [],
+  "noCodeReason": null,
+  "scopeHash": "d0953db46902efd6a948bc0758c292ec2dd596d7d8c305d1c6a274ea2578254f"
+}

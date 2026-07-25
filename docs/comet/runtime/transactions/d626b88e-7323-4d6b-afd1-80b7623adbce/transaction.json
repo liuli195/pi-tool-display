@@ -1,0 +1,28 @@
+{
+  "schema": "comet.native.transaction.v2",
+  "id": "d626b88e-7323-4d6b-afd1-80b7623adbce",
+  "kind": "archive",
+  "status": "committed",
+  "change": "user-message-horizontal-borders",
+  "createdAt": "2026-07-25T18:06:26.450Z",
+  "preflightHash": "2ef6ff23441bb00bde93386e3e6e97bc1380191096a997a4ec1a84e6c96b8818",
+  "operations": [
+    {
+      "id": "spec-1-transcript-decorations",
+      "type": "write",
+      "target": "specs/transcript-decorations/spec.md",
+      "staged": "runtime/transactions/d626b88e-7323-4d6b-afd1-80b7623adbce/staged/specs/transcript-decorations/spec.md",
+      "backup": "runtime/transactions/d626b88e-7323-4d6b-afd1-80b7623adbce/backups/specs/transcript-decorations/spec.md",
+      "expectedTargetHash": "72b75d600cbccef3edee05d4e8eb93d68d8f434b5eb3093312ad0825270f1f71",
+      "stagedHash": "0b2a8a4b15813142f8c4bf8f96f9bc7472f36004c8e8d8b2c44ca80551800cbc"
+    },
+    {
+      "id": "archive-change",
+      "type": "move",
+      "source": "changes/user-message-horizontal-borders",
+      "target": "archive/2026-07-25-user-message-horizontal-borders",
+      "expectedSourceHash": "900bf074c9cadf4e7cb6c302aa9fd0e1ef64d22f63f90602683ca31b79c9457b",
+      "expectedTargetHash": null
+    }
+  ]
+}

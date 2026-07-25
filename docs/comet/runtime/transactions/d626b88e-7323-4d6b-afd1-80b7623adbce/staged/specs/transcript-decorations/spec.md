@@ -63,7 +63,7 @@ When the native USER message box is enabled, it SHALL render two solid horizonta
 - The bottom row SHALL consist entirely of `─` glyphs filling the same available render width.
 - Both rows SHALL have the same visible width and SHALL NOT exceed the available render width.
 - The renderer SHALL NOT emit rounded corners or left/right vertical USER border glyphs.
-- Content SHALL retain one column of left indentation and use the width freed by removing vertical borders. One blank background row SHALL separate the content from each horizontal border so the borders align with the USER background block's top and bottom edges.
+- Content SHALL retain one column of left indentation, use the width freed by removing vertical borders, and render directly between the two border rows without added top or bottom blank padding.
 - Both horizontal border rows SHALL use the current value of `userMessageBorderColor` through the current Pi Theme. The ` user ` title SHALL retain its existing accent styling.
 
 USER background, content, Markdown rendering and native bypass behavior SHALL otherwise remain unchanged. Changing only `userMessageBorderColor` SHALL invalidate any cached final USER output even when message content, width and Theme object identity are unchanged. Theme changes SHALL continue to recolor the border without reload.

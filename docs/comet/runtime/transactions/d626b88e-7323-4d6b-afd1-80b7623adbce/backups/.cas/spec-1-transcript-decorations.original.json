@@ -1,0 +1,11 @@
+{
+  "schema": "comet.native.archive-cas.v1",
+  "operationId": "spec-1-transcript-decorations",
+  "role": "original",
+  "hash": "72b75d600cbccef3edee05d4e8eb93d68d8f434b5eb3093312ad0825270f1f71",
+  "identity": {
+    "dev": 3156816962,
+    "ino": 22236523160145184,
+    "birthtimeMs": 1784998945904.3037
+  }
+}

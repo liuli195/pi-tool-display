@@ -250,12 +250,12 @@ test("native user message renderer inserts one blank spacer line before the box"
   const rendered = prototype.render(24);
 
   assert.equal(rendered[0], "");
-  assert.match(rendered[1] ?? "", /^╭/);
+  assert.match(rendered[1] ?? "", /^─ user ─/);
 });
 
-test("native user message renderer wraps body at the padded content width", () => {
-  const contentWidth = 16;
-  const totalWidth = contentWidth + 4;
+test("native user message renderer wraps body at the indented content width", () => {
+  const contentWidth = 19;
+  const totalWidth = contentWidth + 1;
   const message = `${"X".repeat(contentWidth)}YZ`;
   const requestedWidths: number[] = [];
   const prototype: PatchableUserMessagePrototype = {
@@ -272,16 +272,15 @@ test("native user message renderer wraps body at the padded content width", () =
   patchNativeUserMessagePrototype(prototype, () => undefined, () => true);
 
   const rendered = prototype.render(totalWidth);
-  const borderedRows = rendered.filter((line) =>
-    line.startsWith("│") || line.startsWith("╭") || line.startsWith("╰"),
-  );
+  const borderRows = rendered.filter((line) => line.startsWith("─"));
 
   assert.equal(requestedWidths[0], contentWidth);
   assert.ok(
     rendered.some((line) => line.includes("YZ")),
     "tail content should wrap instead of being clipped",
   );
-  assert.ok(borderedRows.every((line) => visibleWidth(line) === totalWidth));
+  assert.equal(borderRows.length, 2);
+  assert.ok(borderRows.every((line) => visibleWidth(line) === totalWidth));
 });
 
 test("user message blank ansi lines are cleared before wrapping", () => {

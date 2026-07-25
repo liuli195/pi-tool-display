@@ -57,16 +57,17 @@ The separator SHALL be added once at the highest practical final tool-row presen
 
 ## USER border behavior
 
-When the native USER message box is enabled, it SHALL render two solid horizontal border rows instead of a rounded box.
+When the native USER message box is enabled, every border glyph produced by the existing box renderer SHALL use the current value of `userMessageBorderColor` through the current Pi Theme.
 
-- The top row SHALL begin with exactly one `─`, followed by the accent-styled ` user ` title, then enough `─` glyphs to fill the available render width.
-- The bottom row SHALL consist entirely of `─` glyphs filling the same available render width.
-- Both rows SHALL have the same visible width and SHALL NOT exceed the available render width.
-- The renderer SHALL NOT emit rounded corners or left/right vertical USER border glyphs.
-- Content SHALL retain one column of left indentation and use the width freed by removing vertical borders. One blank background row SHALL separate the content from each horizontal border so the borders align with the USER background block's top and bottom edges.
-- Both horizontal border rows SHALL use the current value of `userMessageBorderColor` through the current Pi Theme. The ` user ` title SHALL retain its existing accent styling.
+This includes:
 
-USER background, content, Markdown rendering and native bypass behavior SHALL otherwise remain unchanged. Changing only `userMessageBorderColor` SHALL invalidate any cached final USER output even when message content, width and Theme object identity are unchanged. Theme changes SHALL continue to recolor the border without reload.
+- top border and corners;
+- bottom border and corners;
+- left and right vertical borders.
+
+The ` user ` title SHALL retain its existing accent styling. USER background, content, Markdown rendering, padding, width behavior and native bypass behavior SHALL remain unchanged.
+
+Changing only `userMessageBorderColor` SHALL invalidate any cached final USER output even when message content, width and Theme object identity are unchanged. Theme changes SHALL continue to recolor the border without reload.
 
 ## Preset behavior
 

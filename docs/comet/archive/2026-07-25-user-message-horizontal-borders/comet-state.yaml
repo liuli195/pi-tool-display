@@ -1,0 +1,22 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+name: user-message-horizontal-borders
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: 44f166ab15eb8a25225cb2e780eafc9de2e382fd5cab8c43491c6ca371800ab5
+spec_changes:
+  - capability: transcript-decorations
+    operation: replace
+    source: specs/transcript-decorations/spec.md
+    base_hash: 72b75d600cbccef3edee05d4e8eb93d68d8f434b5eb3093312ad0825270f1f71
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/d0953db46902efd6a948bc0758c292ec2dd596d7d8c305d1c6a274ea2578254f.json
+verification_evidence: runtime/evidence/verifications/83d9f38a2691fd82e1a46cccf309c3f4cc92a1309c2e5d20742714089cfe7d6e.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-25
+run_id: 83c598f1-dbea-4d6b-ae03-d9becf40b773
